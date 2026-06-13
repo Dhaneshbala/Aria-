@@ -1,0 +1,80 @@
+from fastapi import APIRouter
+from pydantic import BaseModel
+from ..services.study_service import StudyService
+from ..models.database import get_config
+
+router = APIRouter(prefix="/api/study", tags=["study"])
+study_svc = StudyService()
+
+
+class StudyRequest(BaseModel):
+    topic: str
+    level: str = "medium"
+    count: int = 5
+    days: int = 7
+
+
+@router.post("/quiz")
+async def generate_quiz(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    questions = await study_svc.generate_quiz(req.topic, req.level, req.count, model)
+    return {"questions": questions}
+
+
+@router.post("/flashcards")
+async def generate_flashcards(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    cards = await study_svc.generate_flashcards(req.topic, req.count, model)
+    return {"cards": cards}
+
+
+@router.post("/mindmap")
+async def generate_mindmap(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    mindmap = await study_svc.generate_mindmap(req.topic, model)
+    return {"mindmap": mindmap}
+
+
+@router.post("/study-plan")
+async def generate_study_plan(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    plan = await study_svc.generate_study_plan(req.topic, req.days, model)
+    return {"plan": plan}
+
+
+@router.post("/summary")
+async def generate_summary(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    summary = await study_svc.generate_summary(req.topic, model)
+    return {"summary": summary}
+
+
+@router.post("/quiz/check")
+async def check_answer(data: dict):
+    from ..services.memory_service import MemoryService
+    mem = MemoryService()
+    subject = data.get("subject", "general")
+    correct = data.get("correct", False)
+    profile = await mem.update_profile(subject, correct)
+    return {"profile": profile}
+
+
+@router.post("/notes")
+async def generate_notes(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    notes = await study_svc.generate_notes(req.topic, model=model)
+    return {"notes": notes}
+
+
+@router.post("/exam")
+async def generate_exam(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    questions = await study_svc.generate_exam_questions(req.topic, req.count, model)
+    return {"questions": questions, "mode": "exam"}
