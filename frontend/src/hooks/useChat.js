@@ -63,7 +63,7 @@ export function useChat() {
 
     try {
       await streamChat({
-        message: text || '',
+        message: text || ' ',
         conversationId,
         image,
         document: docFile,

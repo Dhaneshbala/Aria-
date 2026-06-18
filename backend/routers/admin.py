@@ -31,18 +31,21 @@ async def list_models():
 
 
 @router.get("/health")
+
 async def health_check():
     h      = await ollama.health()
     sd_ok  = await sd_svc.is_available()
     config = get_config()
+    ok     = h if isinstance(h, bool) else h.get("ok", False)
+    models = h.get("models", []) if isinstance(h, dict) else []
     return {
-        "ollama":            h.get("ok", False),
-        "stable_diffusion":  sd_ok,
-        "installed_models":  h.get("models", []),
-        "reasoning_model":   config.get("reasoning_model"),
-        "vision_model":      config.get("vision_model"),
-        "fallback_model":    config.get("fallback_model"),
-        "status":            "ok" if h.get("ok") else "degraded",
+        "ollama":             ok,
+        "stable_diffusion":   sd_ok,
+        "installed_models":   models,
+        "reasoning_model":    config.get("reasoning_model"),
+        "vision_model":       config.get("vision_model"),
+        "fallback_model":     config.get("fallback_model"),
+        "status":             "ok" if ok else "degraded",
     }
 
 
