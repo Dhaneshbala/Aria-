@@ -54,12 +54,7 @@ class ImageGenService:
             encoded = urllib.parse.quote(safe_prompt)
 
             # Pollinations direct image URL
-            url = (
-                f"https://image.pollinations.ai/prompt/{encoded}"
-                f"?width={width}&height={height}&model={model}"
-                f"&nologo=true&enhance=true"
-            )
-
+            url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&nologo=true"
             async with httpx.AsyncClient(timeout=60) as client:
                 r = await client.get(url, follow_redirects=True)
                 if r.status_code == 200 and r.headers.get("content-type", "").startswith("image/"):

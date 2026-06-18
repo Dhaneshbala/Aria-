@@ -268,7 +268,7 @@ export default function DocsPage() {
 
           {/* Tab: Ask Anything */}
           {activeTab === 'chat' && (
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
               <p className="text-xs text-[#555]">
                 Ask any question about <span className="text-[#aaa]">{doc.name}</span>.
                 ARIA reads the whole document and finds the relevant pages for you.
@@ -425,7 +425,7 @@ export default function DocsPage() {
               )}
 
               {quotes.length > 0 && (
-                <div className="space-y-3">
+                <div className="space-y-3 overflow-y-auto pr-2" style={{maxHeight: '65vh'}}>
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-[#666]">
                       Found <span className="text-[#a89bf8] font-medium">{quotes.length}</span> relevant passages
