@@ -84,7 +84,7 @@ export default function AdminPage() {
           <div className="bg-[#0f0f0f] rounded-lg p-2">
             <p className="text-xs text-green-400 font-semibold">Pollinations.ai</p>
             <p className="text-[10px] text-[#555] mt-0.5">Image Gen</p>
-            <p className="text-[10px] text-[#444]">Free · No GPU</p>
+            <p className="text-[10px] text-[#444]">Free · No CPU Or GPU</p>
           </div>
         </div>
         <p className="text-[10px] text-[#444] mt-2 text-center">
