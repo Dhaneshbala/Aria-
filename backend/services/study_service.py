@@ -1,4 +1,5 @@
 """Study service — generates quizzes, flashcards, mind maps, study plans."""
+
 import json
 import re
 from .ollama_service import OllamaService
@@ -18,8 +19,11 @@ QUIZ_LEVELS = {
 class StudyService:
 
     async def generate_quiz(
-        self, topic: str, level: str = "medium",
-        num_questions: int = 5, model: str = "qwen3:8b"
+        self,
+        topic: str,
+        level: str = "medium",
+        num_questions: int = 5,
+        model: str = "qwen3:8b",
     ) -> list[dict]:
         level_desc = QUIZ_LEVELS.get(level, QUIZ_LEVELS["medium"])
         prompt = (
@@ -38,7 +42,7 @@ class StudyService:
     async def generate_flashcards(
         self, topic: str, num_cards: int = 10, model: str = "qwen3:8b"
     ) -> list[dict]:
-        prompt = (  
+        prompt = (
             f"Generate {num_cards} flashcards for studying: {topic}\n"
             f"Format exactly:\n"
             f"FRONT: [term or question] | BACK: [definition or answer]\n"
@@ -47,9 +51,7 @@ class StudyService:
         response = await ollama.complete(model, prompt)
         return self._parse_flashcards(response)
 
-    async def generate_mindmap(
-        self, topic: str, model: str = "qwen3:8b"
-    ) -> dict:
+    async def generate_mindmap(self, topic: str, model: str = "qwen3:8b") -> dict:
         prompt = (
             f"Create a mind map for the topic: {topic}\n"
             f"Return ONLY valid JSON in this exact format:\n"
@@ -64,7 +66,10 @@ class StudyService:
             data = json.loads(clean)
             return data
         except Exception:
-            return {"center": topic, "branches": [{"label": "Could not parse", "children": []}]}
+            return {
+                "center": topic,
+                "branches": [{"label": "Could not parse", "children": []}],
+            }
 
     async def generate_study_plan(
         self, topic: str, days: int = 7, model: str = "qwen3:8b"
@@ -82,7 +87,10 @@ class StudyService:
                 clean = re.sub(r"```(?:json)?", "", clean).strip()
             return json.loads(clean)
         except Exception:
-            return [{"day": i+1, "title": f"Day {i+1}", "tasks": [], "time_minutes": 45} for i in range(days)]
+            return [
+                {"day": i + 1, "title": f"Day {i+1}", "tasks": [], "time_minutes": 45}
+                for i in range(days)
+            ]
 
     async def generate_summary(self, text: str, model: str = "qwen3:8b") -> str:
         prompt = (
@@ -124,7 +132,9 @@ class StudyService:
                         cards.append({"front": front, "back": back})
         return cards[:20]
 
-    async def generate_notes(self, topic: str, style: str = "structured", model: str = "qwen3:8b") -> str:
+    async def generate_notes(
+        self, topic: str, style: str = "structured", model: str = "qwen3:8b"
+    ) -> str:
         """Generate structured study notes on a topic."""
         style_desc = {
             "structured": "well-organised with headings, bullet points, key terms bolded",
@@ -140,7 +150,9 @@ class StudyService:
         )
         return await ollama.complete(model, prompt)
 
-    async def generate_exam_questions(self, topic: str, num: int = 10, model: str = "qwen3:8b") -> list[dict]:
+    async def generate_exam_questions(
+        self, topic: str, num: int = 10, model: str = "qwen3:8b"
+    ) -> list[dict]:
         """Exam mode — timed, mark-scheme style questions."""
         prompt = (
             f"Create {num} exam-style questions about: {topic}\n"
@@ -151,7 +163,10 @@ class StudyService:
         )
         response = await ollama.complete(model, prompt)
         return self._parse_quiz(response)
-    async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
+
+    async def generate_pptx(
+        self, topic: str, slides: int = 10, model: str = "qwen3:8b"
+    ) -> bytes:
         import io
         import re
         import requests
@@ -186,48 +201,55 @@ class StudyService:
 
         # ── Step 2: Parse theme colours ───────────────────────────────────────
         def parse_hex(text, key, default):
-            m = re.search(rf'{key}:\s*#?([A-Fa-f0-9]{{6}})', text)
+            m = re.search(rf"{key}:\s*#?([A-Fa-f0-9]{{6}})", text)
             if m:
                 h = m.group(1)
-                return RGBColor(int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
-            h = default.lstrip('#')
-            return RGBColor(int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
+                return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+            h = default.lstrip("#")
+            return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
-        C_BG     = parse_hex(response, 'THEME_BG',     '#0f0f1a')
-        C_ACCENT = parse_hex(response, 'THEME_ACCENT',  '#7c6af7')
-        C_TEXT   = parse_hex(response, 'THEME_TEXT',    '#ffffff')
-        C_SUB    = parse_hex(response, 'THEME_SUB',     '#a89bf8')
-        C_DARK   = RGBColor(0x0a, 0x0a, 0x10)
-        C_GRAY   = RGBColor(0x88, 0x88, 0x99)
+        C_BG = parse_hex(response, "THEME_BG", "#0f0f1a")
+        C_ACCENT = parse_hex(response, "THEME_ACCENT", "#7c6af7")
+        C_TEXT = parse_hex(response, "THEME_TEXT", "#ffffff")
+        C_SUB = parse_hex(response, "THEME_SUB", "#a89bf8")
+        C_DARK = RGBColor(0x0A, 0x0A, 0x10)
+        C_GRAY = RGBColor(0x88, 0x88, 0x99)
 
-        emoji_match = re.search(r'THEME_EMOJI:\s*(.+)', response)
-        theme_emojis = emoji_match.group(1).strip() if emoji_match else '📚✨🎓'
+        emoji_match = re.search(r"THEME_EMOJI:\s*(.+)", response)
+        theme_emojis = emoji_match.group(1).strip() if emoji_match else "📚✨🎓"
 
         # ── Step 3: Parse slide content ───────────────────────────────────────
         def parse_slides(text):
-            blocks = re.split(r'\bSLIDE\s+\d+\b', text)[1:]
+            blocks = re.split(r"\bSLIDE\s+\d+\b", text)[1:]
             parsed = []
             for block in blocks:
-                s = {'title': '', 'bullets': [], 'image': '', 'icon': '📚'}
-                for line in block.split('\n'):
+                s = {"title": "", "bullets": [], "image": "", "icon": "📚"}
+                for line in block.split("\n"):
                     line = line.strip()
-                    if line.startswith('TITLE:'):
-                        s['title'] = line.replace('TITLE:', '').strip()
-                    elif re.match(r'BULLET\d:', line):
-                        b = re.sub(r'BULLET\d:\s*', '', line).strip()
+                    if line.startswith("TITLE:"):
+                        s["title"] = line.replace("TITLE:", "").strip()
+                    elif re.match(r"BULLET\d:", line):
+                        b = re.sub(r"BULLET\d:\s*", "", line).strip()
                         if b:
-                            s['bullets'].append(b)
-                    elif line.startswith('IMAGE:'):
-                        s['image'] = line.replace('IMAGE:', '').strip()
-                    elif line.startswith('ICON:'):
-                        s['icon'] = line.replace('ICON:', '').strip()
-                if s['title']:
+                            s["bullets"].append(b)
+                    elif line.startswith("IMAGE:"):
+                        s["image"] = line.replace("IMAGE:", "").strip()
+                    elif line.startswith("ICON:"):
+                        s["icon"] = line.replace("ICON:", "").strip()
+                if s["title"]:
                     parsed.append(s)
             return parsed
 
         slide_data = parse_slides(response)
         if not slide_data:
-            slide_data = [{'title': topic, 'bullets': ['Content here'], 'image': topic, 'icon': '📚'}]
+            slide_data = [
+                {
+                    "title": topic,
+                    "bullets": ["Content here"],
+                    "image": topic,
+                    "icon": "📚",
+                }
+            ]
 
         # ── Step 4: Fetch images from Unsplash ────────────────────────────────
         def fetch_image(query, w=960, h=540):
@@ -235,15 +257,19 @@ class StudyService:
                 enc = urllib.parse.quote(f"{query},{topic}")
                 r = requests.get(
                     f"https://source.unsplash.com/{w}x{h}/?{enc}",
-                    timeout=12, allow_redirects=True,
-                    headers={'User-Agent': 'Mozilla/5.0'}
+                    timeout=12,
+                    allow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0"},
                 )
                 if r.status_code == 200 and len(r.content) > 8000:
                     return io.BytesIO(r.content)
             except Exception:
                 pass
             try:
-                r = requests.get(f"https://picsum.photos/{w}/{h}?random={abs(hash(query))%1000}", timeout=8)
+                r = requests.get(
+                    f"https://picsum.photos/{w}/{h}?random={abs(hash(query))%1000}",
+                    timeout=8,
+                )
                 if r.status_code == 200:
                     return io.BytesIO(r.content)
             except Exception:
@@ -252,7 +278,7 @@ class StudyService:
 
         # ── Step 5: Build PowerPoint ──────────────────────────────────────────
         prs = Presentation()
-        prs.slide_width  = Inches(10)
+        prs.slide_width = Inches(10)
         prs.slide_height = Inches(5.625)
         W = Inches(10)
         H = Inches(5.625)
@@ -262,29 +288,42 @@ class StudyService:
             fill.solid()
             fill.fore_color.rgb = color
 
-        def add_text(slide, text, left, top, width, height,
-                     size=18, bold=False, color=None, align=PP_ALIGN.LEFT,
-                     italic=False, wrap=True):
+        def add_text(
+            slide,
+            text,
+            left,
+            top,
+            width,
+            height,
+            size=18,
+            bold=False,
+            color=None,
+            align=PP_ALIGN.LEFT,
+            italic=False,
+            wrap=True,
+        ):
             if color is None:
                 color = C_TEXT
             txb = slide.shapes.add_textbox(left, top, width, height)
-            tf  = txb.text_frame
+            tf = txb.text_frame
             tf.word_wrap = wrap
             p = tf.paragraphs[0]
             p.alignment = align
             run = p.add_run()
-            run.text           = str(text)
-            run.font.size      = Pt(size)
-            run.font.bold      = bold
-            run.font.italic    = italic
+            run.text = str(text)
+            run.font.size = Pt(size)
+            run.font.bold = bold
+            run.font.italic = italic
             run.font.color.rgb = color
             return txb
 
         def add_image_bg(slide, img_data, left=0, top=0, width=None, height=None):
             if img_data is None:
                 return
-            if width is None:  width = W
-            if height is None: height = H
+            if width is None:
+                width = W
+            if height is None:
+                height = H
             try:
                 pic = slide.shapes.add_picture(img_data, left, top, width, height)
                 slide.shapes._spTree.remove(pic._element)
@@ -309,33 +348,96 @@ class StudyService:
         add_image_bg(ts, cover_img)
         add_panel(ts, Inches(0), Inches(0), Inches(5.2), H, C_DARK)
         add_panel(ts, Inches(0), Inches(0), Inches(5.2), Inches(0.08), C_ACCENT)
-        add_text(ts, theme_emojis, Inches(0.4), Inches(0.5), Inches(4), Inches(0.7), size=28)
-        add_text(ts, topic.upper(), Inches(0.4), Inches(1.2), Inches(4.6), Inches(1.8),
-                 size=36, bold=True, color=C_TEXT)
+        add_text(
+            ts, theme_emojis, Inches(0.4), Inches(0.5), Inches(4), Inches(0.7), size=28
+        )
+        add_text(
+            ts,
+            topic.upper(),
+            Inches(0.4),
+            Inches(1.2),
+            Inches(4.6),
+            Inches(1.8),
+            size=36,
+            bold=True,
+            color=C_TEXT,
+        )
         add_panel(ts, Inches(0.4), Inches(3.0), Inches(1.5), Inches(0.05), C_ACCENT)
-        add_text(ts, 'An ARIA Study Presentation', Inches(0.4), Inches(3.2),
-                 Inches(4.5), Inches(0.45), size=13, color=C_SUB, italic=True)
-        add_text(ts, f'{len(slide_data)} slides  ·  AI Generated', Inches(0.4), Inches(3.7),
-                 Inches(4.5), Inches(0.4), size=11, color=C_GRAY)
+        add_text(
+            ts,
+            "An ARIA Study Presentation",
+            Inches(0.4),
+            Inches(3.2),
+            Inches(4.5),
+            Inches(0.45),
+            size=13,
+            color=C_SUB,
+            italic=True,
+        )
+        add_text(
+            ts,
+            f"{len(slide_data)} slides  ·  AI Generated",
+            Inches(0.4),
+            Inches(3.7),
+            Inches(4.5),
+            Inches(0.4),
+            size=11,
+            color=C_GRAY,
+        )
         add_panel(ts, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
-        add_text(ts, 'ARIA — AI Study Assistant', Inches(0.3), Inches(5.32),
-                 Inches(5), Inches(0.3), size=10, color=C_DARK, bold=True)
+        add_text(
+            ts,
+            "ARIA — AI Study Assistant",
+            Inches(0.3),
+            Inches(5.32),
+            Inches(5),
+            Inches(0.3),
+            size=10,
+            color=C_DARK,
+            bold=True,
+        )
 
         # ── TABLE OF CONTENTS ─────────────────────────────────────────────────
         toc = prs.slides.add_slide(prs.slide_layouts[6])
         set_bg(toc, C_BG)
         add_panel(toc, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
-        add_text(toc, 'Contents', Inches(0.4), Inches(0.2), Inches(6), Inches(0.7),
-                 size=30, bold=True, color=C_TEXT)
+        add_text(
+            toc,
+            "Contents",
+            Inches(0.4),
+            Inches(0.2),
+            Inches(6),
+            Inches(0.7),
+            size=30,
+            bold=True,
+            color=C_TEXT,
+        )
         cols_x = [Inches(0.3), Inches(5.1)]
         for j, s in enumerate(slide_data[:8]):
             cx = cols_x[j % 2]
             cy = Inches(1.1) + (j // 2) * Inches(1.0)
             add_panel(toc, cx, cy, Inches(4.5), Inches(0.85), C_DARK)
-            add_text(toc, f'{j+1:02d}', cx + Inches(0.12), cy + Inches(0.1),
-                     Inches(0.5), Inches(0.55), size=18, bold=True, color=C_ACCENT)
-            add_text(toc, s['title'], cx + Inches(0.65), cy + Inches(0.12),
-                     Inches(3.7), Inches(0.65), size=13, color=C_TEXT)
+            add_text(
+                toc,
+                f"{j+1:02d}",
+                cx + Inches(0.12),
+                cy + Inches(0.1),
+                Inches(0.5),
+                Inches(0.55),
+                size=18,
+                bold=True,
+                color=C_ACCENT,
+            )
+            add_text(
+                toc,
+                s["title"],
+                cx + Inches(0.65),
+                cy + Inches(0.12),
+                Inches(3.7),
+                Inches(0.65),
+                size=13,
+                color=C_TEXT,
+            )
         add_panel(toc, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
 
         # ── CONTENT SLIDES ────────────────────────────────────────────────────
@@ -344,12 +446,14 @@ class StudyService:
         for i, s in enumerate(slide_data):
             sl = prs.slides.add_slide(prs.slide_layouts[6])
             set_bg(sl, C_BG)
-            img_left = (i % 2 == 0)
-            img_data = fetch_image(s['image'] or s['title'], 500, 563)
+            img_left = i % 2 == 0
+            img_data = fetch_image(s["image"] or s["title"], 500, 563)
             if img_data:
                 img_x = Inches(5.5) if img_left else Inches(0)
                 try:
-                    pic = sl.shapes.add_picture(img_data, img_x, Inches(0), Inches(4.5), H)
+                    pic = sl.shapes.add_picture(
+                        img_data, img_x, Inches(0), Inches(4.5), H
+                    )
                     sl.shapes._spTree.remove(pic._element)
                     sl.shapes._spTree.insert(2, pic._element)
                 except Exception:
@@ -357,25 +461,89 @@ class StudyService:
             panel_x = Inches(0) if img_left else Inches(4.5)
             add_panel(sl, panel_x, Inches(0), Inches(5.5), H, C_DARK)
             add_panel(sl, Inches(0), Inches(0), W, Inches(0.06), C_ACCENT)
-            add_text(sl, f'{i+1}', panel_x + Inches(0.2), Inches(0.15),
-                     Inches(0.5), Inches(0.45), size=11, color=C_ACCENT, bold=True)
-            add_text(sl, s['icon'], panel_x + Inches(0.15), Inches(0.5),
-                     Inches(0.7), Inches(0.7), size=28)
-            add_text(sl, s['title'], panel_x + Inches(0.9), Inches(0.5),
-                     Inches(4.4), Inches(0.85), size=22, bold=True, color=C_TEXT)
-            add_panel(sl, panel_x + Inches(0.2), Inches(1.35), Inches(3.5), Inches(0.04), C_ACCENT)
-            for j, bullet in enumerate(s['bullets'][:3]):
+            add_text(
+                sl,
+                f"{i+1}",
+                panel_x + Inches(0.2),
+                Inches(0.15),
+                Inches(0.5),
+                Inches(0.45),
+                size=11,
+                color=C_ACCENT,
+                bold=True,
+            )
+            add_text(
+                sl,
+                s["icon"],
+                panel_x + Inches(0.15),
+                Inches(0.5),
+                Inches(0.7),
+                Inches(0.7),
+                size=28,
+            )
+            add_text(
+                sl,
+                s["title"],
+                panel_x + Inches(0.9),
+                Inches(0.5),
+                Inches(4.4),
+                Inches(0.85),
+                size=22,
+                bold=True,
+                color=C_TEXT,
+            )
+            add_panel(
+                sl,
+                panel_x + Inches(0.2),
+                Inches(1.35),
+                Inches(3.5),
+                Inches(0.04),
+                C_ACCENT,
+            )
+            for j, bullet in enumerate(s["bullets"][:3]):
                 by = Inches(1.55) + Inches(j * 1.1)
                 col = BULLET_COLORS[j % len(BULLET_COLORS)]
-                add_panel(sl, panel_x + Inches(0.2), by + Inches(0.22),
-                          Inches(0.12), Inches(0.12), col)
-                add_text(sl, bullet, panel_x + Inches(0.42), by,
-                         Inches(4.8), Inches(1.0), size=14, color=C_TEXT)
+                add_panel(
+                    sl,
+                    panel_x + Inches(0.2),
+                    by + Inches(0.22),
+                    Inches(0.12),
+                    Inches(0.12),
+                    col,
+                )
+                add_text(
+                    sl,
+                    bullet,
+                    panel_x + Inches(0.42),
+                    by,
+                    Inches(4.8),
+                    Inches(1.0),
+                    size=14,
+                    color=C_TEXT,
+                )
             add_panel(sl, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
-            add_text(sl, 'ARIA', Inches(0.2), Inches(5.33), Inches(2), Inches(0.28),
-                     size=10, color=C_DARK, bold=True)
-            add_text(sl, topic.upper(), Inches(6), Inches(5.33), Inches(3.8), Inches(0.28),
-                     size=10, color=C_DARK, align=PP_ALIGN.RIGHT)
+            add_text(
+                sl,
+                "ARIA",
+                Inches(0.2),
+                Inches(5.33),
+                Inches(2),
+                Inches(0.28),
+                size=10,
+                color=C_DARK,
+                bold=True,
+            )
+            add_text(
+                sl,
+                topic.upper(),
+                Inches(6),
+                Inches(5.33),
+                Inches(3.8),
+                Inches(0.28),
+                size=10,
+                color=C_DARK,
+                align=PP_ALIGN.RIGHT,
+            )
 
         # ── THANK YOU SLIDE ───────────────────────────────────────────────────
         es = prs.slides.add_slide(prs.slide_layouts[6])
@@ -384,13 +552,41 @@ class StudyService:
         add_image_bg(es, end_img)
         add_panel(es, Inches(0), Inches(0), W, H, C_DARK)
         add_panel(es, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
-        add_text(es, theme_emojis, Inches(3.5), Inches(1.0), Inches(3), Inches(0.7),
-                 size=40, align=PP_ALIGN.CENTER)
-        add_text(es, 'Thanks for watching!', Inches(0.5), Inches(1.9), Inches(9), Inches(1),
-                 size=40, bold=True, color=C_TEXT, align=PP_ALIGN.CENTER)
+        add_text(
+            es,
+            theme_emojis,
+            Inches(3.5),
+            Inches(1.0),
+            Inches(3),
+            Inches(0.7),
+            size=40,
+            align=PP_ALIGN.CENTER,
+        )
+        add_text(
+            es,
+            "Thanks for watching!",
+            Inches(0.5),
+            Inches(1.9),
+            Inches(9),
+            Inches(1),
+            size=40,
+            bold=True,
+            color=C_TEXT,
+            align=PP_ALIGN.CENTER,
+        )
         add_panel(es, Inches(3.5), Inches(3.0), Inches(3), Inches(0.05), C_ACCENT)
-        add_text(es, f'Topic: {topic}  ·  Made with ARIA', Inches(0.5), Inches(3.2),
-                 Inches(9), Inches(0.5), size=14, color=C_SUB, italic=True, align=PP_ALIGN.CENTER)
+        add_text(
+            es,
+            f"Topic: {topic}  ·  Made with ARIA",
+            Inches(0.5),
+            Inches(3.2),
+            Inches(9),
+            Inches(0.5),
+            size=14,
+            color=C_SUB,
+            italic=True,
+            align=PP_ALIGN.CENTER,
+        )
         add_panel(es, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
 
         # ── Save and return ───────────────────────────────────────────────────
