@@ -88,5 +88,8 @@ async def generate_pptx(req: StudyRequest):
     return Response(
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f"attachment; filename=ARIA-{req.topic[:30]}.pptx"}
+        headers={
+            "Content-Disposition": f'attachment; filename="ARIA-{req.topic}.pptx"',
+            "Content-Length": str(len(pptx_bytes)),
+        }
     )

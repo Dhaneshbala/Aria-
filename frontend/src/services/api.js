@@ -159,10 +159,14 @@ export const generatePptx = async (topic, slides = 10) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, count: slides }),
   })
+  if (!resp.ok) throw new Error('Generation failed')
   const blob = await resp.blob()
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download = `ARIA-${topic}.pptx`
+  a.download = `ARIA-${topic.replace(/\s+/g, '-')}.pptx`
+  document.body.appendChild(a)
   a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
