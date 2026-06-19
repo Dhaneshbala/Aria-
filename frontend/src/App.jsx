@@ -14,6 +14,7 @@ import ImageGenPage from './pages/ImageGenPage'
 import ProfilePage from './pages/ProfilePage'
 import DocsPage from './pages/DocsPage'
 import AdminPage from './pages/AdminPage'
+import PptxPage from './pages/PptxPage'
 
 export default function App() {
   const { setOllamaStatus, setConversations, setConfig } = useStore()
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/flashcards" element={<FlashcardsPage />} />
               <Route path="/mindmap" element={<MindMapPage />} />
               <Route path="/study-plan" element={<StudyPlanPage />} />
+              <Route path="/pptx" element={<PptxPage />} />
               <Route path="/youtube" element={<YouTubePage />} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/imagegen" element={<ImageGenPage />} />
