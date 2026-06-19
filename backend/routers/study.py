@@ -78,3 +78,15 @@ async def generate_exam(req: StudyRequest):
     model = config.get("reasoning_model", "qwen3:8b")
     questions = await study_svc.generate_exam_questions(req.topic, req.count, model)
     return {"questions": questions, "mode": "exam"}
+from fastapi.responses import Response
+
+@router.post("/pptx")
+async def generate_pptx(req: StudyRequest):
+    config = get_config()
+    model  = config.get("reasoning_model", "qwen3:8b")
+    pptx_bytes = await study_svc.generate_pptx(req.topic, req.count or 10, model)
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f"attachment; filename=ARIA-{req.topic[:30]}.pptx"}
+    )

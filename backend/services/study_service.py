@@ -150,3 +150,189 @@ class StudyService:
         )
         response = await ollama.complete(model, prompt)
         return self._parse_quiz(response)
+async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
+        import io
+        import re
+        import requests
+        import urllib.parse
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.text import PP_ALIGN
+
+        # Step 1: AI plans the presentation
+        plan_prompt = (
+            f"You are creating a PowerPoint presentation for a 13-year-old student.\n"
+            f"Topic: {topic}\n"
+            f"Create exactly {slides} slides. For each slide use this exact format:\n\n"
+            f"SLIDE [N]\n"
+            f"TITLE: [engaging title]\n"
+            f"BULLETS:\n- [point 1]\n- [point 2]\n- [point 3]\n"
+            f"IMAGE_SEARCH: [3-word image search query]\n"
+            f"EMOJI: [1 relevant emoji]\n"
+            f"NOTES: [speaker notes]\n\n"
+            f"Use real facts. Make it engaging and educational."
+        )
+        response = await ollama.complete(model, plan_prompt, max_tokens=4000)
+
+        # Step 2: Parse AI response
+        def parse_slides(text):
+            blocks = re.split(r'SLIDE\s+\d+', text)[1:]
+            parsed = []
+            for block in blocks:
+                s = {
+                    "title": "",
+                    "bullets": [],
+                    "image_search": "",
+                    "emoji": "📚",
+                    "notes": "",
+                }
+                for line in block.split('\n'):
+                    line = line.strip()
+                    if line.startswith('TITLE:'):
+                        s["title"] = line.replace('TITLE:', '').strip()
+                    elif line.startswith('IMAGE_SEARCH:'):
+                        s["image_search"] = line.replace('IMAGE_SEARCH:', '').strip()
+                    elif line.startswith('EMOJI:'):
+                        s["emoji"] = line.replace('EMOJI:', '').strip()
+                    elif line.startswith('NOTES:'):
+                        s["notes"] = line.replace('NOTES:', '').strip()
+                    elif line.startswith('-') or line.startswith('•'):
+                        s["bullets"].append(line.lstrip('-•').strip())
+                if s["title"]:
+                    parsed.append(s)
+            return parsed
+
+        slide_data = parse_slides(response)
+        if not slide_data:
+            slide_data = [{"title": topic, "bullets": ["Content loading..."], "image_search": topic, "emoji": "📚", "notes": ""}]
+
+        # Step 3: Fetch images
+        def fetch_image(query: str):
+            try:
+                encoded = urllib.parse.quote(query)
+                r = requests.get(
+                    f"https://source.unsplash.com/800x500/?{encoded}",
+                    timeout=10, allow_redirects=True
+                )
+                if r.status_code == 200 and len(r.content) > 5000:
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            try:
+                r = requests.get("https://picsum.photos/800/500", timeout=8)
+                if r.status_code == 200:
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            return None
+
+        # Step 4: Build PowerPoint
+        prs = Presentation()
+        prs.slide_width  = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+
+        BG     = RGBColor(0x0f, 0x0f, 0x1a)
+        PURPLE = RGBColor(0x7c, 0x6a, 0xf7)
+        ACCENT = RGBColor(0xa8, 0x9b, 0xf8)
+        WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+        YELLOW = RGBColor(0xfb, 0xbf, 0x24)
+        GREEN  = RGBColor(0x4a, 0xde, 0x80)
+        GRAY   = RGBColor(0x88, 0x88, 0x88)
+
+        def set_bg(slide, color):
+            fill = slide.background.fill
+            fill.solid()
+            fill.fore_color.rgb = color
+
+        def add_textbox(slide, text, left, top, width, height,
+                        size=24, bold=False, color=WHITE, align=PP_ALIGN.LEFT):
+            txb = slide.shapes.add_textbox(left, top, width, height)
+            tf  = txb.text_frame
+            tf.word_wrap = True
+            p   = tf.paragraphs[0]
+            p.alignment = align
+            run = p.add_run()
+            run.text = text
+            run.font.size      = Pt(size)
+            run.font.bold      = bold
+            run.font.color.rgb = color
+            return txb
+
+        def add_rect(slide, left, top, width, height, color):
+            shape = slide.shapes.add_shape(1, left, top, width, height)
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = color
+            shape.line.fill.background()
+            return shape
+
+        # Title slide
+        title_slide = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(title_slide, BG)
+        add_rect(title_slide, Inches(0), Inches(0), Inches(13.33), Inches(0.08), PURPLE)
+        add_rect(title_slide, Inches(0), Inches(7.2), Inches(13.33), Inches(0.3), PURPLE)
+
+        cover_img = fetch_image(topic)
+        if cover_img:
+            try:
+                title_slide.shapes.add_picture(cover_img, Inches(7.5), Inches(1), Inches(5.5), Inches(5.5))
+            except Exception:
+                pass
+
+        add_textbox(title_slide, slide_data[0]["emoji"], Inches(0.8), Inches(1.2), Inches(1), Inches(1), size=60)
+        add_textbox(title_slide, topic.upper(), Inches(0.8), Inches(2.2), Inches(6.5), Inches(1.5), size=44, bold=True, color=WHITE)
+        add_textbox(title_slide, "An ARIA Study Presentation", Inches(0.8), Inches(3.8), Inches(6), Inches(0.6), size=18, color=ACCENT)
+        add_textbox(title_slide, f"{len(slide_data)} slides  •  AI Generated", Inches(0.8), Inches(4.5), Inches(6), Inches(0.5), size=14, color=GRAY)
+
+        # Content slides
+        BULLET_COLORS = [ACCENT, GREEN, YELLOW, WHITE, ACCENT]
+
+        for i, s in enumerate(slide_data):
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            set_bg(slide, BG)
+            add_rect(slide, Inches(0), Inches(0), Inches(13.33), Inches(0.06), PURPLE)
+            add_rect(slide, Inches(0), Inches(7.15), Inches(13.33), Inches(0.35), RGBColor(0x1a, 0x1a, 0x2e))
+
+            add_textbox(slide, f"{i+1}/{len(slide_data)}", Inches(11.8), Inches(0.15), Inches(1.4), Inches(0.4), size=11, color=GRAY, align=PP_ALIGN.RIGHT)
+            add_textbox(slide, s["emoji"], Inches(0.3), Inches(0.3), Inches(0.8), Inches(0.8), size=32)
+            add_textbox(slide, s["title"], Inches(1.2), Inches(0.25), Inches(9), Inches(0.9), size=32, bold=True, color=WHITE)
+            add_rect(slide, Inches(1.2), Inches(1.15), Inches(4), Inches(0.04), PURPLE)
+
+            img_data = fetch_image(s["image_search"] or s["title"])
+            img_placed = False
+            if img_data:
+                try:
+                    slide.shapes.add_picture(img_data, Inches(8.2), Inches(1.3), Inches(4.8), Inches(3.5))
+                    border = add_rect(slide, Inches(8.2), Inches(1.3), Inches(4.8), Inches(3.5), PURPLE)
+                    border.fill.background()
+                    border.line.color.rgb = PURPLE
+                    border.line.width = Pt(2)
+                    img_placed = True
+                except Exception:
+                    pass
+
+            bullet_width = Inches(7.5) if img_placed else Inches(12.3)
+            for j, bullet in enumerate(s["bullets"][:5]):
+                color = BULLET_COLORS[j % len(BULLET_COLORS)]
+                add_rect(slide, Inches(0.5), Inches(1.4) + Inches(j * 0.9) + Inches(0.15), Inches(0.12), Inches(0.12), color)
+                add_textbox(slide, bullet, Inches(0.75), Inches(1.4) + Inches(j * 0.9), bullet_width - Inches(0.3), Inches(0.85), size=19, color=WHITE)
+
+            add_textbox(slide, "ARIA — AI Study Assistant", Inches(0.3), Inches(7.18), Inches(4), Inches(0.3), size=10, color=GRAY)
+            add_textbox(slide, topic.upper(), Inches(9), Inches(7.18), Inches(4), Inches(0.3), size=10, color=PURPLE, align=PP_ALIGN.RIGHT)
+
+            if s["notes"]:
+                slide.notes_slide.notes_text_frame.text = s["notes"]
+
+        # Thank you slide
+        end_slide = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(end_slide, BG)
+        add_rect(end_slide, Inches(0), Inches(0), Inches(13.33), Inches(0.08), PURPLE)
+        add_rect(end_slide, Inches(0), Inches(7.2), Inches(13.33), Inches(0.3), PURPLE)
+        add_textbox(end_slide, "🎓", Inches(5.9), Inches(1.8), Inches(1.5), Inches(1.5), size=72)
+        add_textbox(end_slide, "Thanks for watching!", Inches(2), Inches(3.2), Inches(9.33), Inches(1), size=42, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+        add_textbox(end_slide, f"Topic: {topic}  •  Made with ARIA", Inches(2), Inches(4.3), Inches(9.33), Inches(0.6), size=18, color=ACCENT, align=PP_ALIGN.CENTER)
+
+        buf = io.BytesIO()
+        prs.save(buf)
+        buf.seek(0)
+        return buf.read()

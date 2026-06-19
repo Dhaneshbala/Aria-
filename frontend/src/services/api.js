@@ -153,3 +153,16 @@ export const clearAllMemory = () =>
 
 export const exportConversation = (id) =>
   fetch(`${BASE}/admin/export/${id}`).then(r => r.json())
+export const generatePptx = async (topic, slides = 10) => {
+  const resp = await fetch(`${BASE}/study/pptx`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, count: slides }),
+  })
+  const blob = await resp.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `ARIA-${topic}.pptx`
+  a.click()
+}
