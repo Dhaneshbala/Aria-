@@ -154,123 +154,89 @@ class StudyService:
     async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
         import io
         import re
+        import requests
         import urllib.parse
         from pptx import Presentation
         from pptx.util import Inches, Pt
         from pptx.dml.color import RGBColor
         from pptx.enum.text import PP_ALIGN
+        from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 
-        # Step 1: AI generates slide content
+        # ── Step 1: AI determines theme + generates content ───────────────────
         plan_prompt = (
-            f"Create a {slides}-slide presentation for a 13-year-old student about: {topic}\n\n"
-            f"For each slide use EXACTLY this format:\n"
+            f"You are creating a Slidesgo-style PowerPoint presentation for a 13-year-old student.\n"
+            f"Topic: {topic}\n\n"
+            f"First, suggest a visual theme for this topic:\n"
+            f"THEME_BG: [dark hex color e.g. #1a0a00 for ancient china, #001524 for ocean]\n"
+            f"THEME_ACCENT: [vivid accent hex color]\n"
+            f"THEME_TEXT: [light text hex color]\n"
+            f"THEME_SUB: [secondary text hex color]\n"
+            f"THEME_EMOJI: [3 emojis that represent this topic]\n\n"
+            f"Then create exactly {slides} content slides. For each use EXACTLY:\n"
             f"SLIDE [N]\n"
-            f"TITLE: [title]\n"
-            f"BULLET1: [point]\n"
-            f"BULLET2: [point]\n"
-            f"BULLET3: [point]\n"
-            f"EMOJI: [one emoji]\n\n"
-            f"Use real facts. Be educational and engaging."
+            f"TITLE: [engaging title max 8 words]\n"
+            f"BULLET1: [fascinating fact, complete sentence]\n"
+            f"BULLET2: [fascinating fact, complete sentence]\n"
+            f"BULLET3: [fascinating fact, complete sentence]\n"
+            f"IMAGE: [specific 3-word image search for this slide]\n"
+            f"ICON: [single relevant emoji]\n\n"
+            f"Use real verified facts. Be vivid, specific and engaging."
         )
-        response = await ollama.complete(model, plan_prompt, max_tokens=4000)
+        response = await ollama.complete(model, plan_prompt, max_tokens=5000)
 
-        # Step 2: Parse
+        # ── Step 2: Parse theme colours ───────────────────────────────────────
+        def parse_hex(text, key, default):
+            m = re.search(rf'{key}:\s*#?([A-Fa-f0-9]{{6}})', text)
+            if m:
+                h = m.group(1)
+                return RGBColor(int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
+            h = default.lstrip('#')
+            return RGBColor(int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
+
+        C_BG     = parse_hex(response, 'THEME_BG',     '#0f0f1a')
+        C_ACCENT = parse_hex(response, 'THEME_ACCENT',  '#7c6af7')
+        C_TEXT   = parse_hex(response, 'THEME_TEXT',    '#ffffff')
+        C_SUB    = parse_hex(response, 'THEME_SUB',     '#a89bf8')
+        C_DARK   = RGBColor(0x0a, 0x0a, 0x10)
+        C_GRAY   = RGBColor(0x88, 0x88, 0x99)
+
+        emoji_match = re.search(r'THEME_EMOJI:\s*(.+)', response)
+        theme_emojis = emoji_match.group(1).strip() if emoji_match else '📚✨🎓'
+
+        # ── Step 3: Parse slide content ───────────────────────────────────────
         def parse_slides(text):
-            blocks = re.split(r'SLIDE\s+\d+', text)[1:]
+            blocks = re.split(r'\bSLIDE\s+\d+\b', text)[1:]
             parsed = []
             for block in blocks:
-                s = {"title": "", "bullets": [], "emoji": "📚"}
+                s = {'title': '', 'bullets': [], 'image': '', 'icon': '📚'}
                 for line in block.split('\n'):
                     line = line.strip()
                     if line.startswith('TITLE:'):
-                        s["title"] = line.replace('TITLE:', '').strip()
-                    elif line.startswith('EMOJI:'):
-                        s["emoji"] = line.replace('EMOJI:', '').strip()
+                        s['title'] = line.replace('TITLE:', '').strip()
                     elif re.match(r'BULLET\d:', line):
-                        text_part = re.sub(r'BULLET\d:', '', line).strip()
-                        if text_part:
-                            s["bullets"].append(text_part)
-                if s["title"]:
+                        b = re.sub(r'BULLET\d:\s*', '', line).strip()
+                        if b:
+                            s['bullets'].append(b)
+                    elif line.startswith('IMAGE:'):
+                        s['image'] = line.replace('IMAGE:', '').strip()
+                    elif line.startswith('ICON:'):
+                        s['icon'] = line.replace('ICON:', '').strip()
+                if s['title']:
                     parsed.append(s)
             return parsed
 
         slide_data = parse_slides(response)
         if not slide_data:
-            slide_data = [{"title": topic, "bullets": ["Content here"], "emoji": "📚"}]
+            slide_data = [{'title': topic, 'bullets': ['Content here'], 'image': topic, 'icon': '📚'}]
 
-        # Step 3: Build clean PowerPoint
-        prs = Presentation()
-        prs.slide_width  = Inches(13.33)
-        prs.slide_height = Inches(7.5)
-
-        PURPLE = RGBColor(0x7c, 0x6a, 0xf7)
-        WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
-        DARK   = RGBColor(0x0f, 0x0f, 0x1a)
-        ACCENT = RGBColor(0xa8, 0x9b, 0xf8)
-        GRAY   = RGBColor(0x88, 0x88, 0x88)
-        GREEN  = RGBColor(0x4a, 0xde, 0x80)
-        YELLOW = RGBColor(0xfb, 0xbf, 0x24)
-
-        def set_bg(slide):
-            fill = slide.background.fill
-            fill.solid()
-            fill.fore_color.rgb = DARK
-
-        def add_text(slide, text, left, top, width, height,
-                     size=24, bold=False, color=WHITE, align=PP_ALIGN.LEFT):
-            txb = slide.shapes.add_textbox(left, top, width, height)
-            tf  = txb.text_frame
-            tf.word_wrap = True
-            p   = tf.paragraphs[0]
-            p.alignment = align
-            run = p.add_run()
-            run.text           = str(text)
-            run.font.size      = Pt(size)
-            run.font.bold      = bold
-            run.font.color.rgb = color
-
-        # Title slide
-        ts = prs.slides.add_slide(prs.slide_layouts[6])
-        set_bg(ts)
-        add_text(ts, slide_data[0]["emoji"], Inches(0.8), Inches(1.5), Inches(2), Inches(1.5), size=60)
-        add_text(ts, topic.upper(), Inches(0.8), Inches(2.8), Inches(11), Inches(1.5), size=48, bold=True, color=WHITE, align=PP_ALIGN.LEFT)
-        add_text(ts, "An ARIA Study Presentation", Inches(0.8), Inches(4.2), Inches(8), Inches(0.6), size=20, color=ACCENT)
-        add_text(ts, f"{len(slide_data)} slides  •  AI Generated", Inches(0.8), Inches(4.9), Inches(6), Inches(0.5), size=14, color=GRAY)
-
-        # Content slides
-        COLORS = [ACCENT, GREEN, YELLOW, WHITE, ACCENT]
-
-        for i, s in enumerate(slide_data):
-            sl = prs.slides.add_slide(prs.slide_layouts[6])
-            set_bg(sl)
-
-            # Slide number
-            add_text(sl, f"{i+1} / {len(slide_data)}", Inches(11.5), Inches(0.2), Inches(1.5), Inches(0.4), size=11, color=GRAY, align=PP_ALIGN.RIGHT)
-
-            # Emoji + Title
-            add_text(sl, s["emoji"], Inches(0.3), Inches(0.3), Inches(0.9), Inches(0.9), size=36)
-            add_text(sl, s["title"], Inches(1.3), Inches(0.3), Inches(10), Inches(0.9), size=34, bold=True, color=WHITE)
-
-            # Divider line using textbox
-            add_text(sl, "─" * 80, Inches(0.3), Inches(1.2), Inches(12.5), Inches(0.3), size=8, color=PURPLE)
-
-            # Bullets
-            for j, bullet in enumerate(s["bullets"][:5]):
-                color = COLORS[j % len(COLORS)]
-                add_text(sl, f"▸  {bullet}", Inches(0.5), Inches(1.6) + Inches(j * 0.95), Inches(12), Inches(0.85), size=20, color=color)
-
-            # Footer
-            add_text(sl, "ARIA — AI Study Assistant", Inches(0.3), Inches(7.1), Inches(5), Inches(0.3), size=10, color=GRAY)
-            add_text(sl, topic.upper(), Inches(8), Inches(7.1), Inches(5), Inches(0.3), size=10, color=PURPLE, align=PP_ALIGN.RIGHT)
-
-        # Thank you slide
-        es = prs.slides.add_slide(prs.slide_layouts[6])
-        set_bg(es)
-        add_text(es, "🎓", Inches(5.9), Inches(1.8), Inches(2), Inches(1.5), size=72)
-        add_text(es, "Thanks for watching!", Inches(1), Inches(3.3), Inches(11.33), Inches(1), size=44, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
-        add_text(es, f"Topic: {topic}  •  Made with ARIA", Inches(1), Inches(4.5), Inches(11.33), Inches(0.6), size=18, color=ACCENT, align=PP_ALIGN.CENTER)
-
-        buf = io.BytesIO()
-        prs.save(buf)
-        buf.seek(0)
-        return buf.read()
+        # ── Step 4: Fetch images from Unsplash ────────────────────────────────
+        def fetch_image(query, w=960, h=540):
+            try:
+                enc = urllib.parse.quote(f"{query},{topic}")
+                r = requests.get(
+                    f"https://source.unsplash.com/{w}x{h}/?{enc}",
+                    timeout=12, allow_redirects=True,
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                )
+                if r.status_code == 200 and len(r.content) > 8000:
+                    return
