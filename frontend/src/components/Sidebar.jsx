@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { MessageSquare, BookOpen, CreditCard, Network, Calendar,
-  Youtube, FileText, Presentation, User, Settings, Plus, Search, Pin,
-  Trash2, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
+  Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
+  Trash2, ChevronLeft, ChevronRight, Zap
+} from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
 import { deleteConversation } from '../services/api'
