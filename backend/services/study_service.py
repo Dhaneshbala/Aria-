@@ -239,4 +239,162 @@ class StudyService:
                     headers={'User-Agent': 'Mozilla/5.0'}
                 )
                 if r.status_code == 200 and len(r.content) > 8000:
-                    return
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            try:
+                r = requests.get(f"https://picsum.photos/{w}/{h}?random={abs(hash(query))%1000}", timeout=8)
+                if r.status_code == 200:
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            return None
+
+        # ── Step 5: Build PowerPoint ──────────────────────────────────────────
+        prs = Presentation()
+        prs.slide_width  = Inches(10)
+        prs.slide_height = Inches(5.625)
+        W = Inches(10)
+        H = Inches(5.625)
+
+        def set_bg(slide, color):
+            fill = slide.background.fill
+            fill.solid()
+            fill.fore_color.rgb = color
+
+        def add_text(slide, text, left, top, width, height,
+                     size=18, bold=False, color=None, align=PP_ALIGN.LEFT,
+                     italic=False, wrap=True):
+            if color is None:
+                color = C_TEXT
+            txb = slide.shapes.add_textbox(left, top, width, height)
+            tf  = txb.text_frame
+            tf.word_wrap = wrap
+            p = tf.paragraphs[0]
+            p.alignment = align
+            run = p.add_run()
+            run.text           = str(text)
+            run.font.size      = Pt(size)
+            run.font.bold      = bold
+            run.font.italic    = italic
+            run.font.color.rgb = color
+            return txb
+
+        def add_image_bg(slide, img_data, left=0, top=0, width=None, height=None):
+            if img_data is None:
+                return
+            if width is None:  width = W
+            if height is None: height = H
+            try:
+                pic = slide.shapes.add_picture(img_data, left, top, width, height)
+                slide.shapes._spTree.remove(pic._element)
+                slide.shapes._spTree.insert(2, pic._element)
+            except Exception:
+                pass
+
+        def add_panel(slide, left, top, width, height, color):
+            shape = slide.shapes.add_shape(
+                MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, top, width, height
+            )
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = color
+            shape.line.fill.background()
+            shape.adjustments[0] = 0.0
+            return shape
+
+        # ── TITLE SLIDE ───────────────────────────────────────────────────────
+        ts = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(ts, C_BG)
+        cover_img = fetch_image(f"{topic} landscape", 1000, 563)
+        add_image_bg(ts, cover_img)
+        add_panel(ts, Inches(0), Inches(0), Inches(5.2), H, C_DARK)
+        add_panel(ts, Inches(0), Inches(0), Inches(5.2), Inches(0.08), C_ACCENT)
+        add_text(ts, theme_emojis, Inches(0.4), Inches(0.5), Inches(4), Inches(0.7), size=28)
+        add_text(ts, topic.upper(), Inches(0.4), Inches(1.2), Inches(4.6), Inches(1.8),
+                 size=36, bold=True, color=C_TEXT)
+        add_panel(ts, Inches(0.4), Inches(3.0), Inches(1.5), Inches(0.05), C_ACCENT)
+        add_text(ts, 'An ARIA Study Presentation', Inches(0.4), Inches(3.2),
+                 Inches(4.5), Inches(0.45), size=13, color=C_SUB, italic=True)
+        add_text(ts, f'{len(slide_data)} slides  ·  AI Generated', Inches(0.4), Inches(3.7),
+                 Inches(4.5), Inches(0.4), size=11, color=C_GRAY)
+        add_panel(ts, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+        add_text(ts, 'ARIA — AI Study Assistant', Inches(0.3), Inches(5.32),
+                 Inches(5), Inches(0.3), size=10, color=C_DARK, bold=True)
+
+        # ── TABLE OF CONTENTS ─────────────────────────────────────────────────
+        toc = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(toc, C_BG)
+        add_panel(toc, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
+        add_text(toc, 'Contents', Inches(0.4), Inches(0.2), Inches(6), Inches(0.7),
+                 size=30, bold=True, color=C_TEXT)
+        cols_x = [Inches(0.3), Inches(5.1)]
+        for j, s in enumerate(slide_data[:8]):
+            cx = cols_x[j % 2]
+            cy = Inches(1.1) + (j // 2) * Inches(1.0)
+            add_panel(toc, cx, cy, Inches(4.5), Inches(0.85), C_DARK)
+            add_text(toc, f'{j+1:02d}', cx + Inches(0.12), cy + Inches(0.1),
+                     Inches(0.5), Inches(0.55), size=18, bold=True, color=C_ACCENT)
+            add_text(toc, s['title'], cx + Inches(0.65), cy + Inches(0.12),
+                     Inches(3.7), Inches(0.65), size=13, color=C_TEXT)
+        add_panel(toc, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+
+        # ── CONTENT SLIDES ────────────────────────────────────────────────────
+        BULLET_COLORS = [C_ACCENT, C_SUB, C_TEXT]
+
+        for i, s in enumerate(slide_data):
+            sl = prs.slides.add_slide(prs.slide_layouts[6])
+            set_bg(sl, C_BG)
+            img_left = (i % 2 == 0)
+            img_data = fetch_image(s['image'] or s['title'], 500, 563)
+            if img_data:
+                img_x = Inches(5.5) if img_left else Inches(0)
+                try:
+                    pic = sl.shapes.add_picture(img_data, img_x, Inches(0), Inches(4.5), H)
+                    sl.shapes._spTree.remove(pic._element)
+                    sl.shapes._spTree.insert(2, pic._element)
+                except Exception:
+                    pass
+            panel_x = Inches(0) if img_left else Inches(4.5)
+            add_panel(sl, panel_x, Inches(0), Inches(5.5), H, C_DARK)
+            add_panel(sl, Inches(0), Inches(0), W, Inches(0.06), C_ACCENT)
+            add_text(sl, f'{i+1}', panel_x + Inches(0.2), Inches(0.15),
+                     Inches(0.5), Inches(0.45), size=11, color=C_ACCENT, bold=True)
+            add_text(sl, s['icon'], panel_x + Inches(0.15), Inches(0.5),
+                     Inches(0.7), Inches(0.7), size=28)
+            add_text(sl, s['title'], panel_x + Inches(0.9), Inches(0.5),
+                     Inches(4.4), Inches(0.85), size=22, bold=True, color=C_TEXT)
+            add_panel(sl, panel_x + Inches(0.2), Inches(1.35), Inches(3.5), Inches(0.04), C_ACCENT)
+            for j, bullet in enumerate(s['bullets'][:3]):
+                by = Inches(1.55) + Inches(j * 1.1)
+                col = BULLET_COLORS[j % len(BULLET_COLORS)]
+                add_panel(sl, panel_x + Inches(0.2), by + Inches(0.22),
+                          Inches(0.12), Inches(0.12), col)
+                add_text(sl, bullet, panel_x + Inches(0.42), by,
+                         Inches(4.8), Inches(1.0), size=14, color=C_TEXT)
+            add_panel(sl, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+            add_text(sl, 'ARIA', Inches(0.2), Inches(5.33), Inches(2), Inches(0.28),
+                     size=10, color=C_DARK, bold=True)
+            add_text(sl, topic.upper(), Inches(6), Inches(5.33), Inches(3.8), Inches(0.28),
+                     size=10, color=C_DARK, align=PP_ALIGN.RIGHT)
+
+        # ── THANK YOU SLIDE ───────────────────────────────────────────────────
+        es = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(es, C_BG)
+        end_img = fetch_image(f"{topic} beautiful", 1000, 563)
+        add_image_bg(es, end_img)
+        add_panel(es, Inches(0), Inches(0), W, H, C_DARK)
+        add_panel(es, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
+        add_text(es, theme_emojis, Inches(3.5), Inches(1.0), Inches(3), Inches(0.7),
+                 size=40, align=PP_ALIGN.CENTER)
+        add_text(es, 'Thanks for watching!', Inches(0.5), Inches(1.9), Inches(9), Inches(1),
+                 size=40, bold=True, color=C_TEXT, align=PP_ALIGN.CENTER)
+        add_panel(es, Inches(3.5), Inches(3.0), Inches(3), Inches(0.05), C_ACCENT)
+        add_text(es, f'Topic: {topic}  ·  Made with ARIA', Inches(0.5), Inches(3.2),
+                 Inches(9), Inches(0.5), size=14, color=C_SUB, italic=True, align=PP_ALIGN.CENTER)
+        add_panel(es, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+
+        # ── Save and return ───────────────────────────────────────────────────
+        buf = io.BytesIO()
+        prs.save(buf)
+        buf.seek(0)
+        return buf.read()
