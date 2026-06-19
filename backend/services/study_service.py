@@ -38,7 +38,7 @@ class StudyService:
     async def generate_flashcards(
         self, topic: str, num_cards: int = 10, model: str = "qwen3:8b"
     ) -> list[dict]:
-        prompt = (
+        prompt = (  
             f"Generate {num_cards} flashcards for studying: {topic}\n"
             f"Format exactly:\n"
             f"FRONT: [term or question] | BACK: [definition or answer]\n"
@@ -151,7 +151,7 @@ class StudyService:
         )
         response = await ollama.complete(model, prompt)
         return self._parse_quiz(response)
-async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
+    async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
         import io
         import re
         import urllib.parse
