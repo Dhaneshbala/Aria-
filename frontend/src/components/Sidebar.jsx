@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { MessageSquare, BookOpen, CreditCard, Network, Calendar,
+  Youtube, FileText, Presentation, User, Settings, Plus, Search, Pin,
+  Trash2, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
 import { deleteConversation } from '../services/api'
@@ -14,9 +17,12 @@ const NAV = [
   { icon: CreditCard, label: 'Flashcards', path: '/flashcards' },
   { icon: Network, label: 'Mind Map', path: '/mindmap' },
   { icon: Calendar, label: 'Study Plan', path: '/study-plan' },
+  { icon: Presentation, label: 'PowerPoint', path: '/pptx' },
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
   { icon: FileText, label: 'Documents', path: '/docs' },
   { icon: Image, label: 'Image Gen', path: '/imagegen' },
+  { icon: MessageSquare, label: 'Chat', path: '/chat' },
+  { icon: BookOpen, label: 'Quiz', path: '/quiz' },
 ]
 
 const BOTTOM_NAV = [
