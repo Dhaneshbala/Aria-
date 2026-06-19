@@ -2,6 +2,7 @@
 import json
 import re
 from .ollama_service import OllamaService
+from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 
 ollama = OllamaService()
 
@@ -260,7 +261,7 @@ async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:
             return txb
 
         def add_rect(slide, left, top, width, height, color):
-            shape = slide.shapes.add_shape(1, left, top, width, height)
+            shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, left, top, width, height)
             shape.fill.solid()
             shape.fill.fore_color.rgb = color
             shape.line.fill.background()
