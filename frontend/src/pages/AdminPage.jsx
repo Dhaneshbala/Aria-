@@ -5,6 +5,7 @@ import { useStore } from '../store'
 
 // M4 MacBook Air recommended models with disk/RAM info
 const RECOMMENDED = [
+  { name: 'qwen2.5-coder:7b', ram: '7 GB', disk: '4.7 GB', role: 'coding', note: '⭐ Best for coding questions' },
   { name: 'qwen3:8b',      ram: '8 GB',  disk: '5.2 GB', role: 'reasoning', note: '⭐ Best for M4 16GB' },
   { name: 'qwen3:4b',      ram: '4 GB',  disk: '2.6 GB', role: 'reasoning', note: 'Faster, less accurate' },
   { name: 'llama3.2:3b',   ram: '3 GB',  disk: '2.0 GB', role: 'fallback',  note: 'Fastest option' },
@@ -164,6 +165,22 @@ export default function AdminPage() {
             recommended={RECOMMENDED.filter(m => m.role === 'fallback')}
             onChange={v => setConfig(c => ({ ...c, fallback_model: v }))}
           />
+          <ModelPicker
+            label="Coding Model"
+            desc="Used when your son asks about Python, JavaScript, algorithms"
+            value={config.coding_model || 'qwen2.5-coder:7b'}
+            installed={modelNames}
+            recommended={RECOMMENDED.filter(m => m.role === 'coding')}
+            onChange={v => setConfig(c => ({ ...c, coding_model: v }))}
+/>
+          <ModelPicker
+           label="PowerPoint Model"
+           desc="Used for generating presentations"
+           value={config.pptx_model || 'qwen3:8b'}
+           installed={modelNames}
+           recommended={RECOMMENDED.filter(m => m.role === 'pptx')}
+           onChange={v => setConfig(c => ({ ...c, pptx_model: v }))}
+/>
         </div>
       </div>
 

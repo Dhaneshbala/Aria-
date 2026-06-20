@@ -137,7 +137,10 @@ def choose_models(intents: list[str], config: dict) -> dict:
         "web_search", "youtube", "video_summarise",
     }
     if any(i in intents for i in reasoning_intents):
-        models["reasoning"] = config.get("reasoning_model", "qwen3:8b")
+     if "code" in intents or "coding" in intents:
+      models["reasoning"] = config.get("coding_model", "qwen2.5-coder:7b")
+    else:
+       models["reasoning"] = config.get("reasoning_model", "qwen3:8b")   
     # Image gen is handled via HTTP to Stable Diffusion, no Ollama model needed
     return models
 

@@ -83,7 +83,7 @@ from fastapi.responses import Response
 @router.post("/pptx")
 async def generate_pptx(req: StudyRequest):
     config = get_config()
-    model  = config.get("reasoning_model", "qwen3:8b")
+    model  = config.get("pptx_model", "qwen3:8b")
     pptx_bytes = await study_svc.generate_pptx(req.topic, req.count or 10, model)
     return Response(
         content=pptx_bytes,

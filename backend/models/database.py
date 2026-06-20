@@ -29,9 +29,11 @@ CONFIG_FILE = DATA_DIR / "config.json"
 
 DEFAULT_CONFIG = {
     # ── AI Models (M4 MacBook Air 16GB optimised) ──────────────────────────
-    "reasoning_model":   "qwen3:8b",        # 5.2 GB — best quality for this machine
-    "vision_model":      "qwen2.5vl:3b",    # 2.2 GB — reads images & worksheets
-    "fallback_model":    "llama3.2:3b",     # 2.0 GB — fast fallback
+     "reasoning_model":   "qwen3:8b",        # 5.2 GB — best quality for this machine
+     "vision_model":      "qwen2.5vl:3b",    # 2.2 GB — reads images & worksheets
+     "fallback_model":    "llama3.2:3b",  
+     "coding_model":    "qwen2.5-coder:7b",
+     "pptx_model":      "qwen3:8b",   # 2.0 GB — fast fallback
 
     # ── Document processing ────────────────────────────────────────────────
     "doc_context_chars": 8000,              # chars of doc to pass to model per query
