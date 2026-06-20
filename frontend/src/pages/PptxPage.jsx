@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { generatePptx } from '../services/api'
-import { Presentation, Loader, Sparkles } from 'lucide-react'
+import {Loader, Sparkles } from 'lucide-react'
 
 export default function PptxPage() {
   const [topic, setTopic] = useState('')
