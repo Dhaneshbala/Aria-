@@ -135,7 +135,6 @@ class StudyService:
     async def generate_notes(
         self, topic: str, style: str = "structured", model: str = "qwen3:8b"
     ) -> str:
-        """Generate structured study notes on a topic."""
         style_desc = {
             "structured": "well-organised with headings, bullet points, key terms bolded",
             "cornell": "Cornell note format: main notes right, cue questions left, summary at bottom",
@@ -153,7 +152,6 @@ class StudyService:
     async def generate_exam_questions(
         self, topic: str, num: int = 10, model: str = "qwen3:8b"
     ) -> list[dict]:
-        """Exam mode — timed, mark-scheme style questions."""
         prompt = (
             f"Create {num} exam-style questions about: {topic}\n"
             f"Mix of multiple choice, short answer, extended response.\n"
@@ -164,8 +162,9 @@ class StudyService:
         response = await ollama.complete(model, prompt)
         return self._parse_quiz(response)
 
-    async def _generate_pptx_fallback(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
-        async def generate_pptx(self, topic: str, slides: int = 10, model: str = "qwen3:8b") -> bytes:
+    async def generate_pptx(
+        self, topic: str, slides: int = 10, model: str = "qwen3:8b"
+    ) -> bytes:
         import httpx
         from pathlib import Path
 
@@ -176,7 +175,6 @@ class StudyService:
 
         try:
             async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-                # Login — cookies persist automatically on this client
                 login_resp = await client.post(
                     f"{PRESENTON_URL}/api/v1/auth/login",
                     json={"username": PRESENTON_USER, "password": PRESENTON_PASS},
@@ -184,7 +182,6 @@ class StudyService:
                 if login_resp.status_code != 200:
                     raise Exception(f"Presenton login failed: {login_resp.text}")
 
-                # Generate the presentation
                 gen_resp = await client.post(
                     f"{PRESENTON_URL}/api/v1/ppt/presentation/generate",
                     json={
@@ -203,13 +200,11 @@ class StudyService:
                 result = gen_resp.json()
                 path = result["path"]
 
-                # Try reading directly off the mounted volume first (fast, reliable)
                 if path.startswith("/app_data"):
                     local_path = PRESENTON_DATA / Path(path).relative_to("/app_data")
                     if local_path.exists():
                         return local_path.read_bytes()
 
-                # Fallback — download over HTTP using the same authenticated client
                 full_url = path if path.startswith("http") else f"{PRESENTON_URL}{path}"
                 dl_resp = await client.get(full_url)
                 if dl_resp.status_code == 200 and len(dl_resp.content) > 1000:
@@ -220,55 +215,252 @@ class StudyService:
         except Exception as e:
             print(f"[Presenton] Failed, falling back to python-pptx: {e}")
             return await self._generate_pptx_fallback(topic, slides, model)
-        import httpx
-        import asyncio
 
-        PRESENTON_URL = "http://127.0.0.1:5000"
-        AUTH = ("admin", "admin")  # default Presenton credentials
+    async def _generate_pptx_fallback(
+        self, topic: str, slides: int = 10, model: str = "qwen3:8b"
+    ) -> bytes:
+        import io
+        import re
+        import requests
+        import urllib.parse
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.text import PP_ALIGN
+        from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 
-        # Step 1: Generate presentation via Presenton API
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{PRESENTON_URL}/api/v1/ppt/presentation/generate",
-                auth=AUTH,
-                json={
-                    "content": topic,
-                    "n_slides": slides,
-                    "language": "English",
-                    "template": "general",
-                    "tone": "educational",
-                    "verbosity": "standard",
-                    "include_title_slide": True,
-                    "include_table_of_contents": True,
-                    "export_as": "pptx",
-                    "instructions": (
-                        f"This presentation is for a 13-year-old student. "
-                        f"Use vivid real facts, engaging titles, and clear explanations. "
-                        f"Make each slide visually interesting with relevant content about {topic}."
-                    ),
-                }
+        plan_prompt = (
+            f"You are creating a Slidesgo-style PowerPoint presentation for a 13-year-old student.\n"
+            f"Topic: {topic}\n\n"
+            f"First, suggest a visual theme for this topic:\n"
+            f"THEME_BG: [dark hex color e.g. #1a0a00 for ancient china, #001524 for ocean]\n"
+            f"THEME_ACCENT: [vivid accent hex color]\n"
+            f"THEME_TEXT: [light text hex color]\n"
+            f"THEME_SUB: [secondary text hex color]\n"
+            f"THEME_EMOJI: [3 emojis that represent this topic]\n\n"
+            f"Then create exactly {slides} content slides. For each use EXACTLY:\n"
+            f"SLIDE [N]\n"
+            f"TITLE: [engaging title max 8 words]\n"
+            f"BULLET1: [fascinating fact, complete sentence]\n"
+            f"BULLET2: [fascinating fact, complete sentence]\n"
+            f"BULLET3: [fascinating fact, complete sentence]\n"
+            f"IMAGE: [specific 3-word image search for this slide]\n"
+            f"ICON: [single relevant emoji]\n\n"
+            f"Use real verified facts. Be vivid, specific and engaging."
+        )
+        response = await ollama.complete(model, plan_prompt, max_tokens=5000)
+
+        def parse_hex(text, key, default):
+            m = re.search(rf'{key}:\s*#?([A-Fa-f0-9]{{6}})', text)
+            if m:
+                h = m.group(1)
+                return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+            h = default.lstrip('#')
+            return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+        C_BG     = parse_hex(response, 'THEME_BG',     '#0f0f1a')
+        C_ACCENT = parse_hex(response, 'THEME_ACCENT', '#7c6af7')
+        C_TEXT   = parse_hex(response, 'THEME_TEXT',   '#ffffff')
+        C_SUB    = parse_hex(response, 'THEME_SUB',    '#a89bf8')
+        C_DARK   = RGBColor(0x0a, 0x0a, 0x10)
+        C_GRAY   = RGBColor(0x88, 0x88, 0x99)
+
+        emoji_match = re.search(r'THEME_EMOJI:\s*(.+)', response)
+        theme_emojis = emoji_match.group(1).strip() if emoji_match else '📚✨🎓'
+
+        def parse_slides(text):
+            blocks = re.split(r'\bSLIDE\s+\d+\b', text)[1:]
+            parsed = []
+            for block in blocks:
+                s = {'title': '', 'bullets': [], 'image': '', 'icon': '📚'}
+                for line in block.split('\n'):
+                    line = line.strip()
+                    if line.startswith('TITLE:'):
+                        s['title'] = line.replace('TITLE:', '').strip()
+                    elif re.match(r'BULLET\d:', line):
+                        b = re.sub(r'BULLET\d:\s*', '', line).strip()
+                        if b:
+                            s['bullets'].append(b)
+                    elif line.startswith('IMAGE:'):
+                        s['image'] = line.replace('IMAGE:', '').strip()
+                    elif line.startswith('ICON:'):
+                        s['icon'] = line.replace('ICON:', '').strip()
+                if s['title']:
+                    parsed.append(s)
+            return parsed
+
+        slide_data = parse_slides(response)
+        if not slide_data:
+            slide_data = [{'title': topic, 'bullets': ['Content here'], 'image': topic, 'icon': '📚'}]
+
+        def fetch_image(query, w=960, h=540):
+            try:
+                enc = urllib.parse.quote(f"{query},{topic}")
+                r = requests.get(
+                    f"https://source.unsplash.com/{w}x{h}/?{enc}",
+                    timeout=12, allow_redirects=True,
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                )
+                if r.status_code == 200 and len(r.content) > 8000:
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            try:
+                r = requests.get(
+                    f"https://picsum.photos/{w}/{h}?random={abs(hash(query)) % 1000}",
+                    timeout=8
+                )
+                if r.status_code == 200:
+                    return io.BytesIO(r.content)
+            except Exception:
+                pass
+            return None
+
+        prs = Presentation()
+        prs.slide_width  = Inches(10)
+        prs.slide_height = Inches(5.625)
+        W = Inches(10)
+        H = Inches(5.625)
+
+        def set_bg(slide, color):
+            fill = slide.background.fill
+            fill.solid()
+            fill.fore_color.rgb = color
+
+        def add_text(slide, text, left, top, width, height,
+                     size=18, bold=False, color=None, align=PP_ALIGN.LEFT,
+                     italic=False, wrap=True):
+            if color is None:
+                color = C_TEXT
+            txb = slide.shapes.add_textbox(left, top, width, height)
+            tf  = txb.text_frame
+            tf.word_wrap = wrap
+            p = tf.paragraphs[0]
+            p.alignment = align
+            run = p.add_run()
+            run.text           = str(text)
+            run.font.size      = Pt(size)
+            run.font.bold      = bold
+            run.font.italic    = italic
+            run.font.color.rgb = color
+            return txb
+
+        def add_image_bg(slide, img_data, left=0, top=0, width=None, height=None):
+            if img_data is None:
+                return
+            if width is None:
+                width = W
+            if height is None:
+                height = H
+            try:
+                pic = slide.shapes.add_picture(img_data, left, top, width, height)
+                slide.shapes._spTree.remove(pic._element)
+                slide.shapes._spTree.insert(2, pic._element)
+            except Exception:
+                pass
+
+        def add_panel(slide, left, top, width, height, color):
+            shape = slide.shapes.add_shape(
+                MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, top, width, height
             )
-            resp.raise_for_status()
-            result = resp.json()
-            presentation_id = result["presentation_id"]
-            file_path = result["path"]
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = color
+            shape.line.fill.background()
+            shape.adjustments[0] = 0.0
+            return shape
 
-        # Step 2: Download the generated PPTX file
-        async with httpx.AsyncClient(timeout=30) as client:
-            # Download directly from the path endpoint
-            download_resp = await client.get(
-                f"{PRESENTON_URL}/api/v1/ppt/presentation/{presentation_id}/download",
-                auth=AUTH,
-            )
-            if download_resp.status_code == 200:
-                return download_resp.content
+        # Title slide
+        ts = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(ts, C_BG)
+        cover_img = fetch_image(f"{topic} landscape", 1000, 563)
+        add_image_bg(ts, cover_img)
+        add_panel(ts, Inches(0), Inches(0), Inches(5.2), H, C_DARK)
+        add_panel(ts, Inches(0), Inches(0), Inches(5.2), Inches(0.08), C_ACCENT)
+        add_text(ts, theme_emojis, Inches(0.4), Inches(0.5), Inches(4), Inches(0.7), size=28)
+        add_text(ts, topic.upper(), Inches(0.4), Inches(1.2), Inches(4.6), Inches(1.8),
+                 size=36, bold=True, color=C_TEXT)
+        add_panel(ts, Inches(0.4), Inches(3.0), Inches(1.5), Inches(0.05), C_ACCENT)
+        add_text(ts, 'An ARIA Study Presentation', Inches(0.4), Inches(3.2),
+                 Inches(4.5), Inches(0.45), size=13, color=C_SUB, italic=True)
+        add_text(ts, f'{len(slide_data)} slides  ·  AI Generated', Inches(0.4), Inches(3.7),
+                 Inches(4.5), Inches(0.4), size=11, color=C_GRAY)
+        add_panel(ts, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+        add_text(ts, 'ARIA — AI Study Assistant', Inches(0.3), Inches(5.32),
+                 Inches(5), Inches(0.3), size=10, color=C_DARK, bold=True)
 
-            # Fallback: try the direct file endpoint
-            download_resp = await client.get(
-                f"{PRESENTON_URL}/api/v1/ppt/files/download?path={file_path}",
-                auth=AUTH,
-            )
-            if download_resp.status_code == 200:
-                return download_resp.content
+        # Table of contents
+        toc = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(toc, C_BG)
+        add_panel(toc, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
+        add_text(toc, 'Contents', Inches(0.4), Inches(0.2), Inches(6), Inches(0.7),
+                 size=30, bold=True, color=C_TEXT)
+        cols_x = [Inches(0.3), Inches(5.1)]
+        for j, s in enumerate(slide_data[:8]):
+            cx = cols_x[j % 2]
+            cy = Inches(1.1) + (j // 2) * Inches(1.0)
+            add_panel(toc, cx, cy, Inches(4.5), Inches(0.85), C_DARK)
+            add_text(toc, f'{j+1:02d}', cx + Inches(0.12), cy + Inches(0.1),
+                     Inches(0.5), Inches(0.55), size=18, bold=True, color=C_ACCENT)
+            add_text(toc, s['title'], cx + Inches(0.65), cy + Inches(0.12),
+                     Inches(3.7), Inches(0.65), size=13, color=C_TEXT)
+        add_panel(toc, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
 
-        raise Exception("Could not download generated presentation from Presenton")
+        # Content slides
+        BULLET_COLORS = [C_ACCENT, C_SUB, C_TEXT]
+
+        for i, s in enumerate(slide_data):
+            sl = prs.slides.add_slide(prs.slide_layouts[6])
+            set_bg(sl, C_BG)
+            img_left = (i % 2 == 0)
+            img_data = fetch_image(s['image'] or s['title'], 500, 563)
+            if img_data:
+                img_x = Inches(5.5) if img_left else Inches(0)
+                try:
+                    pic = sl.shapes.add_picture(img_data, img_x, Inches(0), Inches(4.5), H)
+                    sl.shapes._spTree.remove(pic._element)
+                    sl.shapes._spTree.insert(2, pic._element)
+                except Exception:
+                    pass
+            panel_x = Inches(0) if img_left else Inches(4.5)
+            add_panel(sl, panel_x, Inches(0), Inches(5.5), H, C_DARK)
+            add_panel(sl, Inches(0), Inches(0), W, Inches(0.06), C_ACCENT)
+            add_text(sl, f'{i+1}', panel_x + Inches(0.2), Inches(0.15),
+                     Inches(0.5), Inches(0.45), size=11, color=C_ACCENT, bold=True)
+            add_text(sl, s['icon'], panel_x + Inches(0.15), Inches(0.5),
+                     Inches(0.7), Inches(0.7), size=28)
+            add_text(sl, s['title'], panel_x + Inches(0.9), Inches(0.5),
+                     Inches(4.4), Inches(0.85), size=22, bold=True, color=C_TEXT)
+            add_panel(sl, panel_x + Inches(0.2), Inches(1.35), Inches(3.5), Inches(0.04), C_ACCENT)
+            for j, bullet in enumerate(s['bullets'][:3]):
+                by = Inches(1.55) + Inches(j * 1.1)
+                col = BULLET_COLORS[j % len(BULLET_COLORS)]
+                add_panel(sl, panel_x + Inches(0.2), by + Inches(0.22),
+                          Inches(0.12), Inches(0.12), col)
+                add_text(sl, bullet, panel_x + Inches(0.42), by,
+                         Inches(4.8), Inches(1.0), size=14, color=C_TEXT)
+            add_panel(sl, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+            add_text(sl, 'ARIA', Inches(0.2), Inches(5.33), Inches(2), Inches(0.28),
+                     size=10, color=C_DARK, bold=True)
+            add_text(sl, topic.upper(), Inches(6), Inches(5.33), Inches(3.8), Inches(0.28),
+                     size=10, color=C_DARK, align=PP_ALIGN.RIGHT)
+
+        # Thank you slide
+        es = prs.slides.add_slide(prs.slide_layouts[6])
+        set_bg(es, C_BG)
+        end_img = fetch_image(f"{topic} beautiful", 1000, 563)
+        add_image_bg(es, end_img)
+        add_panel(es, Inches(0), Inches(0), W, H, C_DARK)
+        add_panel(es, Inches(0), Inches(0), W, Inches(0.08), C_ACCENT)
+        add_text(es, theme_emojis, Inches(3.5), Inches(1.0), Inches(3), Inches(0.7),
+                 size=40, align=PP_ALIGN.CENTER)
+        add_text(es, 'Thanks for watching!', Inches(0.5), Inches(1.9), Inches(9), Inches(1),
+                 size=40, bold=True, color=C_TEXT, align=PP_ALIGN.CENTER)
+        add_panel(es, Inches(3.5), Inches(3.0), Inches(3), Inches(0.05), C_ACCENT)
+        add_text(es, f'Topic: {topic}  ·  Made with ARIA', Inches(0.5), Inches(3.2),
+                 Inches(9), Inches(0.5), size=14, color=C_SUB, italic=True, align=PP_ALIGN.CENTER)
+        add_panel(es, Inches(0), Inches(5.3), W, Inches(0.325), C_ACCENT)
+
+        buf = io.BytesIO()
+        prs.save(buf)
+        buf.seek(0)
+        return buf.read()
