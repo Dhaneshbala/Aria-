@@ -2,16 +2,18 @@
  * useChat — custom hook that owns all streaming + orchestrator logic.
  * ChatPage just renders what this hook gives it.
  */
-import { useCallback } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store'
 import { streamChat, getConversations } from '../services/api'
 
 export function useChat() {
   const navigate = useNavigate()
+  const blobUrlsRef = useRef([])
   const {
     conversationId,
     isStreaming,
+    mode,
     addMessage,
     updateLastMessage,
     setIsStreaming,
@@ -19,6 +21,13 @@ export function useChat() {
     setConversationId,
     setConversations,
   } = useStore()
+
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url))
+      blobUrlsRef.current = []
+    }
+  }, [])
 
   const sendMessage = useCallback(async ({ text, image, document }) => {
     if (isStreaming) return
@@ -32,16 +41,20 @@ export function useChat() {
         const pending = JSON.parse(pendingDocRaw)
         sessionStorage.removeItem('aria_pending_doc')
         // Inject doc context into message
-        text = `[Document: ${pending.name}]\n\n${pending.text.slice(0, 3000)}\n\n---\n\n${text || 'Please summarise this document and tell me the key points.'}`
-      } catch {}
+        text = `[Document: ${pending.name}]\n\n${(pending.text || '').slice(0, 3000)}\n\n---\n\n${text || 'Please summarise this document and tell me the key points.'}`
+      } catch {
+        sessionStorage.removeItem('aria_pending_doc')
+      }
     }
 
     // User message bubble
+    const imagePreview = image ? URL.createObjectURL(image) : null
+    if (imagePreview) blobUrlsRef.current.push(imagePreview)
     const userMsg = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: text || '',
-      imagePreview: image ? URL.createObjectURL(image) : null,
+      imagePreview,
       docName: docFile?.name || null,
       timestamp: Date.now(),
     }
@@ -67,6 +80,7 @@ export function useChat() {
         conversationId,
         image,
         document: docFile,
+        mode,
         onChunk: (data) => {
           switch (data.type) {
             case 'intent':

@@ -53,7 +53,7 @@ class ImageService:
 
     async def _ocr_fallback(self, image_data: bytes) -> str:
         """Pytesseract OCR with OpenCV preprocessing."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._ocr_sync, image_data)
 
     def _ocr_sync(self, image_data: bytes) -> str:
@@ -89,7 +89,7 @@ class ImageService:
 
     async def enhance_for_analysis(self, image_data: bytes) -> bytes:
         """Enhance image quality before vision model."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._enhance_sync, image_data)
 
     def _enhance_sync(self, image_data: bytes) -> bytes:

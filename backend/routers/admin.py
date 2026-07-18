@@ -6,6 +6,9 @@ from ..services.ollama_service import OllamaService
 from ..services.imagegen_service import ImageGenService
 from ..services.memory_service import MemoryService
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 router  = APIRouter(prefix="/api/admin", tags=["admin"])
 ollama  = OllamaService()

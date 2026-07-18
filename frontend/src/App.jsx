@@ -4,6 +4,7 @@ import { useStore } from './store'
 import { getHealth, getConversations, getConfig } from './services/api'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
+import { ToastContainer } from './components/Toast'
 import ChatPage from './pages/ChatPage'
 import QuizPage from './pages/QuizPage'
 import FlashcardsPage from './pages/FlashcardsPage'
@@ -14,7 +15,22 @@ import ImageGenPage from './pages/ImageGenPage'
 import ProfilePage from './pages/ProfilePage'
 import DocsPage from './pages/DocsPage'
 import AdminPage from './pages/AdminPage'
+import CodingPage from './pages/CodingPage'
+import StudyToolsPage from './pages/StudyToolsPage'
 import PptxPage from './pages/PptxPage'
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4">
+      <p className="text-6xl mb-4">🔍</p>
+      <h1 className="text-xl font-semibold text-[#e8e8e8] mb-2">Page not found</h1>
+      <p className="text-sm text-[#666] mb-4">The page you're looking for doesn't exist.</p>
+      <a href="/chat" className="px-4 py-2 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm transition-colors">
+        Go to Chat
+      </a>
+    </div>
+  )
+}
 
 export default function App() {
   const { setOllamaStatus, setConversations, setConfig } = useStore()
@@ -60,11 +76,15 @@ export default function App() {
               <Route path="/youtube" element={<YouTubePage />} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/imagegen" element={<ImageGenPage />} />
+              <Route path="/coding" element={<CodingPage />} />
+              <Route path="/study-tools" element={<StudyToolsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
         </div>
+        <ToastContainer />
       </div>
     </BrowserRouter>
   )

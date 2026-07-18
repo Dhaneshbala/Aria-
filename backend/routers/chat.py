@@ -4,7 +4,7 @@ Handles text + optional image + optional document.
 For large documents, uses smart chunking to pass only relevant pages.
 """
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional
 from ..services.orchestrator import orchestrate
@@ -16,6 +16,9 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 doc_svc = DocumentService()
 mem_svc = MemoryService()
 
+MAX_IMAGE_SIZE = 20 * 1024 * 1024   # 20 MB
+MAX_DOC_SIZE = 50 * 1024 * 1024     # 50 MB
+
 
 @router.post("")
 async def chat(
@@ -23,6 +26,7 @@ async def chat(
     conversation_id: str           = Form(default=""),
     image:           Optional[UploadFile] = File(default=None),
     document:        Optional[UploadFile] = File(default=None),
+    mode:            str           = Form(default="normal"),
 ):
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
@@ -34,12 +38,16 @@ async def chat(
     image_mime = None
     if image:
         image_data = await image.read()
+        if len(image_data) > MAX_IMAGE_SIZE:
+            raise HTTPException(413, f"Image too large. Maximum size: {MAX_IMAGE_SIZE // (1024*1024)} MB")
         image_mime = image.content_type or "image/jpeg"
 
     # ── Read and smart-chunk document ─────────────────────────────────────────
     doc_text = None
     if document:
         doc_bytes = await document.read()
+        if len(doc_bytes) > MAX_DOC_SIZE:
+            raise HTTPException(413, f"Document too large. Maximum size: {MAX_DOC_SIZE // (1024*1024)} MB")
         filename  = document.filename or "document"
 
         # Get the most relevant sections of the document for THIS specific question
@@ -61,6 +69,7 @@ async def chat(
             image_mime=image_mime,
             doc_text=doc_text,
             config=config,
+            mode=mode,
         ):
             yield chunk
 

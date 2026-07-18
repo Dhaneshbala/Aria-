@@ -5,21 +5,21 @@ import { deleteConversation } from '../services/api'
 import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
-  Trash2, ChevronLeft, ChevronRight, Zap
+  Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench
 } from 'lucide-react'
 
 const NAV = [
   { icon: MessageSquare, label: 'Chat', path: '/chat' },
+  { icon: Code, label: 'Coding', path: '/coding' },
   { icon: BookOpen, label: 'Quiz', path: '/quiz' },
   { icon: CreditCard, label: 'Flashcards', path: '/flashcards' },
   { icon: Network, label: 'Mind Map', path: '/mindmap' },
   { icon: Calendar, label: 'Study Plan', path: '/study-plan' },
+  { icon: Wrench, label: 'Study Tools', path: '/study-tools' },
   { icon: Presentation, label: 'PowerPoint', path: '/pptx' },
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
   { icon: FileText, label: 'Documents', path: '/docs' },
   { icon: Image, label: 'Image Gen', path: '/imagegen' },
-  { icon: MessageSquare, label: 'Chat', path: '/chat' },
-  { icon: BookOpen, label: 'Quiz', path: '/quiz' },
 ]
 
 const BOTTOM_NAV = [

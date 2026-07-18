@@ -8,7 +8,7 @@ class VoiceService:
 
     async def transcribe(self, audio_data: bytes, mime_type: str = "audio/webm") -> str:
         """Speech-to-text using faster-whisper or whisper.cpp."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._transcribe_sync, audio_data, mime_type)
 
     def _transcribe_sync(self, audio_data: bytes, mime_type: str) -> str:
@@ -39,7 +39,7 @@ class VoiceService:
 
     async def synthesize(self, text: str) -> bytes:
         """Text-to-speech — returns MP3 bytes."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._tts_sync, text)
 
     def _tts_sync(self, text: str) -> bytes:

@@ -6,7 +6,7 @@ from typing import List, Dict
 class ResearchService:
 
     async def search(self, query: str, max_results: int = 8) -> List[Dict]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._search_sync, query, max_results)
 
     def _search_sync(self, query: str, max_results: int) -> List[Dict]:
@@ -25,7 +25,7 @@ class ResearchService:
             return [{"title": "Search unavailable", "snippet": str(e), "url": ""}]
 
     async def search_news(self, query: str) -> List[Dict]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._news_sync, query)
 
     def _news_sync(self, query: str) -> List[Dict]:

@@ -15,7 +15,10 @@ Vision model is called first (fast), then unloaded before reasoning runs.
 import asyncio
 import json
 import re
+import logging
 from typing import AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 from .ollama_service import OllamaService
 from .image_service import ImageService
@@ -61,9 +64,6 @@ INTENT_PATTERNS = {
     "notes": [
         r"\b(study notes|take notes|create notes|make notes|cornell|outline notes|notes on|notes about)\b",
     ],
-    "exam_mode": [
-        r"\b(exam mode|exam question|past paper|mark scheme)\b",
-    ],
     "worksheet_solver": [
         r"\b(solve.*worksheet|help.*worksheet|answer.*question|question \d+|problem \d+)\b",
         r"\b(homework help|help.*homework|do.*question|work.*through)\b",
@@ -100,6 +100,26 @@ INTENT_PATTERNS = {
     "explain": [
         r"\b(explain|what is|how does|why does|tell me about|describe|what are|define)\b",
     ],
+    "coding": [
+        r"\b(code|coding|program|programming|function|class|method|debug|refactor)\b",
+        r"\b(python|javascript|java|c\+\+|html|css|sql|react|node)\b",
+        r"\b(git|github|commit|branch|merge|pull request|repository)\b",
+        r"\b(docker|container|terminal|command line|bash|shell|script)\b",
+        r"\b(explain.*code|what.*does.*code|how.*does.*code|write.*function)\b",
+        r"\b(unit test|test|api|database|sql|regex)\b",
+    ],
+    "essay_feedback": [
+        r"\b(essay feedback|review.*essay|grade.*essay|improve.*essay|mark.*essay)\b",
+        r"\b(essay.*improve|essay.*better|essay.*grade|check.*essay)\b",
+    ],
+    "formula": [
+        r"\b(formula|equation|theorem|proof|derivation)\b",
+        r"\b(scientific|chemistry|physics|biology formula)\b",
+    ],
+    "timeline": [
+        r"\b(timeline|chronological|historical.*order|sequence.*events)\b",
+        r"\b(what happened.*when|order.*events|history.*of)\b",
+    ],
     "doc_chat":         [],   # set by chat router when doc is attached
     "video_summarise":  [],   # set when youtube_results present
 }
@@ -134,14 +154,14 @@ def choose_models(intents: list[str], config: dict) -> dict:
         "quiz", "exam_mode", "flashcard", "mindmap", "study_plan", "notes",
         "worksheet_solver", "quote_extraction", "pdf_summarise",
         "math", "explain", "chat", "summary", "doc_chat",
-        "web_search", "youtube", "video_summarise",
+        "web_search", "youtube", "video_summarise", "code", "coding",
+        "essay_feedback", "formula", "timeline",
     }
     if any(i in intents for i in reasoning_intents):
-     if "code" in intents or "coding" in intents:
-      models["reasoning"] = config.get("coding_model", "qwen2.5-coder:7b")
-    else:
-       models["reasoning"] = config.get("reasoning_model", "qwen3:8b")   
-    # Image gen is handled via HTTP to Stable Diffusion, no Ollama model needed
+        if "code" in intents or "coding" in intents:
+            models["reasoning"] = config.get("coding_model", "qwen2.5-coder:7b")
+        else:
+            models["reasoning"] = config.get("reasoning_model", "qwen3:8b")
     return models
 
 
@@ -154,6 +174,7 @@ async def orchestrate(
     image_mime: str | None = None,
     doc_text: str | None = None,
     config: dict | None = None,
+    mode: str = "normal",
 ) -> AsyncGenerator[str, None]:
     config    = config or {}
     has_image = image_data is not None
@@ -162,6 +183,7 @@ async def orchestrate(
     intents = detect_intents(message, has_image, has_doc)
     models  = choose_models(intents, config)
 
+    logger.info("Orchestrating: intents=%s, models=%s, mode=%s", intents, models, mode)
     yield _sse({"type": "intent", "content": intents})
 
     # ── Step 1: Parallel lightweight tasks (no LLM yet) ───────────────────────
@@ -221,17 +243,31 @@ async def orchestrate(
         doc_text, memory_context, youtube_results, config
     )
 
+    # ── Step 4b: Apply mode adjustments ───────────────────────────────────────
+    if mode == "think":
+        system_prompt += (
+            "\n\nIMPORTANT: You are in THINK MODE. Take your time to reason deeply.\n"
+            "Show your thinking process step by step before giving the final answer.\n"
+            "Consider multiple approaches. Check your work. Be thorough.\n"
+        )
+    elif mode == "fast":
+        system_prompt += (
+            "\n\nIMPORTANT: You are in FAST MODE. Give a quick, concise answer.\n"
+            "Be brief — just the key facts or answer, no lengthy explanations.\n"
+        )
+
     # ── Step 5: Stream reasoning model ───────────────────────────────────────
     reasoning_model = models.get("reasoning", config.get("reasoning_model", "qwen3:8b"))
     fallback_model  = config.get("fallback_model", "qwen2.5:3b")
     full_response   = ""
+    context_window  = 8192 if mode == "think" else 4096
 
     yield _sse({"type": "status", "content": f"Thinking with {reasoning_model}..."})
 
     # Try reasoning model, then fallback
     for attempt, model_name in enumerate([reasoning_model, fallback_model]):
         try:
-            async for token in ollama.stream(model_name, system_prompt, message):
+            async for token in ollama.stream(model_name, system_prompt, message, context_window=context_window):
                 full_response += token
                 yield _sse({"type": "text", "content": token})
             break  # success
@@ -264,11 +300,9 @@ async def orchestrate(
             from .imagegen_service import ImageGenService
             img_svc = ImageGenService()
             poll_model = config.get("pollinations_model", "flux")
-            # Clean prompt
-            import re as _re
-            prompt = _re.sub(
+            prompt = re.sub(
                 r"\b(draw|generate|create|paint|make|sketch|illustrate)\b[\s\w]*?(an?\s+)?(image|picture|illustration|diagram|poster)?\s*(of|showing|about)?\s*",
-                "", message, flags=_re.I
+                "", message, flags=re.I
             ).strip() or message
             result = await img_svc.generate(prompt, model=poll_model)
             img_url = result.get("image") if isinstance(result, dict) else None
@@ -427,6 +461,38 @@ def _build_system_prompt(
             "Give a clear summary: key points, key vocabulary, one-sentence takeaway.",
             "",
         ]
+    if "coding" in intents:
+        parts += [
+            "CODE MODE: Write clean, well-commented code.",
+            "Explain the logic step by step. Show working examples.",
+            "If debugging: identify the bug, explain why it fails, show the fix.",
+            "If generating a project: include file structure, all files, and setup instructions.",
+            "Use best practices: error handling, meaningful names, DRY principle.",
+            "",
+        ]
+    if "essay_feedback" in intents:
+        parts += [
+            "ESSAY FEEDBACK MODE: Analyse the essay thoroughly.",
+            "Provide feedback on: thesis strength, argument structure, evidence quality,",
+            "grammar/spelling, flow/coherence, vocabulary, and conclusion.",
+            "Give specific suggestions for improvement with examples.",
+            "Rate overall: Needs Work / Good / Very Good / Excellent.",
+            "",
+        ]
+    if "formula" in intents:
+        parts += [
+            "FORMULA MODE: Explain all relevant formulas for this topic.",
+            "For each formula: name, equation, variable definitions, when to use it.",
+            "Show a worked example. Include common mistakes to avoid.",
+            "",
+        ]
+    if "timeline" in intents:
+        parts += [
+            "TIMELINE MODE: Create a clear chronological timeline.",
+            "Include dates/periods, key events, cause-and-effect relationships.",
+            "Format as a structured timeline with clear markers.",
+            "",
+        ]
 
     return "\n".join(parts)
 
@@ -487,31 +553,6 @@ async def _generate_extras(
             pass
 
     return extras
-
-
-async def _sd_generate(message: str, config: dict) -> str | None:
-    """Call Stable Diffusion API — only if sd_enabled=True."""
-    sd_url = config.get("sd_url", "http://127.0.0.1:7860")
-    prompt = re.sub(
-        r"\b(draw|generate|create|paint|make|sketch|illustrate)\b[\s\w]*(an?\s+)?"
-        r"(image|picture|illustration|diagram|poster)?\s*(of|showing|about)?\s*",
-        "", message, flags=re.I
-    ).strip() or message
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=90) as client:
-            r = await client.post(f"{sd_url}/sdapi/v1/txt2img", json={
-                "prompt":          f"educational, child-friendly, colourful illustration: {prompt}",
-                "negative_prompt": "nsfw, violent, scary, adult, blurry",
-                "steps": 20, "width": 512, "height": 512, "cfg_scale": 7,
-            })
-            if r.status_code == 200:
-                imgs = r.json().get("images", [])
-                if imgs:
-                    return f"data:image/png;base64,{imgs[0]}"
-    except Exception:
-        pass
-    return None
 
 
 # ── Parsers ───────────────────────────────────────────────────────────────────

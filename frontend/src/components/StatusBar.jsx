@@ -17,10 +17,21 @@ const INTENT_LABELS = {
   summary:          '📋 Summary',
   explain:          '💡 Explain',
   doc_chat:         '📄 Document',
+  coding:           '💻 Code',
+  essay_feedback:   '📝 Essay',
+  formula:          '📐 Formula',
+  timeline:         '⏳ Timeline',
+  agent:            '🤖 Agent',
+}
+
+const MODE_LABELS = {
+  normal: null,
+  think:  '🧠 Think',
+  fast:   '⚡ Fast',
 }
 
 export default function StatusBar() {
-  const { ollamaStatus, currentIntents, config, isStreaming } = useStore()
+  const { ollamaStatus, currentIntents, config, isStreaming, mode } = useStore()
 
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#1e1e1e] bg-[#111] text-xs min-h-[34px]">
@@ -55,6 +66,12 @@ export default function StatusBar() {
 
       {/* Active intent badges */}
       <div className="flex gap-1.5 flex-wrap">
+        {mode !== 'normal' && MODE_LABELS[mode] && (
+          <span key={`mode-${mode}`}
+            className="px-2 py-0.5 rounded-full bg-[#7c6af7]/15 text-[#a89bf8] border border-[#7c6af7]/25 text-[10px] font-medium">
+            {MODE_LABELS[mode]}
+          </span>
+        )}
         {currentIntents.map(intent => {
           const label = INTENT_LABELS[intent]
           if (!label) return null

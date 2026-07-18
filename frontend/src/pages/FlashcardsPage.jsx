@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { generateFlashcards } from '../services/api'
 import { CreditCard, RotateCcw, ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
 
@@ -48,6 +48,20 @@ export default function FlashcardsPage() {
   }
 
   const currentCard = cards[order[idx]]
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e) => {
+    if (cards.length === 0) return
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setFlipped(f => !f) }
+    if (e.key === 'ArrowRight') next()
+    if (e.key === 'ArrowLeft') prev()
+    if (e.key === 'k' || e.key === 'K') markKnown()
+  }, [cards.length, order.length, idx])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 page-enter">
