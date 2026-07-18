@@ -194,7 +194,7 @@ export function useChat() {
       setIsStreaming(false)
       setCurrentIntents([])
     }
-  }, [conversationId, isStreaming, navigate])
+  }, [conversationId, isStreaming, mode, navigate])
 
   return { sendMessage }
 }

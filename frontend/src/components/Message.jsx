@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -8,7 +8,7 @@ import { Copy, Check, ChevronDown, ChevronUp, Zap, Globe, Eye, Youtube, CheckCir
 
 // ── Root message component ────────────────────────────────────────────────────
 
-export default function Message({ msg }) {
+function Message({ msg }) {
   const isUser = msg.role === 'user'
 
   return (
@@ -372,3 +372,5 @@ function InlineStudyPlan({ plan }) {
     </div>
   )
 }
+
+export default memo(Message)

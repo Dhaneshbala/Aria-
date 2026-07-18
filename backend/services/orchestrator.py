@@ -297,7 +297,7 @@ async def orchestrate(
     if "image_gen" in intents and config.get("image_gen_enabled", True):
         yield _sse({"type": "status", "content": "Generating image..."})
         try:
-            from .imagegen_service import ImageGenService
+            from services.imagegen_service import ImageGenService
             img_svc = ImageGenService()
             poll_model = config.get("pollinations_model", "flux")
             prompt = re.sub(

@@ -12,8 +12,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Use consistent data path
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# Use consistent data path — must match models/database.py
+DATA_DIR = Path.home() / ".aria_data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CONVERSATIONS_FILE = DATA_DIR / "conversations.json"

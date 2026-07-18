@@ -97,5 +97,5 @@ async def export_conversation(conversation_id: str):
     return {
         "conversation_id": conversation_id,
         "turns": turns,
-        "exported_at": datetime.datetime.utcnow().isoformat(),
+        "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
