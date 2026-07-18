@@ -1,4 +1,4 @@
-"""YouTube service — extracts transcripts and structures content."""
+"""YouTube service — extracts transcripts and video metadata, generates summaries."""
 import asyncio
 import re
 from typing import Optional
@@ -25,46 +25,138 @@ class YouTubeService:
         return None
 
     def _fetch_sync(self, video_id: str) -> dict:
+        import httpx
+
+        # Step 1: Get video metadata from page (always works)
+        metadata = self._scrape_metadata(video_id)
+
+        # Step 2: Try to get transcript
+        transcript_text = ""
+        has_transcript = False
         try:
-            from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            transcript = None
-            # Try English first
+            transcript_text = self._fetch_transcript(video_id)
+            has_transcript = bool(transcript_text)
+        except Exception:
+            pass
+
+        # Step 3: Build result
+        result = {
+            "video_id": video_id,
+            "title": metadata.get("title", f"YouTube Video {video_id}"),
+            "channel": metadata.get("channel", ""),
+            "duration_minutes": metadata.get("duration_minutes", 0),
+            "description": metadata.get("description", ""),
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "has_transcript": has_transcript,
+        }
+
+        if has_transcript:
+            result["transcript"] = transcript_text
+        else:
+            # No transcript — use description + metadata as context
+            # The LLM can still generate useful content from this
+            result["transcript"] = ""
+            result["note"] = (
+                "This video does not have captions/subtitles. "
+                "Summary and study tools are based on the video title and description."
+            )
+
+        return result
+
+    def _fetch_transcript(self, video_id: str) -> str:
+        """Fetch transcript using youtube_transcript_api v1.2.4+ API."""
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        ytt = YouTubeTranscriptApi()
+
+        # Try to fetch directly (tries English first, then any available)
+        try:
+            transcript = ytt.fetch(video_id, languages=["en"])
+        except Exception:
+            # Try listing available transcripts and pick any
             try:
-                transcript = transcript_list.find_transcript(["en"]).fetch()
+                tl = ytt.list(video_id)
+                transcript = tl.find_transcript(["en"]).fetch()
             except Exception:
-                # Any available language
                 try:
-                    transcript = transcript_list.find_generated_transcript(["en"]).fetch()
-                except Exception:
-                    for t in transcript_list:
+                    tl = ytt.list(video_id)
+                    for t in tl:
                         transcript = t.fetch()
                         break
+                except Exception:
+                    return ""
 
-            if not transcript:
-                return {"error": "No transcript available for this video"}
+        if not transcript:
+            return ""
 
-            full_text = " ".join(entry.get("text", "") for entry in transcript)
-            # Get title from oEmbed
-            title = self._get_title(video_id)
+        # Combine all entries into full text
+        lines = []
+        for entry in transcript:
+            text = entry.text.strip()
+            if text:
+                # Clean up common transcript artifacts
+                text = re.sub(r'\[.*?\]', '', text)  # Remove [Music], [Applause], etc.
+                text = re.sub(r'♪.*?♪', '', text)    # Remove music notes
+                text = text.strip()
+                if text:
+                    lines.append(text)
 
-            return {
-                "video_id": video_id,
-                "title": title,
-                "transcript": full_text,
-                "duration_minutes": round(transcript[-1].get("start", 0) / 60, 1) if transcript else 0,
-                "url": f"https://www.youtube.com/watch?v={video_id}",
-            }
-        except Exception as e:
-            return {"error": f"Could not fetch transcript: {e}"}
+        return " ".join(lines)
 
-    def _get_title(self, video_id: str) -> str:
+    def _scrape_metadata(self, video_id: str) -> dict:
+        """Scrape video metadata from the YouTube page."""
+        import httpx
+
+        result = {}
+
+        # Title + channel from oEmbed (fast, reliable)
         try:
-            import httpx
             r = httpx.get(
                 f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
                 timeout=5
             )
-            return r.json().get("title", f"YouTube Video {video_id}")
+            if r.status_code == 200:
+                data = r.json()
+                result["title"] = data.get("title", "")
+                result["channel"] = data.get("author_name", "")
         except Exception:
-            return f"YouTube Video {video_id}"
+            pass
+
+        # Description + duration from page scraping
+        try:
+            r = httpx.get(
+                f"https://www.youtube.com/watch?v={video_id}",
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+            )
+            if r.status_code == 200:
+                html = r.text
+
+                # Description from meta tag
+                desc_match = re.search(r'<meta name="description" content="([^"]+)"', html)
+                if desc_match:
+                    result["description"] = desc_match.group(1)
+
+                # Also try to get longer description from structured data
+                desc_match2 = re.search(r'"shortDescription":"(.*?)"', html)
+                if desc_match2:
+                    desc = desc_match2.group(1)
+                    desc = desc.replace('\\n', '\n').replace('\\"', '"')
+                    if len(desc) > len(result.get("description", "")):
+                        result["description"] = desc[:2000]
+
+                # Duration
+                dur_match = re.search(r'"lengthSeconds":"(\d+)"', html)
+                if dur_match:
+                    result["duration_minutes"] = round(int(dur_match.group(1)) / 60, 1)
+
+                # Title fallback from page
+                if not result.get("title"):
+                    title_match = re.search(r'"title":"([^"]+)"', html)
+                    if title_match:
+                        result["title"] = title_match.group(1)
+
+        except Exception:
+            pass
+
+        return result

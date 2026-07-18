@@ -1,22 +1,132 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Upload, MessageSquare, X, Loader, BookOpen,
-  Quote, List, Search, ChevronDown, ChevronUp, FileSearch
+  Quote, List, Search, ChevronDown, ChevronUp, FileSearch,
+  Presentation, Table2, Code, Hash, ArrowRight, MessagesSquare
 } from 'lucide-react'
+import { useStore } from '../store'
+import { getConversations } from '../services/api'
 
 const BASE = '/api'
 
+// ── File type detection ─────────────────────────────────────────────────────
+function getFileCategory(filename) {
+  const ext = filename.split('.').pop().toLowerCase()
+  if (['pdf', 'docx', 'doc', 'txt', 'md'].includes(ext)) return 'text'
+  if (['pptx', 'ppt'].includes(ext)) return 'presentation'
+  if (['xlsx', 'xls', 'csv'].includes(ext)) return 'data'
+  if (['py', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'xml', 'css', 'java', 'cpp', 'c', 'h'].includes(ext)) return 'code'
+  if (['zip'].includes(ext)) return 'archive'
+  return 'text'
+}
+
+function getFileIcon(filename) {
+  const cat = getFileCategory(filename)
+  switch (cat) {
+    case 'presentation': return <Presentation size={20} className="text-[#7c6af7]" />
+    case 'data': return <Table2 size={20} className="text-[#7c6af7]" />
+    case 'code': return <Code size={20} className="text-[#7c6af7]" />
+    default: return <FileText size={20} className="text-[#7c6af7]" />
+  }
+}
+
+// ── Adaptive content by file type ───────────────────────────────────────────
+const ADAPTIVE = {
+  text: {
+    tabs: [
+      { id: 'chat',      icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
+      { id: 'summarise', icon: <BookOpen size={14}/>,      label: 'Summarise' },
+      { id: 'quotes',    icon: <Quote size={14}/>,         label: 'Find Quotes' },
+      { id: 'keypoints', icon: <List size={14}/>,          label: 'Key Points' },
+    ],
+    quickQuestions: [
+      'What are the main themes?',
+      'Summarise this document',
+      'What is the author\'s main argument?',
+      'What are the key facts or findings?',
+    ],
+    quoteThemes: [
+      'diversity and acceptance',
+      'courage and fear',
+      'identity and belonging',
+      'justice and inequality',
+      'friendship and loyalty',
+      'family and love',
+    ],
+    placeholder: 'e.g. What are the main themes?\nWhat quotes could I use for an essay on diversity?\nWhat happens in chapter 3?',
+  },
+  presentation: {
+    tabs: [
+      { id: 'chat',      icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
+      { id: 'summarise', icon: <BookOpen size={14}/>,      label: 'Overview' },
+      { id: 'keypoints', icon: <List size={14}/>,          label: 'Key Points' },
+    ],
+    quickQuestions: [
+      'What is this presentation about?',
+      'Summarise all the slides',
+      'What are the main topics covered?',
+      'List the key data or statistics',
+    ],
+    quoteThemes: [],
+    placeholder: 'e.g. What is this presentation about?\nSummarise slide 5\nWhat data is shown on slide 3?',
+  },
+  data: {
+    tabs: [
+      { id: 'chat',      icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
+      { id: 'summarise', icon: <BookOpen size={14}/>,      label: 'Data Summary' },
+      { id: 'keypoints', icon: <List size={14}/>,          label: 'Key Patterns' },
+    ],
+    quickQuestions: [
+      'What does this data show?',
+      'Summarise the trends',
+      'What are the column headers?',
+      'Are there any outliers or anomalies?',
+    ],
+    quoteThemes: [],
+    placeholder: 'e.g. What does this data show?\nWhat are the average values?\nWhich category has the highest count?',
+  },
+  code: {
+    tabs: [
+      { id: 'chat',      icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
+      { id: 'summarise', icon: <BookOpen size={14}/>,      label: 'Code Overview' },
+      { id: 'keypoints', icon: <List size={14}/>,          label: 'Key Functions' },
+    ],
+    quickQuestions: [
+      'What does this code do?',
+      'What are the main functions?',
+      'Are there any bugs or issues?',
+      'How is the code structured?',
+    ],
+    quoteThemes: [],
+    placeholder: 'e.g. What does this code do?\nExplain the main function\nAre there any security issues?',
+  },
+  archive: {
+    tabs: [
+      { id: 'chat', icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
+    ],
+    quickQuestions: [
+      'What files are in this archive?',
+      'Summarise the contents',
+    ],
+    quoteThemes: [],
+    placeholder: 'e.g. What files are in this archive?\nSummarise the main document',
+  },
+}
+
 export default function DocsPage() {
   const navigate = useNavigate()
-  const [doc, setDoc] = useState(null)        // { name, pages, words, text }
+  const { conversations, setConversationId } = useStore()
+  const [doc, setDoc] = useState(null)
   const [loading, setLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
-  const [activeTab, setActiveTab] = useState('chat')
   const fileRef = useRef()
-  const fileDataRef = useRef(null)             // raw File object for re-use
+  const fileDataRef = useRef(null)
+  const fileCategory = doc ? getFileCategory(doc.name) : null
+  const adaptive = fileCategory ? ADAPTIVE[fileCategory] || ADAPTIVE.text : ADAPTIVE.text
 
   // Per-feature state
+  const [activeTab, setActiveTab] = useState('chat')
   const [summaryStyle, setSummaryStyle] = useState('structured')
   const [summaryFocus, setSummaryFocus] = useState('')
   const [summaryText, setSummaryText] = useState('')
@@ -33,12 +143,22 @@ export default function DocsPage() {
   const [keyPoints, setKeyPoints] = useState('')
   const [keyPointsLoading, setKeyPointsLoading] = useState(false)
 
-  // ── File upload ─────────────────────────────────────────────────────────────
+  // Conversation picker state
+  const [showChatPicker, setShowChatPicker] = useState(false)
+  const [chatPickerSearch, setChatPickerSearch] = useState('')
+
+  // Reset tab when file changes
+  useEffect(() => {
+    setActiveTab('chat')
+  }, [doc?.name])
+
+  // ── File upload ───────────────────────────────────────────────────────────
   const handleFile = async (file) => {
     if (!file) return
-    const allowed = ['.pdf','.docx','.doc','.pptx','.ppt','.xlsx','.csv','.txt','.md','.zip']
+    const allowed = ['.pdf','.docx','.doc','.pptx','.ppt','.xlsx','.csv','.txt','.md','.zip',
+                     '.py','.js','.jsx','.ts','.tsx','.json','.html','.xml','.css','.java','.cpp','.c','.h']
     if (!allowed.some(e => file.name.toLowerCase().endsWith(e))) {
-      alert('Supported: PDF, Word, PowerPoint, Excel, TXT, ZIP')
+      alert('Supported: PDF, Word, PowerPoint, Excel, TXT, Code files, ZIP')
       return
     }
     setLoading(true)
@@ -62,7 +182,7 @@ export default function DocsPage() {
     setLoading(false)
   }
 
-  // ── Summarise ───────────────────────────────────────────────────────────────
+  // ── Summarise ─────────────────────────────────────────────────────────────
   const handleSummarise = async () => {
     if (!fileDataRef.current) return
     setSummaryLoading(true)
@@ -97,7 +217,7 @@ export default function DocsPage() {
     setSummaryLoading(false)
   }
 
-  // ── Quote extraction ────────────────────────────────────────────────────────
+  // ── Quote extraction ──────────────────────────────────────────────────────
   const handleExtractQuotes = async () => {
     if (!fileDataRef.current || !quoteTheme.trim()) return
     setQuotesLoading(true)
@@ -116,7 +236,7 @@ export default function DocsPage() {
     setQuotesLoading(false)
   }
 
-  // ── Ask question ─────────────────────────────────────────────────────────────
+  // ── Ask question ──────────────────────────────────────────────────────────
   const handleAsk = async () => {
     if (!fileDataRef.current || !question.trim()) return
     setAnswerLoading(true)
@@ -149,7 +269,7 @@ export default function DocsPage() {
     setAnswerLoading(false)
   }
 
-  // ── Key points ──────────────────────────────────────────────────────────────
+  // ── Key points ────────────────────────────────────────────────────────────
   const handleKeyPoints = async () => {
     if (!fileDataRef.current) return
     setKeyPointsLoading(true)
@@ -166,8 +286,8 @@ export default function DocsPage() {
     setKeyPointsLoading(false)
   }
 
-  // ── Send to chat ─────────────────────────────────────────────────────────────
-  const openInChat = async (prefill = '') => {
+  // ── Send to chat (with conversation picker) ───────────────────────────────
+  const openInChat = async (convId = null, prefill = '') => {
     if (fileDataRef.current) {
       let fileText = ''
       try {
@@ -184,25 +304,31 @@ export default function DocsPage() {
         hasFile: true,
       }))
     }
-    navigate('/chat')
+    if (convId) {
+      setConversationId(convId)
+      navigate(`/chat/${convId}`)
+    } else {
+      navigate('/chat')
+    }
+    setShowChatPicker(false)
   }
 
-  const TABS = [
-    { id: 'chat',      icon: <MessageSquare size={14}/>, label: 'Ask Anything' },
-    { id: 'summarise', icon: <BookOpen size={14}/>,      label: 'Summarise' },
-    { id: 'quotes',    icon: <Quote size={14}/>,         label: 'Find Quotes' },
-    { id: 'keypoints', icon: <List size={14}/>,          label: 'Key Points' },
-  ]
+  const filteredConversations = conversations.filter(c =>
+    c.title.toLowerCase().includes(chatPickerSearch.toLowerCase())
+  )
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 page-enter">
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-2">
         <FileSearch size={20} className="text-[#7c6af7]" />
         <h1 className="text-lg font-semibold text-[#e8e8e8]">Document Reader</h1>
-        <span className="text-xs text-[#444] ml-1">
-          PDF · Word · PowerPoint · Excel · TXT
-        </span>
       </div>
+      <p className="text-xs text-[#444] mb-6">
+        {fileCategory
+          ? `${doc.name.split('.').pop().toUpperCase()} file · ${doc.pages} page${doc.pages !== 1 ? 's' : ''}`
+          : 'PDF · Word · PowerPoint · Excel · Code · TXT'
+        }
+      </p>
 
       {/* Upload zone */}
       {!doc && !loading && (
@@ -220,9 +346,9 @@ export default function DocsPage() {
           <Upload size={36} className="text-[#333] mx-auto mb-4" />
           <p className="text-[#888] text-sm mb-1 font-medium">Drop your document here</p>
           <p className="text-xs text-[#444]">or click to browse</p>
-          <p className="text-xs text-[#333] mt-3">PDF · Word · PowerPoint · Excel · TXT · ZIP</p>
+          <p className="text-xs text-[#333] mt-3">PDF · Word · PowerPoint · Excel · Code · TXT · ZIP</p>
           <input ref={fileRef} type="file"
-            accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.csv,.txt,.md,.zip"
+            accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.csv,.txt,.md,.zip,.py,.js,.jsx,.ts,.tsx,.json,.html,.xml,.css,.java,.cpp,.c,.h"
             className="hidden" onChange={e => handleFile(e.target.files[0])} />
         </div>
       )}
@@ -240,7 +366,7 @@ export default function DocsPage() {
           {/* File header */}
           <div className="flex items-center gap-3 bg-[#141414] border border-[#2a2a2a] rounded-2xl p-4">
             <div className="w-10 h-10 rounded-xl bg-[#7c6af7]/10 flex items-center justify-center flex-shrink-0">
-              <FileText size={20} className="text-[#7c6af7]" />
+              {getFileIcon(doc.name)}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[#e8e8e8] text-sm font-medium truncate">{doc.name}</p>
@@ -261,9 +387,9 @@ export default function DocsPage() {
             <DocPreview preview={doc.preview} />
           )}
 
-          {/* Tabs */}
+          {/* Tabs — adaptive to file type */}
           <div className="flex gap-1 bg-[#111] border border-[#1e1e1e] p-1 rounded-xl overflow-x-auto">
-            {TABS.map(tab => (
+            {adaptive.tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-colors flex-shrink-0 ${
                   activeTab === tab.id
@@ -287,7 +413,7 @@ export default function DocsPage() {
                   value={question}
                   onChange={e => setQuestion(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk() }}}
-                  placeholder={`e.g. What are the main themes?\nWhat quotes could I use for an essay on diversity?\nWhat happens in chapter 3?`}
+                  placeholder={adaptive.placeholder}
                   rows={3}
                   className="w-full bg-[#141414] border border-[#2a2a2a] rounded-xl px-4 py-3 text-sm text-[#e8e8e8] placeholder-[#333] outline-none focus:border-[#7c6af7]/50 resize-none"
                 />
@@ -296,9 +422,9 @@ export default function DocsPage() {
                     className="flex-1 py-2.5 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-40 transition-colors">
                     {answerLoading ? 'Searching document...' : 'Ask Question'}
                   </button>
-                  <button onClick={() => openInChat(question)}
-                    className="px-4 py-2.5 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] text-xs text-[#777] hover:text-[#e8e8e8] transition-colors whitespace-nowrap">
-                    Open in Chat
+                  <button onClick={() => setShowChatPicker(true)}
+                    className="px-4 py-2.5 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] text-xs text-[#777] hover:text-[#e8e8e8] transition-colors whitespace-nowrap flex items-center gap-1.5">
+                    <MessagesSquare size={12} /> Continue in Chat
                   </button>
                 </div>
               </div>
@@ -313,16 +439,11 @@ export default function DocsPage() {
                 </div>
               )}
 
-              {/* Quick question suggestions */}
+              {/* Quick questions — adaptive to file type */}
               <div>
                 <p className="text-xs text-[#444] mb-2">Quick questions:</p>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    'What are the main themes?',
-                    'Summarise chapter 1',
-                    'Who are the main characters?',
-                    'What is the author\'s argument?',
-                  ].map(q => (
+                  {adaptive.quickQuestions.map(q => (
                     <button key={q} onClick={() => { setQuestion(q); setTimeout(() => handleAsk(), 50) }}
                       className="text-xs px-3 py-1.5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#666] hover:text-[#aaa] hover:border-[#7c6af7]/30 transition-colors">
                       {q}
@@ -358,7 +479,7 @@ export default function DocsPage() {
               </div>
               <div>
                 <label className="text-xs text-[#666] mb-2 block">
-                  Focus on (optional) — e.g. "themes", "character development", "evidence for..."
+                  Focus on (optional) — e.g. "themes", "data trends", "key functions"
                 </label>
                 <input
                   value={summaryFocus}
@@ -386,7 +507,7 @@ export default function DocsPage() {
             </div>
           )}
 
-          {/* Tab: Find Quotes */}
+          {/* Tab: Find Quotes (only for text/PDF documents) */}
           {activeTab === 'quotes' && (
             <div className="space-y-4">
               <div>
@@ -404,22 +525,17 @@ export default function DocsPage() {
                 />
               </div>
 
-              {/* Essay prompt examples */}
-              <div className="flex flex-wrap gap-2">
-                {[
-                  'diversity and acceptance',
-                  'courage and fear',
-                  'identity and belonging',
-                  'justice and inequality',
-                  'friendship and loyalty',
-                  'family and love',
-                ].map(theme => (
-                  <button key={theme} onClick={() => setQuoteTheme(theme)}
-                    className="text-xs px-3 py-1 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#666] hover:text-[#aaa] hover:border-[#7c6af7]/30 transition-colors">
-                    {theme}
-                  </button>
-                ))}
-              </div>
+              {/* Quote theme suggestions — adaptive */}
+              {adaptive.quoteThemes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {adaptive.quoteThemes.map(theme => (
+                    <button key={theme} onClick={() => setQuoteTheme(theme)}
+                      className="text-xs px-3 py-1 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#666] hover:text-[#aaa] hover:border-[#7c6af7]/30 transition-colors">
+                      {theme}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <button onClick={handleExtractQuotes} disabled={!quoteTheme.trim() || quotesLoading}
                 className="w-full py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-40 transition-colors">
@@ -470,7 +586,14 @@ export default function DocsPage() {
           {activeTab === 'keypoints' && (
             <div className="space-y-4">
               <p className="text-xs text-[#555]">
-                Extract the 10 most important facts, arguments, or ideas from {doc.name}.
+                {fileCategory === 'code'
+                  ? `Extract the key functions, classes, and structure from ${doc.name}.`
+                  : fileCategory === 'data'
+                  ? `Extract the key patterns, trends, and insights from ${doc.name}.`
+                  : fileCategory === 'presentation'
+                  ? `Extract the main topics and key information from each slide.`
+                  : `Extract the 10 most important facts, arguments, or ideas from ${doc.name}.`
+                }
               </p>
               <button onClick={handleKeyPoints} disabled={keyPointsLoading}
                 className="w-full py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-50 transition-colors">
@@ -496,11 +619,85 @@ export default function DocsPage() {
           </button>
         </div>
       )}
+
+      {/* ── Conversation Picker Modal ──────────────────────────────────────── */}
+      {showChatPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowChatPicker(false)}>
+          <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-md mx-4 shadow-2xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e1e1e]">
+              <div className="flex items-center gap-2">
+                <MessagesSquare size={16} className="text-[#7c6af7]" />
+                <h2 className="text-sm font-semibold text-[#e8e8e8]">Continue in Chat</h2>
+              </div>
+              <button onClick={() => setShowChatPicker(false)}
+                className="text-[#555] hover:text-[#aaa] transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <input
+                value={chatPickerSearch}
+                onChange={e => setChatPickerSearch(e.target.value)}
+                placeholder="Search conversations..."
+                className="w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#333] outline-none focus:border-[#7c6af7]/50 mb-3"
+                autoFocus
+              />
+
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {/* New conversation option */}
+                <button
+                  onClick={() => openInChat(null, question)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-[#1e1e1e] transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-[#7c6af7]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[#7c6af7] text-lg">+</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#e8e8e8] font-medium">New conversation</p>
+                    <p className="text-xs text-[#444]">Start a fresh chat with this document</p>
+                  </div>
+                  <ArrowRight size={14} className="text-[#444] group-hover:text-[#7c6af7] transition-colors" />
+                </button>
+
+                {filteredConversations.length > 0 && (
+                  <div className="pt-2 pb-1 px-1">
+                    <p className="text-[10px] text-[#444] uppercase tracking-wider">Existing conversations</p>
+                  </div>
+                )}
+
+                {filteredConversations.slice(0, 20).map(conv => (
+                  <button
+                    key={conv.id}
+                    onClick={() => openInChat(conv.id, question)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-[#1e1e1e] transition-colors group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center flex-shrink-0">
+                      <MessageSquare size={13} className="text-[#555]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[#ccc] truncate group-hover:text-[#e8e8e8]">{conv.title}</p>
+                      <p className="text-xs text-[#444]">{conv.turn_count || 0} messages</p>
+                    </div>
+                    <ArrowRight size={14} className="text-[#333] group-hover:text-[#7c6af7] transition-colors flex-shrink-0" />
+                  </button>
+                ))}
+
+                {filteredConversations.length === 0 && chatPickerSearch && (
+                  <p className="text-xs text-[#444] text-center py-4">No conversations found</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Sub-components ──────────────────────────────────────────────────────────
 
 function DocPreview({ preview }) {
   const [open, setOpen] = useState(false)
