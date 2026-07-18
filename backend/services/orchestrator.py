@@ -20,13 +20,13 @@ from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
-from .ollama_service import OllamaService
-from .image_service import ImageService
-from .memory_service import MemoryService
-from .research_service import ResearchService
-from .study_service import StudyService
-from .youtube_service import YouTubeService
-from .document_service import DocumentService
+from services.ollama_service import OllamaService
+from services.image_service import ImageService
+from services.memory_service import MemoryService
+from services.research_service import ResearchService
+from services.study_service import StudyService
+from services.youtube_service import YouTubeService
+from services.document_service import DocumentService
 
 ollama       = OllamaService()
 image_svc    = ImageService()

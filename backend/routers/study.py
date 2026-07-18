@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel
-from ..services.study_service import StudyService
-from ..models.database import get_config
+from services.study_service import StudyService
+from models.database import get_config
 
 router = APIRouter(prefix="/api/study", tags=["study"])
 study_svc = StudyService()
@@ -62,7 +62,7 @@ async def generate_summary(req: StudyRequest):
 
 @router.post("/quiz/check")
 async def check_answer(data: dict):
-    from ..services.memory_service import MemoryService
+    from services.memory_service import MemoryService
     mem = MemoryService()
     subject = data.get("subject", "general")
     correct = data.get("correct", False)

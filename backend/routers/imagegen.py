@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from ..services.imagegen_service import ImageGenService
-from ..models.database import get_config
+from services.imagegen_service import ImageGenService
+from models.database import get_config
 
 router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
 sd = ImageGenService()

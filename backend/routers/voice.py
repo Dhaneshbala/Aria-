@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import Response
-from ..services.voice_service import VoiceService
+from services.voice_service import VoiceService
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 voice_svc = VoiceService()

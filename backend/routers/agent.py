@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
-from ..services.agent_service import AgentService
+from services.agent_service import AgentService
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 agent_svc = AgentService()

@@ -1,8 +1,8 @@
-from .chat import router as chat_router
-from .study import router as study_router
-from .docs import router as docs_router
-from .research import router as research_router
-from .voice import router as voice_router
-from .imagegen import router as imagegen_router
-from .admin import router as admin_router
-from .agent import router as agent_router
+from routers.chat import router as chat_router
+from routers.study import router as study_router
+from routers.docs import router as docs_router
+from routers.research import router as research_router
+from routers.voice import router as voice_router
+from routers.imagegen import router as imagegen_router
+from routers.admin import router as admin_router
+from routers.agent import router as agent_router

@@ -4,7 +4,7 @@ import json
 import os
 import re
 import logging
-from .ollama_service import OllamaService
+from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
