@@ -44,8 +44,13 @@ export default function ChatPage() {
   useEffect(() => {
     const pendingRaw = sessionStorage.getItem('aria_pending_doc')
     if (pendingRaw) {
-      // useChat.sendMessage handles this — trigger with empty text to pick it up
-      sendMessage({ text: '' })
+      try {
+        const pending = JSON.parse(pendingRaw)
+        if (pending.hasFile) {
+          // useChat.sendMessage will pick this up from sessionStorage
+          sendMessage({ text: pending.prefill || `Please help me with this document: ${pending.name}` })
+        }
+      } catch {}
     }
   }, [])
 

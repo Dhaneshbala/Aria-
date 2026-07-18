@@ -167,10 +167,19 @@ export default function DocsPage() {
   }
 
   // ── Send to chat ─────────────────────────────────────────────────────────────
-  const openInChat = (prefill = '') => {
+  const openInChat = async (prefill = '') => {
     if (fileDataRef.current) {
+      let fileText = ''
+      try {
+        const form = new FormData()
+        form.append('file', fileDataRef.current)
+        const resp = await fetch(`${BASE}/docs/upload`, { method: 'POST', body: form })
+        const data = await resp.json()
+        fileText = data.preview || ''
+      } catch {}
       sessionStorage.setItem('aria_pending_doc', JSON.stringify({
         name: doc?.name,
+        text: fileText.slice(0, 3000),
         prefill,
         hasFile: true,
       }))
@@ -314,7 +323,7 @@ export default function DocsPage() {
                     'Who are the main characters?',
                     'What is the author\'s argument?',
                   ].map(q => (
-                    <button key={q} onClick={() => { setQuestion(q); handleAsk() }}
+                    <button key={q} onClick={() => { setQuestion(q); setTimeout(() => handleAsk(), 50) }}
                       className="text-xs px-3 py-1.5 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#666] hover:text-[#aaa] hover:border-[#7c6af7]/30 transition-colors">
                       {q}
                     </button>

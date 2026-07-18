@@ -24,7 +24,7 @@ class DocumentService:
     async def extract_text(self, file_bytes: bytes, filename: str) -> str:
         """Extract full text with page markers."""
         ext = Path(filename).suffix.lower()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._extract_sync, file_bytes, ext)
 
     async def extract_pages(self, file_bytes: bytes, filename: str) -> list[dict]:
@@ -33,7 +33,7 @@ class DocumentService:
         Returns: [{"page": 1, "text": "..."}]
         """
         ext = Path(filename).suffix.lower()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._pages_sync, file_bytes, ext)
 
     async def extract_quotes(
@@ -45,7 +45,7 @@ class DocumentService:
         Returns: [{"quote": "...", "page": N, "relevance": 0.0-1.0}]
         """
         pages = await self.extract_pages(file_bytes, filename)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._score_quotes, pages, theme)
 
     async def smart_chunks(

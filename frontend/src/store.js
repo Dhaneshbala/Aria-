@@ -7,6 +7,7 @@ export const useStore = create((set, get) => ({
   isStreaming: false,
   currentIntents: [],
   ollamaStatus: 'checking', // 'ok' | 'error' | 'checking'
+  mode: 'normal', // 'normal' | 'think' | 'fast'
 
   // Config
   config: {
@@ -35,6 +36,7 @@ export const useStore = create((set, get) => ({
   setOllamaStatus: (v) => set({ ollamaStatus: v }),
   setConfig: (c) => set({ config: c }),
   setConversations: (c) => set({ conversations: c }),
+  setMode: (m) => set({ mode: m }),
   newConversation: () => set({ conversationId: null, messages: [], currentIntents: [] }),
   togglePin: (id) => set(s => {
     const pinned = s.pinnedChats.includes(id)

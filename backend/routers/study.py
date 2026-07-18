@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from fastapi.responses import Response
 from pydantic import BaseModel
 from ..services.study_service import StudyService
 from ..models.database import get_config
@@ -12,6 +13,11 @@ class StudyRequest(BaseModel):
     level: str = "medium"
     count: int = 5
     days: int = 7
+
+
+class EssayRequest(BaseModel):
+    essay: str
+    topic: str = ""
 
 
 @router.post("/quiz")
@@ -93,3 +99,27 @@ async def generate_pptx(req: StudyRequest):
             "Content-Length": str(len(pptx_bytes)),
         }
     )
+
+
+@router.post("/essay-feedback")
+async def essay_feedback(req: EssayRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    feedback = await study_svc.generate_essay_feedback(req.essay, req.topic, model)
+    return {"feedback": feedback}
+
+
+@router.post("/formula")
+async def formula_reference(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    reference = await study_svc.generate_formula_reference(req.topic, model)
+    return {"reference": reference}
+
+
+@router.post("/timeline")
+async def timeline(req: StudyRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    timeline_text = await study_svc.generate_timeline(req.topic, model)
+    return {"timeline": timeline_text}

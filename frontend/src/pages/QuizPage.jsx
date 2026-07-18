@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { generateQuiz, checkAnswer } from '../services/api'
 import { BookOpen, Trophy, RotateCcw } from 'lucide-react'
 
@@ -53,6 +53,26 @@ export default function QuizPage() {
   }
 
   const q = questions[current]
+
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback((e) => {
+    if (questions.length === 0 || loading) return
+    if (done) return
+    const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3, 'a': 0, 'b': 1, 'c': 2, 'd': 3 }
+    const idx = keyMap[e.key.toLowerCase()]
+    if (idx !== undefined && idx < (q?.options?.length || 0)) {
+      handleSelect(idx)
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && selected !== null) {
+      e.preventDefault()
+      next()
+    }
+  }, [questions.length, loading, done, q, selected])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 page-enter">

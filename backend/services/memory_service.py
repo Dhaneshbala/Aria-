@@ -6,15 +6,16 @@ Retrieves semantically similar memories at query time.
 import asyncio
 import hashlib
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
-# Dynamic path resolution for macOS
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+logger = logging.getLogger(__name__)
+
+# Use consistent data path
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Explicitly defining the global variables for the JSON file paths
 CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
 PROFILE_FILE = DATA_DIR / "study_profile.json"
 
@@ -56,7 +57,7 @@ class MemoryService:
 
     async def save(self, conversation_id: str, user_msg: str, ai_msg: str):
         """Save a conversation turn."""
-        ts = datetime.utcnow().isoformat()
+        ts = datetime.now(timezone.utc).isoformat()
         turn = {
             "conversation_id": conversation_id,
             "user": user_msg,
@@ -166,6 +167,6 @@ class MemoryService:
                     strong.append(subj)
         profile["weak_areas"] = weak
         profile["strong_areas"] = strong
-        profile["last_active"] = datetime.utcnow().isoformat()
+        profile["last_active"] = datetime.now(timezone.utc).isoformat()
         _save_json(PROFILE_FILE, profile)
         return profile

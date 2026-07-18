@@ -1,8 +1,10 @@
-import { useState, useRef, useCallback } from 'react'
-import { Send, Paperclip, Mic, MicOff, X, Image, FileText } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Send, Paperclip, Mic, MicOff, X, Image, FileText, Brain, Zap, FastForward } from 'lucide-react'
 import { transcribeAudio } from '../services/api'
+import { useStore } from '../store'
 
 export default function ChatInput({ onSend, disabled }) {
+  const { mode, setMode } = useStore()
   const [text, setText] = useState('')
   const [attachedImage, setAttachedImage] = useState(null)
   const [attachedDoc, setAttachedDoc] = useState(null)
@@ -97,7 +99,7 @@ export default function ChatInput({ onSend, disabled }) {
             <AttachmentChip
               icon={<Image size={12} />}
               name={attachedImage.name}
-              preview={URL.createObjectURL(attachedImage)}
+              file={attachedImage}
               onRemove={() => setAttachedImage(null)}
             />
           )}
@@ -161,6 +163,31 @@ export default function ChatInput({ onSend, disabled }) {
           {recording ? <MicOff size={18} /> : <Mic size={18} />}
         </button>
 
+        {/* Mode toggle */}
+        <div className="flex items-center gap-0.5 mr-1 border-r border-[#2a2a2a] pr-2">
+          <button
+            onClick={() => setMode('think')}
+            className={`p-1.5 rounded transition-colors ${mode === 'think' ? 'text-[#7c6af7] bg-[#7c6af7]/10' : 'text-[#444] hover:text-[#888]'}`}
+            title="Think mode — deeper reasoning"
+          >
+            <Brain size={15} />
+          </button>
+          <button
+            onClick={() => setMode('normal')}
+            className={`p-1.5 rounded transition-colors ${mode === 'normal' ? 'text-[#7c6af7] bg-[#7c6af7]/10' : 'text-[#444] hover:text-[#888]'}`}
+            title="Normal mode"
+          >
+            <Zap size={15} />
+          </button>
+          <button
+            onClick={() => setMode('fast')}
+            className={`p-1.5 rounded transition-colors ${mode === 'fast' ? 'text-[#7c6af7] bg-[#7c6af7]/10' : 'text-[#444] hover:text-[#888]'}`}
+            title="Fast mode — quick answers"
+          >
+            <FastForward size={15} />
+          </button>
+        </div>
+
         {/* Send */}
         <button
           onClick={handleSend}
@@ -174,7 +201,17 @@ export default function ChatInput({ onSend, disabled }) {
   )
 }
 
-function AttachmentChip({ icon, name, preview, onRemove }) {
+function AttachmentChip({ icon, name, file, onRemove }) {
+  const [preview, setPreview] = useState(null)
+
+  useEffect(() => {
+    if (file && file.type?.startsWith('image/')) {
+      const url = URL.createObjectURL(file)
+      setPreview(url)
+      return () => URL.revokeObjectURL(url)
+    }
+  }, [file])
+
   return (
     <div className="flex items-center gap-1.5 bg-[#2a2a2a] rounded-lg px-2 py-1 text-xs text-[#aaa]">
       {preview && <img src={preview} className="w-4 h-4 rounded object-cover" alt="" />}

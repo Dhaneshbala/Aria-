@@ -10,7 +10,7 @@ class YouTubeService:
         video_id = self._extract_id(url)
         if not video_id:
             return {"error": "Invalid YouTube URL"}
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._fetch_sync, video_id)
 
     def _extract_id(self, url: str) -> Optional[str]:

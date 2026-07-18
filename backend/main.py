@@ -1,9 +1,15 @@
 """ARIA Backend — FastAPI main entry point."""
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import (
     chat_router, study_router, docs_router,
-    research_router, voice_router, imagegen_router, admin_router
+    research_router, voice_router, imagegen_router, admin_router, agent_router
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
 app = FastAPI(title="ARIA — AI Study Assistant", version="2.0.0")

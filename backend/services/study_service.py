@@ -1,9 +1,17 @@
 """Study service — generates quizzes, flashcards, mind maps, study plans."""
 
 import json
+import os
 import re
+import logging
 from .ollama_service import OllamaService
-from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
+
+logger = logging.getLogger(__name__)
+
+try:
+    from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
+except ImportError:
+    MSO_AUTO_SHAPE_TYPE = None
 
 ollama = OllamaService()
 
@@ -149,6 +157,57 @@ class StudyService:
         )
         return await ollama.complete(model, prompt)
 
+    async def generate_essay_feedback(
+        self, essay: str, topic: str = "", model: str = "qwen3:8b"
+    ) -> str:
+        prompt = (
+            f"Analyse this essay and provide detailed feedback.\n"
+            f"Topic: {topic or 'not specified'}\n\n"
+            f"Essay:\n{essay[:4000]}\n\n"
+            f"Provide feedback on:\n"
+            f"1. Thesis strength and clarity\n"
+            f"2. Argument structure and logical flow\n"
+            f"3. Evidence quality and use of examples\n"
+            f"4. Grammar, spelling, and punctuation\n"
+            f"5. Vocabulary and expression\n"
+            f"6. Introduction and conclusion effectiveness\n"
+            f"7. Overall coherence\n\n"
+            f"For each area give a rating (Needs Work/Good/Very Good/Excellent)\n"
+            f"and specific suggestions with examples of how to improve.\n"
+            f"End with an overall rating and top 3 improvements to make."
+        )
+        return await ollama.complete(model, prompt, system="You are an expert English teacher providing constructive essay feedback for a 13-year-old student.")
+
+    async def generate_formula_reference(
+        self, topic: str, model: str = "qwen3:8b"
+    ) -> str:
+        prompt = (
+            f"Provide a comprehensive formula reference for: {topic}\n\n"
+            f"For each formula include:\n"
+            f"- Name of the formula\n"
+            f"- The equation (use clear notation)\n"
+            f"- What each variable/symbol means\n"
+            f"- When to use it\n"
+            f"- A worked example\n"
+            f"- Common mistakes to avoid\n\n"
+            f"Format clearly with headings. Suitable for a 13-year-old student."
+        )
+        return await ollama.complete(model, prompt, system="You are a maths/science tutor creating a clear formula reference sheet.")
+
+    async def generate_timeline(
+        self, topic: str, model: str = "qwen3:8b"
+    ) -> str:
+        prompt = (
+            f"Create a detailed chronological timeline for: {topic}\n\n"
+            f"Format as a structured list:\n"
+            f"[Date/Period] — [Event]\n"
+            f"  Cause: [what led to this]\n"
+            f"  Significance: [why it matters]\n\n"
+            f"Include 10-15 key events. Show cause-and-effect relationships.\n"
+            f"Use clear dates/periods. Suitable for a 13-year-old student."
+        )
+        return await ollama.complete(model, prompt, system="You are a history expert creating a clear, educational timeline.")
+
     async def generate_exam_questions(
         self, topic: str, num: int = 10, model: str = "qwen3:8b"
     ) -> list[dict]:
@@ -168,10 +227,10 @@ class StudyService:
         import httpx
         from pathlib import Path
 
-        PRESENTON_URL  = "http://127.0.0.1:5000"
+        PRESENTON_URL  = os.environ.get("PRESENTON_URL", "http://127.0.0.1:5000")
         PRESENTON_DATA = Path.home() / "presenton_data"
-        PRESENTON_USER = "Dhanesh"
-        PRESENTON_PASS = "123456"
+        PRESENTON_USER = os.environ.get("PRESENTON_USER", "")
+        PRESENTON_PASS = os.environ.get("PRESENTON_PASS", "")
 
         try:
             async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
