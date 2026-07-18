@@ -5,9 +5,9 @@ All endpoints accept file upload via multipart form.
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from typing import Optional
-from ..services.document_service import DocumentService
-from ..services.ollama_service import OllamaService
-from ..models.database import get_config
+from services.document_service import DocumentService
+from services.ollama_service import OllamaService
+from models.database import get_config
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 doc_svc = DocumentService()

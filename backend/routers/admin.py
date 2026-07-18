@@ -1,10 +1,10 @@
 """Admin router — config, health, model management, memory."""
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from ..models.database import get_config, save_config
-from ..services.ollama_service import OllamaService
-from ..services.imagegen_service import ImageGenService
-from ..services.memory_service import MemoryService
+from models.database import get_config, save_config
+from services.ollama_service import OllamaService
+from services.imagegen_service import ImageGenService
+from services.memory_service import MemoryService
 import datetime
 import logging
 
@@ -83,7 +83,7 @@ async def get_profile():
 async def clear_all_memory():
     from pathlib import Path
     import json
-    from ..models.database import DATA_DIR
+    from models.database import DATA_DIR
     for fname in ["conversations.json", "study_profile.json"]:
         p = DATA_DIR / fname
         if p.exists():

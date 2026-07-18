@@ -96,7 +96,7 @@ source venv/bin/activate
 # Install deps quietly, only show errors
 pip install -q -r requirements.txt 2>&1 | grep -iE "error|warning" || true
 
-# Try to install pdfminer for better PDF text extraction
+# Ensure pdfminer is installed for better PDF text extraction
 pip install -q pdfminer.six 2>/dev/null || true
 
 echo "       Starting FastAPI on port 8000..."

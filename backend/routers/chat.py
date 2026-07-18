@@ -7,10 +7,10 @@ import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional
-from ..services.orchestrator import orchestrate
-from ..services.document_service import DocumentService
-from ..services.memory_service import MemoryService
-from ..models.database import get_config
+from services.orchestrator import orchestrate
+from services.document_service import DocumentService
+from services.memory_service import MemoryService
+from models.database import get_config
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 doc_svc = DocumentService()
