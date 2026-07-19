@@ -1,6 +1,44 @@
 import { useState } from 'react'
 import { generateStudyPlan } from '../services/api'
-import { Calendar, CheckCircle, Circle } from 'lucide-react'
+import { Calendar, CheckCircle, Circle, Download } from 'lucide-react'
+
+function generateICS(plan, topic) {
+  const now = new Date()
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//ARIA Study Plan//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ]
+
+  plan.forEach((day, i) => {
+    // Start date: tomorrow + i days
+    const startDate = new Date(now)
+    startDate.setDate(startDate.getDate() + 1 + i)
+    startDate.setHours(9, 0, 0, 0) // Start at 9 AM
+
+    const endDate = new Date(startDate)
+    endDate.setMinutes(endDate.getMinutes() + (day.time_minutes || 30))
+
+    const tasks = (day.tasks || []).map((t, ti) => `${ti + 1}. ${t}`).join('\\n')
+    const dayTopic = day.title || `Study ${topic}`
+
+    const formatDT = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+
+    lines.push('BEGIN:VEVENT')
+    lines.push(`DTSTART:${formatDT(startDate)}`)
+    lines.push(`DTEND:${formatDT(endDate)}`)
+    lines.push(`SUMMARY:Day ${day.day}: ${dayTopic}`)
+    lines.push(`DESCRIPTION:Topic: ${topic}\\n\\nTasks:\\n${tasks}`)
+    lines.push(`LOCATION:Study Session`)
+    lines.push(`STATUS:CONFIRMED`)
+    lines.push(`END:VEVENT`)
+  })
+
+  lines.push('END:VCALENDAR')
+  return lines.join('\r\n')
+}
 
 export default function StudyPlanPage() {
   const [topic, setTopic] = useState('')
@@ -24,6 +62,17 @@ export default function StudyPlanPage() {
   const toggleTask = (day, task) => {
     const key = `${day}-${task}`
     setChecked(c => ({ ...c, [key]: !c[key] }))
+  }
+
+  const exportICS = () => {
+    const ics = generateICS(plan, topic)
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ARIA-Study-Plan-${topic.replace(/\s+/g, '-')}.ics`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   const totalTasks = plan.reduce((sum, d) => sum + (d.tasks?.length || 0), 0)
@@ -75,11 +124,17 @@ export default function StudyPlanPage() {
               <h2 className="text-[#e8e8e8] font-medium">{topic}</h2>
               <p className="text-xs text-[#888] mt-0.5">{doneTasks}/{totalTasks} tasks completed</p>
             </div>
-            <div className="w-20">
-              <div className="w-full bg-[#2a2a2a] rounded-full h-1.5">
-                <div className="bg-[#7c6af7] h-1.5 rounded-full transition-all"
-                  style={{ width: `${totalTasks ? (doneTasks / totalTasks) * 100 : 0}%` }} />
+            <div className="flex items-center gap-3">
+              <div className="w-20">
+                <div className="w-full bg-[#2a2a2a] rounded-full h-1.5">
+                  <div className="bg-[#7c6af7] h-1.5 rounded-full transition-all"
+                    style={{ width: `${totalTasks ? (doneTasks / totalTasks) * 100 : 0}%` }} />
+                </div>
               </div>
+              <button onClick={exportICS}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-xs text-[#888] hover:text-[#e8e8e8] hover:border-[#7c6af7]/50 transition-colors">
+                <Download size={12} /> Export to Calendar
+              </button>
             </div>
           </div>
 

@@ -1,5 +1,20 @@
 import { create } from 'zustand'
 
+// Message persistence helpers
+const MSG_CACHE_KEY = 'aria_msg_cache'
+function loadMsgCache() {
+  try { return JSON.parse(sessionStorage.getItem(MSG_CACHE_KEY) || '{}') } catch { return {} }
+}
+function saveMsgCache(convId, msgs) {
+  if (!convId || !msgs.length) return
+  const cache = loadMsgCache()
+  cache[convId] = msgs.slice(-100) // keep last 100 messages
+  sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache))
+}
+function getCachedMsgs(convId) {
+  return loadMsgCache()[convId] || []
+}
+
 export const useStore = create((set, get) => ({
   // Current conversation
   conversationId: null,
@@ -21,14 +36,32 @@ export const useStore = create((set, get) => ({
   conversations: [],
   pinnedChats: [],
 
-  setConversationId: (id) => set({ conversationId: id }),
-  setMessages: (msgs) => set({ messages: msgs }),
-  addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
+  setConversationId: (id) => {
+    // Save current messages before switching
+    const { conversationId, messages } = get()
+    if (conversationId && messages.length) {
+      saveMsgCache(conversationId, messages)
+    }
+    // Load cached messages for new conversation
+    const cached = id ? getCachedMsgs(id) : []
+    set({ conversationId: id, messages: cached })
+  },
+  setMessages: (msgs) => {
+    set({ messages: msgs })
+    const { conversationId } = get()
+    if (conversationId) saveMsgCache(conversationId, msgs)
+  },
+  addMessage: (msg) => set(s => {
+    const msgs = [...s.messages, msg]
+    if (s.conversationId) saveMsgCache(s.conversationId, msgs)
+    return { messages: msgs }
+  }),
   updateLastMessage: (patch) => set(s => {
     const msgs = [...s.messages]
     if (msgs.length > 0) {
       msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch }
     }
+    if (s.conversationId) saveMsgCache(s.conversationId, msgs)
     return { messages: msgs }
   }),
   setIsStreaming: (v) => set({ isStreaming: v }),
