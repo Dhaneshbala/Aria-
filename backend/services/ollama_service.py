@@ -19,15 +19,16 @@ M4_OPTIONS = {
     "repeat_penalty": 1.1,
 }
 
-TIMEOUT = 120.0
+TIMEOUT = 300.0
 
 
 class OllamaService:
 
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=TIMEOUT, base_url=OLLAMA_URL)
+        self._pptx_client = httpx.AsyncClient(timeout=300, base_url=OLLAMA_URL)
 
-    async def stream(self, model: str, system: str, message: str, context_window: int = 4096) -> AsyncGenerator[str, None]:
+    async def stream(self, model: str, system: str, message: str, context_window: int = 4096, timeout: float = TIMEOUT) -> AsyncGenerator[str, None]:
         options = {**M4_OPTIONS, "num_ctx": context_window}
         payload = {
             "model": model,
@@ -39,20 +40,21 @@ class OllamaService:
             "options": options,
         }
         try:
-            async with self._client.stream("POST", "/api/chat", json=payload) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        data = json.loads(line)
-                        token = data.get("message", {}).get("content", "")
-                        if token:
-                            yield token
-                        if data.get("done"):
-                            break
-                    except json.JSONDecodeError:
-                        continue
+            async with httpx.AsyncClient(timeout=timeout, base_url=OLLAMA_URL) as client:
+                async with client.stream("POST", "/api/chat", json=payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                            token = data.get("message", {}).get("content", "")
+                            if token:
+                                yield token
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
         except httpx.HTTPStatusError as e:
             logger.error("Ollama stream error for model %s: %s", model, e)
             raise
@@ -60,9 +62,9 @@ class OllamaService:
             logger.error("Cannot connect to Ollama at %s", OLLAMA_URL)
             raise
 
-    async def complete(self, model: str, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 2048) -> str:
+    async def complete(self, model: str, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 2048, timeout: float = TIMEOUT) -> str:
         result = []
-        async for token in self.stream(model, system, prompt):
+        async for token in self.stream(model, system, prompt, timeout=timeout):
             result.append(token)
             if sum(len(t) for t in result) > max_tokens * 4:
                 break
