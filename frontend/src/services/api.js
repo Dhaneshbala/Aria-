@@ -58,6 +58,9 @@ export const getConversation = (id) =>
 export const deleteConversation = (id) =>
   apiFetch(`${BASE}/chat/conversations/${id}`, { method: 'DELETE' }).then(r => r.json())
 
+export const searchConversations = (query) =>
+  apiFetch(`${BASE}/chat/search?q=${encodeURIComponent(query)}`).then(r => r.json())
+
 // ── Study ─────────────────────────────────────────────────────────────────────
 
 export const generateQuiz = (topic, level = 'medium', count = 5) =>

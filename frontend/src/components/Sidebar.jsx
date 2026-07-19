@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
-import { deleteConversation } from '../services/api'
+import { deleteConversation, searchConversations } from '../services/api'
 import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
@@ -33,10 +33,33 @@ export default function Sidebar() {
   const { conversations, pinnedChats, newConversation, togglePin, setConversations } = useStore()
   const [collapsed, setCollapsed] = useState(false)
   const [search, setSearch] = useState('')
+  const [searchResults, setSearchResults] = useState(null)
+  const searchTimer = useRef(null)
 
-  const filtered = conversations.filter(c =>
+  // Debounced content search
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (!search.trim()) {
+      setSearchResults(null)
+      return
+    }
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchConversations(search)
+        setSearchResults(results)
+      } catch {
+        setSearchResults(null)
+      }
+    }, 300)
+    return () => clearTimeout(searchTimer.current)
+  }, [search])
+
+  // Title-only filter (fast, instant)
+  const titleFiltered = conversations.filter(c =>
     c.title.toLowerCase().includes(search.toLowerCase())
   )
+  // Use content search results if available, otherwise title filter
+  const filtered = searchResults || titleFiltered
   const pinned = filtered.filter(c => pinnedChats.includes(c.id))
   const recent = filtered.filter(c => !pinnedChats.includes(c.id))
 
@@ -161,7 +184,12 @@ function ConvItem({ c, navigate, togglePin, handleDelete, pinned }) {
       onClick={() => navigate(`/chat/${c.id}`)}
       className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#2a2a2a] cursor-pointer"
     >
-      <span className="flex-1 text-xs text-[#aaa] truncate">{c.title}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs text-[#aaa] truncate block">{c.title}</span>
+        {c.snippet && (
+          <span className="text-[10px] text-[#555] truncate block mt-0.5">{c.snippet}</span>
+        )}
+      </div>
       <div className="hidden group-hover:flex items-center gap-1">
         <button
           onClick={e => { e.stopPropagation(); togglePin(c.id) }}

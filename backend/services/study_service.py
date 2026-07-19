@@ -448,6 +448,7 @@ class StudyService:
                 if pr.status_code == 200 and len(pr.content) > 5000:
                     buf = io.BytesIO(pr.content)
                     _img_cache[cache_key] = buf
+                    _pptx_image_cache[cache_key] = buf
                     return buf
             except Exception:
                 pass
@@ -463,6 +464,7 @@ class StudyService:
                 if pr.status_code == 200 and len(pr.content) > 5000:
                     buf = io.BytesIO(pr.content)
                     _img_cache[cache_key] = buf
+                    _pptx_image_cache[cache_key] = buf
                     return buf
             except Exception:
                 pass
