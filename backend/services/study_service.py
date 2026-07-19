@@ -299,7 +299,7 @@ class StudyService:
         PRESENTON_PASS = os.environ.get("PRESENTON_PASS", "")
 
         try:
-            async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=300, follow_redirects=True) as client:
                 login_resp = await client.post(
                     f"{PRESENTON_URL}/api/v1/auth/login",
                     json={"username": PRESENTON_USER, "password": PRESENTON_PASS},
@@ -391,7 +391,7 @@ class StudyService:
             f"- Include at least one 'quote' type slide\n"
             f'- Make image search terms specific (e.g. "mars planet surface" not "space")\n'
         )
-        response = await ollama.complete(model, plan_prompt, max_tokens=6000)
+        response = await ollama.complete(model, plan_prompt, max_tokens=6000, timeout=300)
 
         # ── Step 2: Parse theme colours ──────────────────────────────────
         def parse_hex(text, key, default):

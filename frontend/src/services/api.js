@@ -196,18 +196,25 @@ export const exportConversation = (id) =>
   apiFetch(`${BASE}/admin/export/${id}`).then(r => r.json())
 
 export const generatePptx = async (topic, slides = 10) => {
-  const resp = await apiFetch(`${BASE}/study/pptx`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, count: slides }),
-  })
-  const blob = await resp.blob()
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `ARIA-${topic.replace(/\s+/g, '-')}.pptx`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 5000)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 360_000) // 6 minutes
+  try {
+    const resp = await apiFetch(`${BASE}/study/pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, count: slides }),
+      signal: controller.signal,
+    })
+    const blob = await resp.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `ARIA-${topic.replace(/\s+/g, '-')}.pptx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
