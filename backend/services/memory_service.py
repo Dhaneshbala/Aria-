@@ -3,7 +3,6 @@ Memory service — ChromaDB-backed RAG.
 Stores conversation turns and study-profile data.
 Retrieves semantically similar memories at query time.
 """
-import asyncio
 import hashlib
 import json
 import logging
@@ -124,6 +123,33 @@ class MemoryService:
                     "turn_count": len(turns),
                 })
         return sorted(result, key=lambda x: x["timestamp"], reverse=True)
+
+    async def search_conversations(self, query: str) -> list[dict]:
+        """Search across all conversation content."""
+        convs = _load_json(CONVERSATIONS_FILE, {})
+        query_lower = query.lower()
+        results = []
+        for cid, turns in convs.items():
+            matching_turns = []
+            for turn in turns:
+                if query_lower in turn.get("user", "").lower() or query_lower in turn.get("ai", "").lower():
+                    matching_turns.append(turn)
+            if matching_turns:
+                # Score by number of matching turns
+                score = len(matching_turns)
+                # Get snippet from first matching turn
+                first_match = matching_turns[0]
+                snippet = first_match.get("ai", "")[:200]
+                results.append({
+                    "id": cid,
+                    "title": turns[0]["user"][:60] + "..." if len(turns[0]["user"]) > 60 else turns[0]["user"],
+                    "timestamp": turns[0]["timestamp"],
+                    "turn_count": len(turns),
+                    "snippet": snippet,
+                    "score": score,
+                })
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:20]
 
     async def get_conversation(self, conversation_id: str) -> list[dict]:
         convs = _load_json(CONVERSATIONS_FILE, {})

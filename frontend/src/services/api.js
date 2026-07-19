@@ -38,8 +38,8 @@ export async function streamChat({ message, conversationId, image, document, onC
           const data = JSON.parse(line.slice(6))
           onChunk(data)
           if (data.type === 'done') { onDone(newConvId); return }
-        } catch (e) {
-          console.warn('SSE parse error:', e)
+        } catch {
+          // SSE parse error — ignore partial chunks
         }
       }
     }

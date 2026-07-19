@@ -15,6 +15,9 @@ except ImportError:
 
 ollama = OllamaService()
 
+# Image cache for PPT generation (avoids re-fetching same images)
+_pptx_image_cache = {}
+
 QUIZ_LEVELS = {
     "easy": "simple recall and basic understanding, single-step problems",
     "medium": "application and some analysis, two-step problems",
@@ -227,6 +230,9 @@ class StudyService:
         import httpx
         from pathlib import Path
 
+        # Use faster model for PPT content generation
+        pptx_model = "llama3.2:3b"
+
         PRESENTON_URL  = os.environ.get("PRESENTON_URL", "http://127.0.0.1:5000")
         PRESENTON_DATA = Path.home() / "presenton_data"
         PRESENTON_USER = os.environ.get("PRESENTON_USER", "")
@@ -272,8 +278,8 @@ class StudyService:
                 raise Exception(f"Could not retrieve file at path: {path}")
 
         except Exception as e:
-            print(f"[Presenton] Failed, falling back to python-pptx: {e}")
-            return await self._generate_pptx_fallback(topic, slides, model)
+            logger.warning(f"[Presenton] Failed, falling back to python-pptx: {e}")
+            return await self._generate_pptx_fallback(topic, slides, pptx_model)
 
     async def _generate_pptx_fallback(
         self, topic: str, slides: int = 10, model: str = "qwen3:8b"
@@ -283,9 +289,9 @@ class StudyService:
         import requests
         import urllib.parse
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Emu
+        from pptx.util import Inches, Pt
         from pptx.dml.color import RGBColor
-        from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+        from pptx.enum.text import PP_ALIGN
         from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 
         # ── Step 1: AI generates structured content ──────────────────────
@@ -397,6 +403,9 @@ class StudyService:
             cache_key = f"{query}_{w}x{h}"
             if cache_key in _img_cache:
                 return _img_cache[cache_key]
+            if cache_key in _pptx_image_cache:
+                _img_cache[cache_key] = _pptx_image_cache[cache_key]
+                return _pptx_image_cache[cache_key]
 
             # Source 1: Unsplash JSON API (free, 50 req/hr without key)
             try:
@@ -416,6 +425,7 @@ class StudyService:
                             if ir.status_code == 200 and len(ir.content) > 5000:
                                 buf = io.BytesIO(ir.content)
                                 _img_cache[cache_key] = buf
+                                _pptx_image_cache[cache_key] = buf
                                 return buf
             except Exception:
                 pass

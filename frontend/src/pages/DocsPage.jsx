@@ -5,6 +5,7 @@ import {
   Quote, List, Search, ChevronDown, ChevronUp, FileSearch,
   Presentation, Table2, Code, Hash, ArrowRight, MessagesSquare
 } from 'lucide-react'
+import { showToast } from '../components/Toast'
 import { useStore } from '../store'
 import { getConversations } from '../services/api'
 
@@ -158,7 +159,7 @@ export default function DocsPage() {
     const allowed = ['.pdf','.docx','.doc','.pptx','.ppt','.xlsx','.csv','.txt','.md','.zip',
                      '.py','.js','.jsx','.ts','.tsx','.json','.html','.xml','.css','.java','.cpp','.c','.h']
     if (!allowed.some(e => file.name.toLowerCase().endsWith(e))) {
-      alert('Supported: PDF, Word, PowerPoint, Excel, TXT, Code files, ZIP')
+      showToast('Supported: PDF, Word, PowerPoint, Excel, TXT, Code files, ZIP', 'info')
       return
     }
     setLoading(true)
@@ -177,7 +178,7 @@ export default function DocsPage() {
       setDoc({ name: data.filename, pages: data.pages, words: data.words,
                chars: data.characters, preview: data.preview })
     } catch (e) {
-      alert('Could not read file: ' + e.message)
+      showToast('Could not read file: ' + e.message, 'error')
     }
     setLoading(false)
   }

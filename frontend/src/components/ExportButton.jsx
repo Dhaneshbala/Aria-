@@ -54,10 +54,12 @@ export default function ExportButton({ messages, conversationId }) {
 
   const download = (content, filename, type) => {
     const blob = new Blob([content], { type })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = url
     a.download = filename
     a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   return (

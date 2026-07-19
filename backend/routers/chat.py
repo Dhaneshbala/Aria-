@@ -89,6 +89,13 @@ async def get_conversations():
     return await mem_svc.get_conversations()
 
 
+@router.get("/search")
+async def search_conversations(q: str = ""):
+    if not q.strip():
+        return []
+    return await mem_svc.search_conversations(q)
+
+
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: str):
     return await mem_svc.get_conversation(conversation_id)
