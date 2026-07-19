@@ -133,6 +133,14 @@ export const generateTimeline = (topic) =>
     body: JSON.stringify({ topic }),
   }).then(r => r.json())
 
+export const generateAssessmentPlan = async (file, daysAvailable = 7) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('days_available', String(daysAvailable))
+  const resp = await apiFetch(`${BASE}/study/assessment-plan`, { method: 'POST', body: form })
+  return resp.json()
+}
+
 // ── Research ──────────────────────────────────────────────────────────────────
 
 export const webSearch = (query) =>

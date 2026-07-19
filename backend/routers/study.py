@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Form
 from pydantic import BaseModel
 from services.study_service import StudyService
 from models.database import get_config
@@ -121,3 +121,21 @@ async def timeline(req: StudyRequest):
     model = config.get("reasoning_model", "qwen3:8b")
     timeline_text = await study_svc.generate_timeline(req.topic, model)
     return {"timeline": timeline_text}
+
+
+@router.post("/assessment-plan")
+async def assessment_plan(
+    file: UploadFile = File(...),
+    days_available: int = Form(default=7),
+):
+    from services.document_service import DocumentService
+    doc_svc = DocumentService()
+    data = await file.read()
+    pages = await doc_svc.extract_pages(data, file.filename or "notification.pdf")
+    full_text = "\n\n".join(f"[Page {p['page']}]\n{p['text']}" for p in pages)
+    if not full_text.strip():
+        full_text = f"[Filename: {file.filename}] — no text could be extracted from this PDF."
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    result = await study_svc.generate_assessment_study_plan(full_text, days_available, model)
+    return result

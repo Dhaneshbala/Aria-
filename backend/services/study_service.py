@@ -211,6 +211,66 @@ class StudyService:
         )
         return await ollama.complete(model, prompt, system="You are a history expert creating a clear, educational timeline.")
 
+    async def generate_assessment_study_plan(
+        self, pdf_text: str, days_available: int = 7, model: str = "qwen3:8b"
+    ) -> dict:
+        prompt = (
+            "You are an expert study planner for a 13-year-old student.\n"
+            "The student has uploaded their assessment/exam notification PDF.\n"
+            "Below is the extracted text from the notification.\n\n"
+            f"PDF Content:\n{pdf_text[:6000]}\n\n"
+            "Analyse this notification and extract:\n"
+            "1. Assessment name and subject\n"
+            "2. Exam date(s) or due date(s)\n"
+            "3. Topics/chapters to be assessed\n"
+            "4. Assessment format (multiple choice, essay, short answer, practical, etc.)\n"
+            "5. Marking scheme or weightings if mentioned\n"
+            "6. Any special instructions or resources allowed\n\n"
+            "Then create a personalised study plan with exactly this JSON structure:\n"
+            "{\n"
+            '  "assessment": {\n'
+            '    "name": "...",\n'
+            '    "subject": "...",\n'
+            '    "date": "...",\n'
+            '    "topics": ["topic1", "topic2"],\n'
+            '    "format": "...",\n'
+            '    "marking": "...",\n'
+            '    "instructions": "..."\n'
+            "  },\n"
+            '  "plan": [\n'
+            '    {"day": 1, "title": "...", "tasks": ["task1", "task2"], "time_minutes": 45, "focus_topics": ["topic"]}\n'
+            "  ],\n"
+            '  "tips": ["tip1", "tip2", "tip3"]\n'
+            "}\n"
+            f"Create exactly {days_available} days of study.\n"
+            "Make the plan realistic. Prioritise high-weight topics.\n"
+            "Include revision, practice problems, and rest days.\n"
+            "Return ONLY the JSON object, no extra text."
+        )
+        response = await ollama.complete(model, prompt)
+        try:
+            clean = response.strip()
+            if clean.startswith("```"):
+                clean = re.sub(r"```(?:json)?", "", clean).strip()
+            return json.loads(clean)
+        except Exception:
+            return {
+                "assessment": {
+                    "name": "Assessment",
+                    "subject": "General",
+                    "date": "TBC",
+                    "topics": [],
+                    "format": "TBC",
+                    "marking": "TBC",
+                    "instructions": "Could not parse assessment details",
+                },
+                "plan": [
+                    {"day": i + 1, "title": f"Day {i+1}", "tasks": [], "time_minutes": 45, "focus_topics": []}
+                    for i in range(days_available)
+                ],
+                "tips": ["Review the assessment notification manually"],
+            }
+
     async def generate_exam_questions(
         self, topic: str, num: int = 10, model: str = "qwen3:8b"
     ) -> list[dict]:
