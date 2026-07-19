@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getConfig, saveConfig, getModels, getHealth, clearAllMemory } from '../services/api'
+import { showToast } from '../components/Toast'
 import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info } from 'lucide-react'
 import { useStore } from '../store'
 
@@ -50,7 +51,7 @@ export default function AdminPage() {
     setClearing(true)
     try {
       await clearAllMemory()
-      alert('Memory cleared successfully.')
+      showToast('Memory cleared successfully.', 'success')
     } catch {}
     setClearing(false)
   }

@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-from fastapi.responses import Response
 from pydantic import BaseModel
 from services.study_service import StudyService
 from models.database import get_config
@@ -84,7 +83,6 @@ async def generate_exam(req: StudyRequest):
     model = config.get("reasoning_model", "qwen3:8b")
     questions = await study_svc.generate_exam_questions(req.topic, req.count, model)
     return {"questions": questions, "mode": "exam"}
-from fastapi.responses import Response
 
 @router.post("/pptx")
 async def generate_pptx(req: StudyRequest):

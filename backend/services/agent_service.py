@@ -4,8 +4,6 @@ Supports: terminal commands, file operations, web browsing.
 All actions require confirmation for safety.
 """
 import asyncio
-import os
-import subprocess
 import logging
 from pathlib import Path
 from typing import Optional

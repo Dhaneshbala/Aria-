@@ -31,10 +31,12 @@ export default function MindMapWidget({ data, compact = false, showDownload = tr
     if (!svgRef.current) return
     const svg = svgRef.current.outerHTML
     const blob = new Blob([svg], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = url
     a.download = `mindmap-${data.center || 'aria'}.svg`
     a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   return (
