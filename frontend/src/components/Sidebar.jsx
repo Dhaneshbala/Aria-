@@ -5,7 +5,8 @@ import { deleteConversation, searchConversations } from '../services/api'
 import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
-  Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench
+  Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench,
+  Brain, Clock, Rocket, BarChart3, Trophy, GraduationCap, Repeat, Scissors
 } from 'lucide-react'
 
 const NAV = [
@@ -13,6 +14,7 @@ const NAV = [
   { icon: Code, label: 'Coding', path: '/coding' },
   { icon: BookOpen, label: 'Quiz', path: '/quiz' },
   { icon: CreditCard, label: 'Flashcards', path: '/flashcards' },
+  { icon: Repeat, label: 'Spaced Rep', path: '/spaced-repetition' },
   { icon: Network, label: 'Mind Map', path: '/mindmap' },
   { icon: Calendar, label: 'Study Plan', path: '/study-plan' },
   { icon: Wrench, label: 'Study Tools', path: '/study-tools' },
@@ -20,6 +22,17 @@ const NAV = [
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
   { icon: FileText, label: 'Documents', path: '/docs' },
   { icon: Image, label: 'Image Gen', path: '/imagegen' },
+]
+
+const INTEL_NAV = [
+  { icon: Brain, label: 'Knowledge Graph', path: '/knowledge-graph' },
+  { icon: Clock, label: 'Memory Timeline', path: '/memory-timeline' },
+  { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+  { icon: Trophy, label: 'Achievements', path: '/achievements' },
+  { icon: GraduationCap, label: 'NSW Curriculum', path: '/curriculum' },
+  { icon: Rocket, label: 'Superpowers', path: '/superpowers' },
+  { icon: Scissors, label: 'Coding Intel', path: '/coding-intel' },
+  { icon: Wrench, label: 'Utilities', path: '/utilities' },
 ]
 
 const BOTTOM_NAV = [
@@ -125,6 +138,29 @@ export default function Sidebar() {
           </button>
         ))}
       </nav>
+
+      {/* Intelligence Nav */}
+      {!collapsed && (
+        <div className="px-2 mt-3">
+          <p className="text-[10px] text-[#555] uppercase tracking-wider px-2 mb-1">Intelligence</p>
+          <nav className="space-y-0.5">
+            {INTEL_NAV.map(({ icon: Icon, label, path }) => (
+              <button
+                key={path}
+                onClick={() => navigate(path)}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive(path)
+                    ? 'bg-[#7c6af7]/15 text-[#a89bf8]'
+                    : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#2a2a2a]'
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      )}
 
       {/* Conversations */}
       {!collapsed && (

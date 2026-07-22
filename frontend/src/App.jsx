@@ -18,6 +18,15 @@ import AdminPage from './pages/AdminPage'
 import CodingPage from './pages/CodingPage'
 import StudyToolsPage from './pages/StudyToolsPage'
 import PptxPage from './pages/PptxPage'
+import KnowledgeGraphPage from './pages/KnowledgeGraphPage'
+import MemoryTimelinePage from './pages/MemoryTimelinePage'
+import CodingIntelligencePage from './pages/CodingIntelligencePage'
+import SuperpowersPage from './pages/SuperpowersPage'
+import AnalyticsPage from './pages/AnalyticsPage'
+import GamificationPage from './pages/GamificationPage'
+import CurriculumPage from './pages/CurriculumPage'
+import UtilitiesPage from './pages/UtilitiesPage'
+import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
 
 function NotFound() {
   return (
@@ -80,6 +89,15 @@ export default function App() {
               <Route path="/study-tools" element={<StudyToolsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
+              <Route path="/memory-timeline" element={<MemoryTimelinePage />} />
+              <Route path="/coding-intel" element={<CodingIntelligencePage />} />
+              <Route path="/superpowers" element={<SuperpowersPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/achievements" element={<GamificationPage />} />
+              <Route path="/curriculum" element={<CurriculumPage />} />
+              <Route path="/utilities" element={<UtilitiesPage />} />
+              <Route path="/spaced-repetition" element={<SpacedRepetitionPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>
