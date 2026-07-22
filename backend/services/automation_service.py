@@ -1,9 +1,7 @@
 """
 Automation — Auto flashcards from PDFs, quiz from notes, paper summariser pipeline.
 """
-import json
 import logging
-from pathlib import Path
 
 from services.ollama_service import OllamaService
 from services.document_service import DocumentService

@@ -190,8 +190,13 @@ async def orchestrate(
 
     # ── Step 1: Parallel lightweight tasks (no LLM yet) ───────────────────────
     parallel = {}
+    cross_check_intents = {"explain", "math", "formula", "timeline", "summary", "worksheet_solver", "notes"}
+    needs_cross_check = bool(cross_check_intents & set(intents))
+
     if "web_search" in intents and config.get("web_search_enabled", True):
         parallel["search"] = research_svc.search(message)
+    if needs_cross_check and config.get("web_search_enabled", True):
+        parallel["cross_check"] = research_svc.search(message, max_results=4)
     if "youtube" in intents:
         urls = re.findall(r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)\S+", message)
         if urls:
@@ -199,6 +204,7 @@ async def orchestrate(
 
     search_results  = None
     youtube_results = None
+    cross_check     = None
 
     if parallel:
         results = await asyncio.gather(*parallel.values(), return_exceptions=True)
@@ -208,6 +214,8 @@ async def orchestrate(
             if key == "search":
                 search_results = result
                 yield _sse({"type": "tool", "tool": "web_search", "content": (search_results or [])[:3]})
+            elif key == "cross_check":
+                cross_check = result
             elif key == "youtube":
                 youtube_results = result
                 yield _sse({"type": "tool", "tool": "youtube", "content": youtube_results})
@@ -242,7 +250,7 @@ async def orchestrate(
     # ── Step 4: Build master system prompt ────────────────────────────────────
     system_prompt = _build_system_prompt(
         intents, search_results, vision_text,
-        doc_text, memory_context, youtube_results, config
+        doc_text, memory_context, youtube_results, config, cross_check
     )
 
     # ── Step 4b: Apply mode adjustments ───────────────────────────────────────
@@ -295,6 +303,10 @@ async def orchestrate(
     if extras:
         yield _sse({"type": "extras", "content": extras})
 
+    # ── Step 6b: Send cross-check sources to frontend ──────────────────────
+    if cross_check:
+        yield _sse({"type": "tool", "tool": "cross_check", "content": cross_check[:4]})
+
     # ── Step 7: Image generation (Pollinations.ai — free, no GPU needed) ───────
     if "image_gen" in intents and config.get("image_gen_enabled", True):
         yield _sse({"type": "status", "content": "Generating image..."})
@@ -331,7 +343,7 @@ async def orchestrate(
 
 def _build_system_prompt(
     intents, search_results, vision_text, doc_text,
-    memory_context, youtube_results, config
+    memory_context, youtube_results, config, cross_check=None
 ) -> str:
     name = config.get("student_name", "Student")
     age  = config.get("student_age",  13)
@@ -343,6 +355,38 @@ def _build_system_prompt(
         "You are expert in: maths, science, history, geography, English literature, coding, and all school subjects.",
         "",
     ]
+
+    # ── NSW Curriculum Knowledge ───────────────────────────────────────────────
+    # ARIA automatically knows the NSW syllabus for this student's stage
+    try:
+        from services.nsw_curriculum_service import NSWCurriculumService, NSW_STAGES
+        from services.advanced_study_service import AdvancedStudyIntelligence
+        _curr = NSWCurriculumService()
+        _adv = AdvancedStudyIntelligence()
+        stage = _curr.get_stage_for_age(age)
+        if stage:
+            stage_info = NSW_STAGES.get(stage, {})
+            parts += [
+                f"━━ NSW CURRICULUM CONTEXT ━━",
+                f"Student is in {stage_info.get('name', 'Stage 4')} (ages {stage_info.get('ages', '11-14')}, Year {stage_info.get('years', '7-8')}).",
+                "You MUST align your teaching with the NSW Education Standards Authority (NESA) syllabus.",
+                "Reference specific curriculum outcomes (e.g. MA4-1WM, EN4-1A, SC4-10ES) when relevant.",
+                "Use the terminology and content progression expected for this stage.",
+                "For Maths: follow the NSW Mathematics syllabus (Number & Algebra, Measurement & Geometry, Statistics & Probability).",
+                "For Science: follow the NSW Science & Technology syllabus (Living World, Earth & Space, Physical World, Chemical World).",
+                "For English: follow the NSW English syllabus (Responding & Composing, Understanding & Using Language, Thinking Critically).",
+                "For History: follow the NSW History syllabus (Historical Skills, Historical Concepts & Terms, Contextual Knowledge).",
+                "For Geography: follow the NSW Geography syllabus (Geographical Inquiry, Spatial Significance, Interconnections).",
+                "",
+            ]
+            # Inject specific content for the student's likely subjects
+            for kla in ["mathematics", "science", "english", "history"]:
+                content = _curr.get_subject_content(kla, stage)
+                if content:
+                    parts.append(f"Stage {stage.replace('S','').replace('ES1','0')} {kla.title()} covers: {'; '.join(content[:5])}")
+            parts.append("")
+    except Exception:
+        pass  # Graceful fallback if curriculum service unavailable
 
     if memory_context:
         parts += [
@@ -497,6 +541,16 @@ def _build_system_prompt(
             "TIMELINE MODE: Create a clear chronological timeline.",
             "Include dates/periods, key events, cause-and-effect relationships.",
             "Format as a structured timeline with clear markers.",
+            "",
+        ]
+
+    if cross_check:
+        parts += [
+            "━━ INTERNET CROSS-CHECK (for accuracy) ━━",
+            "The following web results were found to verify your answer:",
+            *[f"• {r['title']}: {r['snippet'][:200]}" for r in cross_check[:4]],
+            "After your answer, add a short section:",
+            "**Verify:** [Confirm or correct your answer using the web results above. If any facts differ, note the correction.]",
             "",
         ]
 

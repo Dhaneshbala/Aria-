@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { showToast } from '../components/Toast'
-
-const API = '/api/v2'
+import { getDueCards, getSrStats, reviewSrCard, addSrCard, deleteSrCard } from '../services/api'
+import { Trash2 } from 'lucide-react'
 
 export default function SpacedRepetitionPage() {
   const [dueCards, setDueCards] = useState([])
@@ -18,13 +18,10 @@ export default function SpacedRepetitionPage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [cardsRes, statsRes] = await Promise.all([
-        fetch(`${API}/study/due-cards?limit=20`).then(r => r.json()),
-        fetch(`${API}/study/sr-stats`).then(r => r.json()),
-      ])
-      setDueCards(cardsRes)
-      setStats(statsRes)
-      if (cardsRes.length > 0) setCurrentCard(cardsRes[0])
+      const [cards, statsData] = await Promise.all([getDueCards(20), getSrStats()])
+      setDueCards(cards)
+      setStats(statsData)
+      if (cards.length > 0) setCurrentCard(cards[0])
     } catch (e) { showToast('Failed to load flashcards', 'error') }
     setLoading(false)
   }
@@ -32,11 +29,7 @@ export default function SpacedRepetitionPage() {
   const addCard = async () => {
     if (!newFront.trim() || !newBack.trim()) return showToast('Fill in both sides', 'error')
     try {
-      await fetch(`${API}/study/add-card`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front: newFront, back: newBack, subject }),
-      })
+      await addSrCard(newFront, newBack, subject)
       setNewFront(''); setNewBack('')
       showToast('Card added!', 'success')
       loadData()
@@ -46,16 +39,22 @@ export default function SpacedRepetitionPage() {
   const reviewCard = async (quality) => {
     if (!currentCard) return
     try {
-      await fetch(`${API}/study/review-card`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ card_id: currentCard.id, quality }),
-      })
+      await reviewSrCard(currentCard.id, quality)
       const remaining = dueCards.filter(c => c.id !== currentCard.id)
       setDueCards(remaining)
       setCurrentCard(remaining[0] || null)
       setShowAnswer(false)
     } catch (e) { showToast('Failed to review card', 'error') }
+  }
+
+  const deleteCard = async (cardId) => {
+    try {
+      await deleteSrCard(cardId)
+      const remaining = dueCards.filter(c => c.id !== cardId)
+      setDueCards(remaining)
+      if (currentCard?.id === cardId) setCurrentCard(remaining[0] || null)
+      showToast('Card deleted', 'success')
+    } catch (e) { showToast('Failed to delete card', 'error') }
   }
 
   const qualityLabels = [
@@ -108,9 +107,14 @@ export default function SpacedRepetitionPage() {
             <>
               <div className="text-xs text-[#666]">{dueCards.length} cards remaining</div>
               <div
-                className="flex-1 flex flex-col items-center justify-center p-8 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] cursor-pointer min-h-[300px]"
+                className="flex-1 flex flex-col items-center justify-center p-8 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] cursor-pointer min-h-[300px] relative group"
                 onClick={() => setShowAnswer(!showAnswer)}
               >
+                <button onClick={(e) => { e.stopPropagation(); deleteCard(currentCard.id) }}
+                  className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all"
+                  title="Delete card">
+                  <Trash2 size={14} />
+                </button>
                 <div className="text-xs text-[#555] mb-2">FRONT</div>
                 <div className="text-xl text-[#e8e8e8] text-center font-medium">{currentCard.front}</div>
                 {showAnswer && (

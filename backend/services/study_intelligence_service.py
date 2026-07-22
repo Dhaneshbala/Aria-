@@ -3,9 +3,7 @@ Study Intelligence — Adaptive learning features.
 Includes: Difficulty Adjustment, Adaptive Learning, Revision Predictor,
 School Curriculum Mode, and Formula Memory.
 """
-import json
 import logging
-from datetime import datetime, timezone, timedelta
 from services.ollama_service import OllamaService
 from services.memory_service import MemoryService
 

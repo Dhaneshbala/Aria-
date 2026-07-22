@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import 'katex/dist/katex.min.css';
+
 :root {
   --aria-bg: #0f0f0f;
   --aria-surface: #1a1a1a;

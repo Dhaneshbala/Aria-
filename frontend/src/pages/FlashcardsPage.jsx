@@ -1,16 +1,25 @@
 import { useState, useEffect, useCallback } from 'react'
-import { generateFlashcards } from '../services/api'
-import { CreditCard, RotateCcw, ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
+import { generateFlashcards, bulkAddSrCards } from '../services/api'
+import { useStore } from '../store'
+import { showToast } from '../components/Toast'
+import { CreditCard, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Send } from 'lucide-react'
 
 export default function FlashcardsPage() {
-  const [topic, setTopic] = useState('')
-  const [count, setCount] = useState(10)
-  const [cards, setCards] = useState([])
-  const [order, setOrder] = useState([])
-  const [idx, setIdx] = useState(0)
-  const [flipped, setFlipped] = useState(false)
-  const [known, setKnown] = useState(new Set())
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.flashcards
+  const [topic, setTopic] = useState(saved.topic || '')
+  const [count, setCount] = useState(saved.count || 10)
+  const [cards, setCards] = useState(saved.cards || [])
+  const [order, setOrder] = useState(saved.order || [])
+  const [idx, setIdx] = useState(saved.idx || 0)
+  const [flipped, setFlipped] = useState(saved.flipped || false)
+  const [known, setKnown] = useState(saved.known || [])
   const [loading, setLoading] = useState(false)
+
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('flashcards', { cards, order, idx, flipped, known, topic, count })
+  }, [cards, order, idx, flipped, known, topic, count])
 
   const generate = async () => {
     if (!topic.trim()) return
@@ -48,6 +57,14 @@ export default function FlashcardsPage() {
   }
 
   const currentCard = cards[order[idx]]
+
+  const sendToSpacedRep = async () => {
+    if (!cards.length) return
+    try {
+      await bulkAddSrCards(cards, topic || 'general')
+      showToast(`${cards.length} cards sent to Spaced Repetition!`, 'success')
+    } catch (e) { showToast('Failed to send cards', 'error') }
+  }
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e) => {
@@ -115,6 +132,11 @@ export default function FlashcardsPage() {
           <div className="w-full bg-[#2a2a2a] rounded-full h-1 mb-6">
             <div className="bg-[#7c6af7] h-1 rounded-full transition-all" style={{ width: `${((idx + 1) / order.length) * 100}%` }} />
           </div>
+
+          <button onClick={sendToSpacedRep}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#7c6af7]/10 border border-[#7c6af7]/20 text-[#7c6af7] text-xs font-medium hover:bg-[#7c6af7]/20 transition-colors mb-4">
+            <Send size={12} /> Send all to Spaced Repetition
+          </button>
 
           {/* Card */}
           <div

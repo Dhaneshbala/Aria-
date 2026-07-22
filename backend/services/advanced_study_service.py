@@ -7,7 +7,6 @@ Extends the base StudyIntelligence with:
   • Knowledge Gap Finder (maps against NSW syllabus)
 """
 import json
-import math
 import logging
 from datetime import datetime, timezone, timedelta
 from services.ollama_service import OllamaService
@@ -272,6 +271,45 @@ class AdvancedStudyIntelligence:
             "learning": learning,
             "mastered": mastered,
         }
+
+    async def delete_flashcard(self, card_id: str) -> dict:
+        """Delete a flashcard by ID."""
+        cards = _load_json(SR_FILE, [])
+        before = len(cards)
+        cards = [c for c in cards if c["id"] != card_id]
+        if len(cards) < before:
+            _save_json(SR_FILE, cards)
+            return {"status": "deleted", "id": card_id}
+        return {"error": "Card not found"}
+
+    async def add_flashcards_bulk(self, flashcards: list[dict], subject: str = "general") -> list[dict]:
+        """Add multiple flashcards at once (e.g. from generated flashcard set)."""
+        cards = _load_json(SR_FILE, [])
+        added = []
+        for fc in flashcards:
+            card = {
+                "id": f"card_{int(datetime.now().timestamp()*1000)}_{len(cards)}",
+                "front": fc.get("front", ""),
+                "back": fc.get("back", ""),
+                "subject": subject,
+                "ease_factor": 2.5,
+                "interval": 1,
+                "repetitions": 0,
+                "next_review": datetime.now(timezone.utc).isoformat(),
+                "last_review": None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            cards.append(card)
+            added.append(card)
+        _save_json(SR_FILE, cards)
+        return added
+
+    async def get_all_cards(self, subject: str | None = None) -> list[dict]:
+        """Get all flashcards (not just due ones)."""
+        cards = _load_json(SR_FILE, [])
+        if subject:
+            cards = [c for c in cards if c.get("subject") == subject]
+        return cards
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Learning Style Detector

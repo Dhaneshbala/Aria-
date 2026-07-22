@@ -9,7 +9,6 @@ import ChatPage from './pages/ChatPage'
 import QuizPage from './pages/QuizPage'
 import FlashcardsPage from './pages/FlashcardsPage'
 import MindMapPage from './pages/MindMapPage'
-import StudyPlanPage from './pages/StudyPlanPage'
 import YouTubePage from './pages/YouTubePage'
 import ImageGenPage from './pages/ImageGenPage'
 import ProfilePage from './pages/ProfilePage'
@@ -20,13 +19,12 @@ import StudyToolsPage from './pages/StudyToolsPage'
 import PptxPage from './pages/PptxPage'
 import KnowledgeGraphPage from './pages/KnowledgeGraphPage'
 import MemoryTimelinePage from './pages/MemoryTimelinePage'
-import CodingIntelligencePage from './pages/CodingIntelligencePage'
-import SuperpowersPage from './pages/SuperpowersPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import GamificationPage from './pages/GamificationPage'
 import CurriculumPage from './pages/CurriculumPage'
-import UtilitiesPage from './pages/UtilitiesPage'
 import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
+import AIPlannerPage from './pages/AIPlannerPage'
+import DashboardPage from './pages/DashboardPage'
 
 function NotFound() {
   return (
@@ -74,13 +72,13 @@ export default function App() {
           <StatusBar />
           <main className="flex-1 overflow-y-auto">
             <Routes>
-              <Route path="/" element={<Navigate to="/chat" replace />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:id" element={<ChatPage />} />
               <Route path="/quiz" element={<QuizPage />} />
               <Route path="/flashcards" element={<FlashcardsPage />} />
               <Route path="/mindmap" element={<MindMapPage />} />
-              <Route path="/study-plan" element={<StudyPlanPage />} />
               <Route path="/pptx" element={<PptxPage />} />
               <Route path="/youtube" element={<YouTubePage />} />
               <Route path="/docs" element={<DocsPage />} />
@@ -91,13 +89,11 @@ export default function App() {
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
               <Route path="/memory-timeline" element={<MemoryTimelinePage />} />
-              <Route path="/coding-intel" element={<CodingIntelligencePage />} />
-              <Route path="/superpowers" element={<SuperpowersPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/achievements" element={<GamificationPage />} />
               <Route path="/curriculum" element={<CurriculumPage />} />
-              <Route path="/utilities" element={<UtilitiesPage />} />
               <Route path="/spaced-repetition" element={<SpacedRepetitionPage />} />
+              <Route path="/ai-planner" element={<AIPlannerPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

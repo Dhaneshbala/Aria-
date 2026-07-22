@@ -105,3 +105,8 @@ async def get_conversation(conversation_id: str):
 async def delete_conversation(conversation_id: str):
     await mem_svc.delete_conversation(conversation_id)
     return {"deleted": True}
+
+
+@router.get("/conversations/date/{date}")
+async def get_conversations_for_date(date: str):
+    return await mem_svc.get_conversations_for_date(date)

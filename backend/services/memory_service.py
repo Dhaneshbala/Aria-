@@ -242,11 +242,13 @@ class MemoryService:
                         if dt >= cutoff:
                             day_key = dt.strftime("%Y-%m-%d")
                             if day_key not in daily:
-                                daily[day_key] = {"date": day_key, "conversations": 0, "topics": [], "turns": 0}
+                                daily[day_key] = {
+                                    "date": day_key, "conversation_ids": [],
+                                    "topics": [], "turns": 0, "conversations": 0,
+                                }
                             daily[day_key]["turns"] += 1
-                            daily[day_key]["conversations"] = len(set(
-                                t.get("conversation_id", "") for t in turns
-                            ))
+                            if cid not in daily[day_key]["conversation_ids"]:
+                                daily[day_key]["conversation_ids"].append(cid)
                             # Extract topics from user messages
                             user_msg = turn.get("user", "")
                             if user_msg and len(daily[day_key]["topics"]) < 5:
@@ -256,7 +258,41 @@ class MemoryService:
                 except Exception:
                     continue
 
+        # Set conversation count
+        for day in daily.values():
+            day["conversations"] = len(day["conversation_ids"])
+
         return sorted(daily.values(), key=lambda d: d["date"])
+
+    async def get_conversations_for_date(self, date: str) -> list[dict]:
+        """Get all conversations that have turns on a specific date."""
+        convs = _load_json(CONVERSATIONS_FILE, {})
+        results = []
+        for cid, turns in convs.items():
+            date_turns = []
+            for turn in turns:
+                try:
+                    ts = turn.get("timestamp", "")
+                    if ts and ts.startswith(date):
+                        date_turns.append(turn)
+                except Exception:
+                    continue
+            if date_turns:
+                # Get first user message as title
+                title = ""
+                for t in date_turns:
+                    if t.get("user"):
+                        title = t["user"][:80] + ("..." if len(t["user"]) > 80 else "")
+                        break
+                results.append({
+                    "id": cid,
+                    "title": title or "Untitled conversation",
+                    "turn_count": len(date_turns),
+                    "first_turn": date_turns[0],
+                    "last_turn": date_turns[-1],
+                    "turns": date_turns,
+                })
+        return results
 
     # ── Context Compression ───────────────────────────────────────────────────
 

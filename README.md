@@ -49,7 +49,7 @@ Press **Ctrl+C** in the Terminal window.
 |---|---|---|
 | Frontend | http://localhost:5173 | Opens automatically |
 | Backend API | http://localhost:8000 | FastAPI |
-| Ollama | http://localhost:11434 | AI model server |
+| Ollama | http://localhostx:11434 | AI model server |
 
 If port 5173 is already in use, the frontend will start on 5174 (check Terminal output).
 

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import (
     chat_router, study_router, docs_router,
     research_router, voice_router, imagegen_router, admin_router, agent_router,
-    intelligence_router, v2_router
+    intelligence_router, v2_router, planner_router
 )
 
 logging.basicConfig(
@@ -26,7 +26,7 @@ app.add_middleware(
 for router in [
     chat_router, study_router, docs_router,
     research_router, voice_router, imagegen_router, admin_router, agent_router,
-    intelligence_router, v2_router
+    intelligence_router, v2_router, planner_router
 ]:
     app.include_router(router)
 

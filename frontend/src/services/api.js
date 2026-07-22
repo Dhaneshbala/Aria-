@@ -61,6 +61,9 @@ export const deleteConversation = (id) =>
 export const searchConversations = (query) =>
   apiFetch(`${BASE}/chat/search?q=${encodeURIComponent(query)}`).then(r => r.json())
 
+export const getConversationsForDate = (date) =>
+  apiFetch(`${BASE}/chat/conversations/date/${date}`).then(r => r.json())
+
 // ── Study ─────────────────────────────────────────────────────────────────────
 
 export const generateQuiz = (topic, level = 'medium', count = 5) =>
@@ -140,6 +143,42 @@ export const generateAssessmentPlan = async (file, daysAvailable = 7) => {
   const resp = await apiFetch(`${BASE}/study/assessment-plan`, { method: 'POST', body: form })
   return resp.json()
 }
+
+// ── Spaced Repetition ────────────────────────────────────────────────────────
+
+export const addSrCard = (front, back, subject = 'general') =>
+  apiFetch(`${BASE}/v2/study/add-card`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ front, back, subject }),
+  }).then(r => r.json())
+
+export const bulkAddSrCards = (cards, subject = 'general') =>
+  apiFetch(`${BASE}/v2/study/bulk-add-cards`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cards, subject }),
+  }).then(r => r.json())
+
+export const deleteSrCard = (card_id) =>
+  apiFetch(`${BASE}/v2/study/delete-card`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_id }),
+  }).then(r => r.json())
+
+export const getDueCards = (limit = 20) =>
+  apiFetch(`${BASE}/v2/study/due-cards?limit=${limit}`).then(r => r.json())
+
+export const getSrStats = () =>
+  apiFetch(`${BASE}/v2/study/sr-stats`).then(r => r.json())
+
+export const reviewSrCard = (card_id, quality) =>
+  apiFetch(`${BASE}/v2/study/review-card`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card_id, quality }),
+  }).then(r => r.json())
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
@@ -276,50 +315,6 @@ export const getBackgroundTasks = (status) =>
 export const clearCompletedTasks = () =>
   apiFetch(`${INTEL}/agents/tasks/completed`, { method: 'DELETE' }).then(r => r.json())
 
-// ── AI Superpowers ───────────────────────────────────────────────────────────
-
-export const optimisePrompt = (prompt) =>
-  apiFetch(`${INTEL}/superpowers/optimise-prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt }),
-  }).then(r => r.json())
-
-export const selfCritique = (response, question) =>
-  apiFetch(`${INTEL}/superpowers/self-critique`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response, question }),
-  }).then(r => r.json())
-
-export const confidenceScore = (response, question) =>
-  apiFetch(`${INTEL}/superpowers/confidence`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response, question }),
-  }).then(r => r.json())
-
-export const hallucinationCheck = (response, context) =>
-  apiFetch(`${INTEL}/superpowers/hallucination-check`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response, context }),
-  }).then(r => r.json())
-
-export const reflectOnAnswer = (response, question) =>
-  apiFetch(`${INTEL}/superpowers/reflect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ response, question }),
-  }).then(r => r.json())
-
-export const multiAgentDebate = (question, models) =>
-  apiFetch(`${INTEL}/superpowers/debate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, models }),
-  }).then(r => r.json())
-
 // ── Study Intelligence ───────────────────────────────────────────────────────
 
 export const getWeakTopics = () =>
@@ -340,34 +335,8 @@ export const getCurriculum = (subject) =>
 export const getAdaptiveRecommendations = () =>
   apiFetch(`${INTEL}/study/adaptive`).then(r => r.json())
 
-// ── Coding Intelligence ──────────────────────────────────────────────────────
-
-export const understandProject = (path) =>
-  apiFetch(`${INTEL}/coding/understand?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const viewArchitecture = (path) =>
-  apiFetch(`${INTEL}/coding/architecture?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const analyseDependencies = (path) =>
-  apiFetch(`${INTEL}/coding/dependencies?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const findDeadCode = (path) =>
-  apiFetch(`${INTEL}/coding/dead-code?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const scanSecurity = (path) =>
-  apiFetch(`${INTEL}/coding/security?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const generateChangelog = (path) =>
-  apiFetch(`${INTEL}/coding/changelog?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const explainProjectStructure = (path) =>
-  apiFetch(`${INTEL}/coding/explain?path=${encodeURIComponent(path)}`).then(r => r.json())
-
-export const analysePerformance = (path) =>
-  apiFetch(`${INTEL}/coding/performance?path=${encodeURIComponent(path)}`).then(r => r.json())
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// V2 API — Analytics, Gamification, Curriculum, Utilities
+// V2 API — Analytics, Gamification, Curriculum
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const V2 = `${BASE}/v2`
