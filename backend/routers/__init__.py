@@ -6,3 +6,5 @@ from routers.voice import router as voice_router
 from routers.imagegen import router as imagegen_router
 from routers.admin import router as admin_router
 from routers.agent import router as agent_router
+from routers.intelligence import router as intelligence_router
+from routers.v2 import router as v2_router

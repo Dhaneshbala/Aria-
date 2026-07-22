@@ -27,6 +27,7 @@ from services.research_service import ResearchService
 from services.study_service import StudyService
 from services.youtube_service import YouTubeService
 from services.document_service import DocumentService
+from services.knowledge_graph_service import KnowledgeGraphService
 
 ollama       = OllamaService()
 image_svc    = ImageService()
@@ -35,6 +36,7 @@ research_svc = ResearchService()
 study_svc    = StudyService()
 youtube_svc  = YouTubeService()
 doc_svc      = DocumentService()
+kg_svc       = KnowledgeGraphService()
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
@@ -311,10 +313,14 @@ async def orchestrate(
         except Exception as e:
             yield _sse({"type": "status", "content": f"Image gen error: {e}"})
 
-    # ── Step 8: Save to memory ────────────────────────────────────────────────
+    # ── Step 8: Save to memory + extract knowledge graph ────────────────────────
     if full_response and config.get("memory_enabled", True):
         try:
             await memory_svc.save(conversation_id, message, full_response)
+        except Exception:
+            pass
+        try:
+            await kg_svc.extract_and_store(conversation_id, message, full_response)
         except Exception:
             pass
 
