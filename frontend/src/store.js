@@ -36,6 +36,21 @@ export const useStore = create((set, get) => ({
   conversations: [],
   pinnedChats: [],
 
+  // ── Study Tool Persistence ──────────────────────────────────────────────────
+  // Persists generated content across page navigations
+  studyTools: {
+    quiz: { questions: [], current: 0, selected: null, score: 0, done: false, answers: [], topic: '', level: 'medium', count: 5 },
+    flashcards: { cards: [], order: [], idx: 0, flipped: false, known: [], topic: '', count: 10 },
+    mindmap: { data: null, topic: '' },
+    studyPlan: { plan: [], checked: {}, topic: '', days: 7 },
+    youtube: { result: null, quiz: null, flashcards: null, url: '' },
+    studyTools: { result: '', activeTool: 'essay', assessResult: null, assessChecked: {} },
+  },
+  setStudyTool: (tool, data) => set(s => ({
+    studyTools: { ...s.studyTools, [tool]: { ...s.studyTools[tool], ...data } },
+  })),
+  getStudyTool: (tool) => get().studyTools[tool] || {},
+
   setConversationId: (id) => {
     // Save current messages before switching
     const { conversationId, messages } = get()

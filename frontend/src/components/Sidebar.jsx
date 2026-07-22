@@ -6,17 +6,18 @@ import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
   Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench,
-  Brain, Clock, Rocket, BarChart3, Trophy, GraduationCap, Repeat, Scissors
+  Brain, Clock, BarChart3, Trophy, GraduationCap, Repeat, Scissors, ListTodo, LayoutDashboard
 } from 'lucide-react'
 
 const NAV = [
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: MessageSquare, label: 'Chat', path: '/chat' },
   { icon: Code, label: 'Coding', path: '/coding' },
   { icon: BookOpen, label: 'Quiz', path: '/quiz' },
   { icon: CreditCard, label: 'Flashcards', path: '/flashcards' },
   { icon: Repeat, label: 'Spaced Rep', path: '/spaced-repetition' },
   { icon: Network, label: 'Mind Map', path: '/mindmap' },
-  { icon: Calendar, label: 'Study Plan', path: '/study-plan' },
+  { icon: ListTodo, label: 'AI Planner', path: '/ai-planner' },
   { icon: Wrench, label: 'Study Tools', path: '/study-tools' },
   { icon: Presentation, label: 'PowerPoint', path: '/pptx' },
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
@@ -29,10 +30,6 @@ const INTEL_NAV = [
   { icon: Clock, label: 'Memory Timeline', path: '/memory-timeline' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: Trophy, label: 'Achievements', path: '/achievements' },
-  { icon: GraduationCap, label: 'NSW Curriculum', path: '/curriculum' },
-  { icon: Rocket, label: 'Superpowers', path: '/superpowers' },
-  { icon: Scissors, label: 'Coding Intel', path: '/coding-intel' },
-  { icon: Wrench, label: 'Utilities', path: '/utilities' },
 ]
 
 const BOTTOM_NAV = [

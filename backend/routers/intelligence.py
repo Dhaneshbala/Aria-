@@ -1,7 +1,6 @@
 """
 Intelligence router — Knowledge Graph, Memory Timeline, Semantic Search,
-Context Compression, Smart Cleanup, Background Agents, AI Superpowers,
-Study Intelligence, Coding Intelligence.
+Context Compression, Smart Cleanup, Background Agents, Study Intelligence.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -13,9 +12,7 @@ router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 _kg_svc = None
 _mem_svc = None
 _bg_svc = None
-_superpowers = None
 _study_intel = None
-_coding_intel = None
 
 
 def _get_kg():
@@ -42,14 +39,6 @@ def _get_bg():
     return _bg_svc
 
 
-def _get_superpowers():
-    global _superpowers
-    if _superpowers is None:
-        from services.ai_superpowers_service import AISuperpowers
-        _superpowers = AISuperpowers()
-    return _superpowers
-
-
 def _get_study_intel():
     global _study_intel
     if _study_intel is None:
@@ -57,13 +46,6 @@ def _get_study_intel():
         _study_intel = StudyIntelligence()
     return _study_intel
 
-
-def _get_coding_intel():
-    global _coding_intel
-    if _coding_intel is None:
-        from services.coding_intelligence_service import CodingIntelligence
-        _coding_intel = CodingIntelligence()
-    return _coding_intel
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -159,66 +141,6 @@ async def clear_completed_tasks():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# AI Superpowers
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class PromptOptimiseRequest(BaseModel):
-    prompt: str
-
-class CritiqueRequest(BaseModel):
-    response: str
-    question: str
-
-class ConfidenceRequest(BaseModel):
-    response: str
-    question: str
-
-class HallucinationRequest(BaseModel):
-    response: str
-    context: str
-
-class ReflectionRequest(BaseModel):
-    response: str
-    question: str
-
-class DebateRequest(BaseModel):
-    question: str
-    models: Optional[list[str]] = None
-
-
-@router.post("/superpowers/optimise-prompt")
-async def optimise_prompt(req: PromptOptimiseRequest):
-    result = await _get_superpowers().optimise_prompt(req.prompt)
-    return {"original": req.prompt, "optimised": result}
-
-
-@router.post("/superpowers/self-critique")
-async def self_critique(req: CritiqueRequest):
-    return await _get_superpowers().self_critique(req.response, req.question)
-
-
-@router.post("/superpowers/confidence")
-async def confidence_score(req: ConfidenceRequest):
-    return await _get_superpowers().confidence_score(req.response, req.question)
-
-
-@router.post("/superpowers/hallucination-check")
-async def hallucination_check(req: HallucinationRequest):
-    return await _get_superpowers().hallucination_detector(req.response, req.context)
-
-
-@router.post("/superpowers/reflect")
-async def reflect(req: ReflectionRequest):
-    improved = await _get_superpowers().reflection_mode(req.response, req.question)
-    return {"original": req.response, "improved": improved}
-
-
-@router.post("/superpowers/debate")
-async def multi_agent_debate(req: DebateRequest):
-    return await _get_superpowers().multi_agent_debate(req.question, req.models)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # Study Intelligence
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -251,50 +173,3 @@ async def get_curriculum(subject: str):
 @router.get("/study/adaptive")
 async def get_adaptive_recommendations():
     return await _get_mem().get_adaptive_recommendations()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Coding Intelligence
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@router.get("/coding/understand")
-async def understand_project(path: str):
-    return await _get_coding_intel().understand_project(path)
-
-
-@router.get("/coding/architecture")
-async def view_architecture(path: str):
-    return await _get_coding_intel().view_architecture(path)
-
-
-@router.get("/coding/dependencies")
-async def analyse_dependencies(path: str):
-    return await _get_coding_intel().analyse_dependencies(path)
-
-
-@router.get("/coding/dead-code")
-async def find_dead_code(path: str):
-    return await _get_coding_intel().find_dead_code(path)
-
-
-@router.get("/coding/security")
-async def scan_security(path: str):
-    return await _get_coding_intel().scan_security(path)
-
-
-@router.get("/coding/changelog")
-async def generate_changelog(path: str):
-    result = await _get_coding_intel().generate_changelog(path)
-    return {"changelog": result}
-
-
-@router.get("/coding/explain")
-async def explain_structure(path: str):
-    result = await _get_coding_intel().explain_structure(path)
-    return {"explanation": result}
-
-
-@router.get("/coding/performance")
-async def analyse_performance(path: str):
-    result = await _get_coding_intel().analyse_performance(path)
-    return {"analysis": result}

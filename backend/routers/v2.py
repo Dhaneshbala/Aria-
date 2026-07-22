@@ -1,5 +1,5 @@
 """
-Extended Intelligence router — Analytics, Gamification, Automation, Utilities,
+Extended Intelligence router — Analytics, Gamification, Automation,
 NSW Curriculum, Advanced Study Intelligence.
 """
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -12,13 +12,12 @@ router = APIRouter(prefix="/api/v2", tags=["v2"])
 _analytics = None
 _gamification = None
 _automation = None
-_utilities = None
 _curriculum = None
 _advanced_study = None
 
 
 def _svc(name):
-    global _analytics, _gamification, _automation, _utilities, _curriculum, _advanced_study
+    global _analytics, _gamification, _automation, _curriculum, _advanced_study
     if name == "analytics":
         if _analytics is None:
             from services.analytics_service import AnalyticsService
@@ -34,11 +33,6 @@ def _svc(name):
             from services.automation_service import AutomationService
             _automation = AutomationService()
         return _automation
-    if name == "utilities":
-        if _utilities is None:
-            from services.utility_tools_service import UtilityToolsService
-            _utilities = UtilityToolsService()
-        return _utilities
     if name == "curriculum":
         if _curriculum is None:
             from services.nsw_curriculum_service import NSWCurriculumService
@@ -128,59 +122,6 @@ async def summarise_paper(file: UploadFile = File(...)):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Utility Tools
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class SummariseRequest(BaseModel):
-    text: str
-    level: str = "paragraph"
-
-class CitationRequest(BaseModel):
-    source: dict
-    style: str = "apa"
-
-class ConvertRequest(BaseModel):
-    value: float
-    from_unit: str
-    to_unit: str
-
-class PlotRequest(BaseModel):
-    expression: str
-    x_min: float = -10
-    x_max: float = 10
-
-class VoiceToCardsRequest(BaseModel):
-    transcript: str
-    count: int = 5
-
-
-@router.post("/util/summarise")
-async def summarise(req: SummariseRequest):
-    return await _svc("utilities").smart_summarise(req.text, req.level)
-
-
-@router.post("/util/citation")
-async def citation(req: CitationRequest):
-    result = _svc("utilities").generate_citation(req.source, req.style)
-    return {"citation": result, "style": req.style}
-
-
-@router.post("/util/convert")
-async def convert(req: ConvertRequest):
-    return _svc("utilities").convert_unit(req.value, req.from_unit, req.to_unit)
-
-
-@router.post("/util/plot")
-async def plot(req: PlotRequest):
-    return _svc("utilities").plot_function(req.expression, req.x_min, req.x_max)
-
-
-@router.post("/util/voice-to-cards")
-async def voice_to_cards(req: VoiceToCardsRequest):
-    return await _svc("utilities").voice_to_flashcards(req.transcript, req.count)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # NSW Curriculum
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -218,8 +159,7 @@ async def search_curriculum(q: str = ""):
 
 @router.get("/curriculum/age/{age}")
 async def get_curriculum_for_age(age: int):
-    from services.advanced_study_service import AdvancedStudyIntelligence
-    return AdvancedStudyIntelligence().get_curriculum_for_age(age)
+    return _svc("advanced_study").get_curriculum_for_age(age)
 
 
 @router.get("/curriculum/progression/{kla}")
@@ -278,3 +218,25 @@ async def add_card(req: AddCardRequest):
 @router.post("/study/review-card")
 async def review_card(req: ReviewCardRequest):
     return await _svc("advanced_study").review_flashcard(req.card_id, req.quality)
+
+
+class DeleteCardRequest(BaseModel):
+    card_id: str
+
+@router.post("/study/delete-card")
+async def delete_card(req: DeleteCardRequest):
+    return await _svc("advanced_study").delete_flashcard(req.card_id)
+
+
+class BulkAddCardsRequest(BaseModel):
+    cards: list[dict]
+    subject: str = "general"
+
+@router.post("/study/bulk-add-cards")
+async def bulk_add_cards(req: BulkAddCardsRequest):
+    return await _svc("advanced_study").add_flashcards_bulk(req.cards, req.subject)
+
+
+@router.get("/study/all-cards")
+async def all_cards(subject: str | None = None):
+    return await _svc("advanced_study").get_all_cards(subject)

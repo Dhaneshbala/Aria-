@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react'
-import { getMemoryTimeline, compressMemory, cleanupMemory, globalMemorySearch, getAdaptiveRecommendations } from '../services/api'
+import { useNavigate } from 'react-router-dom'
+import {
+  getMemoryTimeline, compressMemory, cleanupMemory, globalMemorySearch,
+  getAdaptiveRecommendations, getConversationsForDate, deleteConversation
+} from '../services/api'
 import { showToast } from '../components/Toast'
 
 export default function MemoryTimelinePage() {
+  const navigate = useNavigate()
   const [timeline, setTimeline] = useState([])
   const [recommendations, setRecommendations] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -11,6 +16,10 @@ export default function MemoryTimelinePage() {
   const [loading, setLoading] = useState(true)
   const [compressing, setCompressing] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [expandedDay, setExpandedDay] = useState(null)
+  const [dayConversations, setDayConversations] = useState([])
+  const [loadingDay, setLoadingDay] = useState(false)
+  const [expandedConv, setExpandedConv] = useState(null)
 
   useEffect(() => { loadTimeline() }, [days])
 
@@ -60,6 +69,37 @@ export default function MemoryTimelinePage() {
       showToast('Cleanup failed', 'error')
     }
     setCleaning(false)
+  }
+
+  const toggleDay = async (date) => {
+    if (expandedDay === date) {
+      setExpandedDay(null)
+      setDayConversations([])
+      return
+    }
+    setExpandedDay(date)
+    setLoadingDay(true)
+    setExpandedConv(null)
+    try {
+      const convs = await getConversationsForDate(date)
+      setDayConversations(convs)
+    } catch (e) {
+      showToast('Failed to load conversations', 'error')
+    }
+    setLoadingDay(false)
+  }
+
+  const handleDelete = async (convId, e) => {
+    e.stopPropagation()
+    if (!confirm('Delete this conversation? This cannot be undone.')) return
+    try {
+      await deleteConversation(convId)
+      setDayConversations(prev => prev.filter(c => c.id !== convId))
+      showToast('Conversation deleted', 'success')
+      loadTimeline()
+    } catch (e) {
+      showToast('Delete failed', 'error')
+    }
   }
 
   const totalTurns = timeline.reduce((sum, d) => sum + (d.turns || 0), 0)
@@ -163,42 +203,132 @@ export default function MemoryTimelinePage() {
       ) : (
         <div className="space-y-1">
           {timeline.map((day, i) => (
-            <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-[#1a1a2e] border border-[#2a2a40]">
-              <div className="flex flex-col items-center min-w-[60px]">
-                <div className="text-xs text-[#888]">{day.date?.slice(5)}</div>
-                <div
-                  className="mt-1 rounded-full bg-[#7c6af7]"
-                  style={{
-                    width: 12,
-                    height: 12,
-                    opacity: 0.3 + (day.turns / maxTurns) * 0.7,
-                  }}
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[#e8e8e8]">
-                    {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  <span className="text-xs text-[#7c6af7]">{day.turns} turns</span>
+            <div key={i} className="rounded-xl bg-[#1a1a2e] border border-[#2a2a40] overflow-hidden">
+              {/* Day header — clickable */}
+              <button
+                onClick={() => toggleDay(day.date)}
+                className={`w-full flex items-start gap-3 p-3 text-left transition-colors ${
+                  expandedDay === day.date ? 'bg-[#252540]' : 'hover:bg-[#1f1f35]'
+                }`}
+              >
+                <div className="flex flex-col items-center min-w-[60px]">
+                  <div className="text-xs text-[#888]">{day.date?.slice(5)}</div>
+                  <div
+                    className="mt-1 rounded-full bg-[#7c6af7]"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      opacity: 0.3 + (day.turns / maxTurns) * 0.7,
+                    }}
+                  />
                 </div>
-                {day.topics && day.topics.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {day.topics.slice(0, 3).map((t, j) => (
-                      <span key={j} className="text-xs px-2 py-0.5 rounded-full bg-[#252540] text-[#888] truncate max-w-[200px]">
-                        {t}
-                      </span>
-                    ))}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-[#e8e8e8]">
+                      {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                    <span className="text-xs text-[#7c6af7]">{day.turns} turns</span>
+                    <span className="text-xs text-[#666]">· {day.conversations} conv{day.conversations !== 1 ? 's' : ''}</span>
                   </div>
-                )}
-              </div>
-              {/* Activity bar */}
-              <div className="w-16 h-2 rounded-full bg-[#252540] mt-2">
-                <div
-                  className="h-full rounded-full bg-[#7c6af7]"
-                  style={{ width: `${(day.turns / maxTurns) * 100}%` }}
-                />
-              </div>
+                  {day.topics && day.topics.length > 0 && expandedDay !== day.date && (
+                    <div className="flex flex-wrap gap-1">
+                      {day.topics.slice(0, 3).map((t, j) => (
+                        <span key={j} className="text-xs px-2 py-0.5 rounded-full bg-[#252540] text-[#888] truncate max-w-[200px]">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-2 rounded-full bg-[#252540] mt-2">
+                    <div
+                      className="h-full rounded-full bg-[#7c6af7]"
+                      style={{ width: `${(day.turns / maxTurns) * 100}%` }}
+                    />
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-[#666] transition-transform ${expandedDay === day.date ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Expanded: conversation list */}
+              {expandedDay === day.date && (
+                <div className="border-t border-[#2a2a40] px-3 pb-3">
+                  {loadingDay ? (
+                    <div className="py-4 text-center text-[#666] text-sm">Loading conversations...</div>
+                  ) : dayConversations.length === 0 ? (
+                    <div className="py-4 text-center text-[#666] text-sm">No conversations found</div>
+                  ) : (
+                    <div className="space-y-2 pt-2">
+                      {dayConversations.map((conv) => (
+                        <div key={conv.id} className="rounded-lg bg-[#0f0f0f] border border-[#2a2a40] overflow-hidden">
+                          {/* Conversation header */}
+                          <button
+                            onClick={() => setExpandedConv(expandedConv === conv.id ? null : conv.id)}
+                            className="w-full flex items-center gap-3 p-3 text-left hover:bg-[#1a1a2e] transition-colors"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-[#e8e8e8] truncate">{conv.title}</div>
+                              <div className="text-xs text-[#666] mt-0.5">
+                                {conv.turn_count} turn{conv.turn_count !== 1 ? 's' : ''} · {conv.id.slice(0, 8)}...
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => navigate(`/chat/${conv.id}`)}
+                                className="px-2 py-1 text-xs rounded-md bg-[#7c6af7]/20 text-[#7c6af7] hover:bg-[#7c6af7]/30 transition-colors"
+                                title="Open in chat"
+                              >
+                                Open
+                              </button>
+                              <button
+                                onClick={(e) => handleDelete(conv.id, e)}
+                                className="px-2 py-1 text-xs rounded-md bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors"
+                                title="Delete conversation"
+                              >
+                                Delete
+                              </button>
+                              <svg
+                                className={`w-4 h-4 text-[#666] transition-transform ${expandedConv === conv.id ? 'rotate-180' : ''}`}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
+                          </button>
+
+                          {/* Expanded: show turns */}
+                          {expandedConv === conv.id && (
+                            <div className="border-t border-[#2a2a40] px-3 pb-3 space-y-2 pt-2">
+                              {conv.turns.map((turn, ti) => (
+                                <div key={ti} className="space-y-1">
+                                  {turn.user && (
+                                    <div className="flex gap-2">
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#7c6af7]/20 text-[#7c6af7] shrink-0 mt-0.5">You</span>
+                                      <span className="text-xs text-[#ccc] break-words">{turn.user}</span>
+                                    </div>
+                                  )}
+                                  {turn.ai && (
+                                    <div className="flex gap-2">
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#06b6d4]/20 text-[#06b6d4] shrink-0 mt-0.5">AI</span>
+                                      <span className="text-xs text-[#aaa] break-words">{turn.ai.slice(0, 300)}{turn.ai.length > 300 ? '...' : ''}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

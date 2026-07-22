@@ -1,21 +1,29 @@
 import { useState, useEffect, useCallback } from 'react'
 import { generateQuiz, checkAnswer } from '../services/api'
+import { useStore } from '../store'
 import { BookOpen, Trophy, RotateCcw } from 'lucide-react'
 
 const LEVELS = ['easy', 'medium', 'hard', 'olympiad']
 const LETTER = ['A', 'B', 'C', 'D']
 
 export default function QuizPage() {
-  const [topic, setTopic] = useState('')
-  const [level, setLevel] = useState('medium')
-  const [count, setCount] = useState(5)
-  const [questions, setQuestions] = useState([])
-  const [current, setCurrent] = useState(0)
-  const [selected, setSelected] = useState(null)
-  const [score, setScore] = useState(0)
-  const [done, setDone] = useState(false)
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.quiz
+  const [topic, setTopic] = useState(saved.topic || '')
+  const [level, setLevel] = useState(saved.level || 'medium')
+  const [count, setCount] = useState(saved.count || 5)
+  const [questions, setQuestions] = useState(saved.questions || [])
+  const [current, setCurrent] = useState(saved.current || 0)
+  const [selected, setSelected] = useState(saved.selected || null)
+  const [score, setScore] = useState(saved.score || 0)
+  const [done, setDone] = useState(saved.done || false)
   const [loading, setLoading] = useState(false)
-  const [answers, setAnswers] = useState([])
+  const [answers, setAnswers] = useState(saved.answers || [])
+
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('quiz', { questions, current, selected, score, done, answers, topic, level, count })
+  }, [questions, current, selected, score, done, answers, topic, level, count])
 
   const start = async () => {
     if (!topic.trim()) return

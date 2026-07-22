@@ -9,7 +9,6 @@ Strategy for MacBook Air M4 16GB:
 Pollinations.ai is completely free, requires no API key, and works on any machine.
 It uses FLUX and SDXL models hosted remotely.
 """
-import asyncio
 import httpx
 import urllib.parse
 import base64

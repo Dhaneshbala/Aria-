@@ -1,16 +1,24 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { processYouTube, generateQuiz, generateFlashcards } from '../services/api'
+import { useStore } from '../store'
 import { showToast } from '../components/Toast'
 import { Youtube, FileText, BookOpen, CreditCard, Info, ExternalLink } from 'lucide-react'
 
 export default function YouTubePage() {
-  const [url, setUrl] = useState('')
-  const [result, setResult] = useState(null)
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.youtube
+  const [url, setUrl] = useState(saved.url || '')
+  const [result, setResult] = useState(saved.result || null)
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState('summary')
-  const [quiz, setQuiz] = useState(null)
-  const [flashcards, setFlashcards] = useState(null)
+  const [quiz, setQuiz] = useState(saved.quiz || null)
+  const [flashcards, setFlashcards] = useState(saved.flashcards || null)
   const [loadingExtra, setLoadingExtra] = useState('')
+
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('youtube', { result, quiz, flashcards, url })
+  }, [result, quiz, flashcards, url])
 
   const process = async () => {
     if (!url.trim()) return

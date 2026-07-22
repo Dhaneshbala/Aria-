@@ -1,12 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { generateMindmap } from '../services/api'
-import { Network } from 'lucide-react'
+import { useStore } from '../store'
 import MindMapWidget from '../components/MindMapWidget'
+import { Network } from 'lucide-react'
 
 export default function MindMapPage() {
-  const [topic, setTopic] = useState('')
-  const [mindmap, setMindmap] = useState(null)
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.mindmap
+  const [topic, setTopic] = useState(saved.topic || '')
+  const [mindmap, setMindmap] = useState(saved.data || null)
   const [loading, setLoading] = useState(false)
+
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('mindmap', { data: mindmap, topic })
+  }, [mindmap, topic])
 
   const generate = async () => {
     if (!topic.trim()) return
