@@ -9,3 +9,4 @@ from routers.agent import router as agent_router
 from routers.intelligence import router as intelligence_router
 from routers.v2 import router as v2_router
 from routers.planner import router as planner_router
+from routers.kb import router as kb_router

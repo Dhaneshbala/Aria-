@@ -25,6 +25,7 @@ import CurriculumPage from './pages/CurriculumPage'
 import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
 import AIPlannerPage from './pages/AIPlannerPage'
 import DashboardPage from './pages/DashboardPage'
+import KnowledgeBasePage from './pages/KnowledgeBasePage'
 
 function NotFound() {
   return (
@@ -94,6 +95,7 @@ export default function App() {
               <Route path="/curriculum" element={<CurriculumPage />} />
               <Route path="/spaced-repetition" element={<SpacedRepetitionPage />} />
               <Route path="/ai-planner" element={<AIPlannerPage />} />
+              <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

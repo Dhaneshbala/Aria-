@@ -128,9 +128,10 @@ function CodeBlock({ code, lang }) {
 function ToolResult({ tool }) {
   const [open, setOpen] = useState(false)
   const META = {
-    web_search: { icon: <Globe size={12} />, label: 'Web Search Results', color: 'text-blue-400' },
-    vision:     { icon: <Eye size={12} />,   label: 'Image Analysis',     color: 'text-purple-400' },
-    youtube:    { icon: <Youtube size={12} />, label: 'YouTube Transcript', color: 'text-red-400' },
+    web_search:  { icon: <Globe size={12} />, label: 'Web Search Results', color: 'text-blue-400' },
+    cross_check: { icon: <Globe size={12} />, label: 'Internet Cross-Check', color: 'text-green-400' },
+    vision:      { icon: <Eye size={12} />,   label: 'Image Analysis',     color: 'text-purple-400' },
+    youtube:     { icon: <Youtube size={12} />, label: 'YouTube Transcript', color: 'text-red-400' },
   }
   const meta = META[tool.tool] || { icon: '🔧', label: tool.tool, color: 'text-[#888]' }
 
@@ -147,6 +148,12 @@ function ToolResult({ tool }) {
           {tool.tool === 'web_search' && Array.isArray(tool.content) && tool.content.map((r, i) => (
             <div key={i} className="mb-2 pb-2 border-b border-[#1a1a1a] last:border-0">
               <a href={r.url} target="_blank" rel="noreferrer" className="text-[#7c6af7] hover:underline block">{r.title}</a>
+              <p className="text-[#555] mt-0.5 leading-relaxed">{r.snippet}</p>
+            </div>
+          ))}
+          {tool.tool === 'cross_check' && Array.isArray(tool.content) && tool.content.map((r, i) => (
+            <div key={i} className="mb-2 pb-2 border-b border-[#1a1a1a] last:border-0">
+              <span className="text-green-400 font-medium">{r.title}</span>
               <p className="text-[#555] mt-0.5 leading-relaxed">{r.snippet}</p>
             </div>
           ))}

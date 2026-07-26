@@ -6,7 +6,8 @@ import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
   Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench,
-  Brain, Clock, BarChart3, Trophy, GraduationCap, Repeat, Scissors, ListTodo, LayoutDashboard
+  Brain, Clock, BarChart3, Trophy, GraduationCap, Repeat, Scissors, ListTodo, LayoutDashboard,
+  Database
 } from 'lucide-react'
 
 const NAV = [
@@ -28,8 +29,10 @@ const NAV = [
 const INTEL_NAV = [
   { icon: Brain, label: 'Knowledge Graph', path: '/knowledge-graph' },
   { icon: Clock, label: 'Memory Timeline', path: '/memory-timeline' },
+  { icon: Database, label: 'Knowledge Base', path: '/knowledge-base' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: Trophy, label: 'Achievements', path: '/achievements' },
+  { icon: GraduationCap, label: 'Curriculum', path: '/curriculum' },
 ]
 
 const BOTTOM_NAV = [

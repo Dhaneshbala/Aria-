@@ -28,6 +28,7 @@ from services.study_service import StudyService
 from services.youtube_service import YouTubeService
 from services.document_service import DocumentService
 from services.knowledge_graph_service import KnowledgeGraphService
+from services.knowledge_base_service import KnowledgeBaseService
 
 ollama       = OllamaService()
 image_svc    = ImageService()
@@ -37,6 +38,7 @@ study_svc    = StudyService()
 youtube_svc  = YouTubeService()
 doc_svc      = DocumentService()
 kg_svc       = KnowledgeGraphService()
+kb_svc       = KnowledgeBaseService()
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
@@ -55,7 +57,7 @@ INTENT_PATTERNS = {
         r"\b(exam mode|exam question|past paper|mark scheme|timed question)\b",
     ],
     "flashcard": [
-        r"\b(flashcard|flash card|memoris|memoriz|key terms|study cards)\b",
+        r"\b(flashcards?|flash cards?|memoris|memoriz|key terms|study cards)\b",
     ],
     "mindmap": [
         r"\b(mind.?map|concept map|visualis|visualiz|branch diagram|topic map)\b",
@@ -122,9 +124,48 @@ INTENT_PATTERNS = {
         r"\b(timeline|chronological|historical.*order|sequence.*events)\b",
         r"\b(what happened.*when|order.*events|history.*of)\b",
     ],
+    "translate": [
+        r"\b(translat\w*|traducir|übersetzen|traduire|tradurre|переведи|翻訳|번역|번역해|번역해줘|翻译|번역하기|번역해 주세요)\b",
+        r"\b(in english|en anglais|auf english|en español|auf spanisch|по английски|英語で|영어로)\b",
+    ],
     "doc_chat":         [],   # set by chat router when doc is attached
     "video_summarise":  [],   # set when youtube_results present
 }
+
+# ── Language detection ────────────────────────────────────────────────────────
+# Common non-English language indicators (not exhaustive, but practical)
+_NON_ENGLISH_INDICATORS = [
+    # Korean
+    (r"[\uac00-\ud7af]{3,}", "Korean"),
+    # Japanese (Hiragana/Katakana)
+    (r"[\u3040-\u309f\u30a0-\u30ff]{3,}", "Japanese"),
+    # Chinese
+    (r"[\u4e00-\u9fff]{3,}", "Chinese"),
+    # Arabic
+    (r"[\u0600-\u06ff]{3,}", "Arabic"),
+    # Hindi (Devanagari)
+    (r"[\u0900-\u097f]{3,}", "Hindi"),
+    # Russian
+    (r"[\u0400-\u04ff]{3,}", "Russian"),
+    # Spanish indicators
+    (r"\b(por favor|gracias|buenos dias|buenas tardes|como estas|que es|necesito|ayuda|tengo|traducir|en espanol)\b", "Spanish"),
+    # French indicators
+    (r"\b(sil vous plaait|merci|bonjour|comment|quest-ce|jai besoin|jaide|je veux|traduire|en francais|en anglais)\b", "French"),
+    # German indicators
+    (r"\b(bitte|danke|guten tag|wie|ich brauche|ich helfe|ich will|ubersetzen|auf deutsch)\b", "German"),
+    # Portuguese indicators
+    (r"\b(por favor|obrigado|bom dia|como|eu preciso|eu ajudo|eu quero|traduzir|em portugues)\b", "Portuguese"),
+    # Italian indicators
+    (r"\b(per favore|grazie|buongiorno|come|ho bisogno|aiuto|voglio|tradurre|in italiano)\b", "Italian"),
+]
+
+
+def detect_message_language(message: str) -> str | None:
+    """Detect if a message is primarily in a non-English language."""
+    for pattern, lang in _NON_ENGLISH_INDICATORS:
+        if re.search(pattern, message, re.I):
+            return lang
+    return None
 
 
 def detect_intents(message: str, has_image: bool = False, has_doc: bool = False) -> list[str]:
@@ -138,6 +179,12 @@ def detect_intents(message: str, has_image: bool = False, has_doc: bool = False)
         if any(re.search(p, msg, re.I) for p in patterns):
             if intent not in intents:
                 intents.append(intent)
+
+    # Detect non-English language — auto-add language context
+    detected_lang = detect_message_language(message)
+    if detected_lang:
+        intents.append("language")
+
     if not intents:
         intents.append("chat")
     return intents
@@ -157,7 +204,7 @@ def choose_models(intents: list[str], config: dict) -> dict:
         "worksheet_solver", "quote_extraction", "pdf_summarise",
         "math", "explain", "chat", "summary", "doc_chat",
         "web_search", "youtube", "video_summarise", "code", "coding",
-        "essay_feedback", "formula", "timeline",
+        "essay_feedback", "formula", "timeline", "language", "translate",
     }
     if any(i in intents for i in reasoning_intents):
         if "code" in intents or "coding" in intents:
@@ -247,11 +294,38 @@ async def orchestrate(
         except Exception:
             pass
 
+    # ── Step 3b: Knowledge Base RAG search ───────────────────────────────────
+    kb_context = ""
+    if config.get("knowledge_base_enabled", True):
+        try:
+            kb_results = await kb_svc.search(message, n_results=5)
+            if kb_results:
+                kb_parts = []
+                for r in kb_results:
+                    src = r.get("metadata", {}).get("source", "unknown")
+                    score = r.get("score", 0)
+                    if score > 0.3:  # relevance threshold
+                        kb_parts.append(f"[KB:{src}] {r['text'][:500]}")
+                if kb_parts:
+                    kb_context = "\n\n".join(kb_parts)
+                    yield _sse({"type": "tool", "tool": "knowledge_base", "content": kb_results[:3]})
+        except Exception:
+            pass
+
     # ── Step 4: Build master system prompt ────────────────────────────────────
     system_prompt = _build_system_prompt(
         intents, search_results, vision_text,
-        doc_text, memory_context, youtube_results, config, cross_check
+        doc_text, memory_context, youtube_results, config, cross_check, kb_context
     )
+
+    # Add language context to system prompt if non-English detected
+    if "language" in intents:
+        detected_lang = detect_message_language(message)
+        if detected_lang:
+            system_prompt += (
+                f"\n\nThe user is writing in {detected_lang}. "
+                f"Respond in {detected_lang}. Be natural and fluent in this language.\n"
+            )
 
     # ── Step 4b: Apply mode adjustments ───────────────────────────────────────
     if mode == "think":
@@ -343,7 +417,7 @@ async def orchestrate(
 
 def _build_system_prompt(
     intents, search_results, vision_text, doc_text,
-    memory_context, youtube_results, config, cross_check=None
+    memory_context, youtube_results, config, cross_check=None, kb_context=None
 ) -> str:
     name = config.get("student_name", "Student")
     age  = config.get("student_age",  13)
@@ -353,6 +427,13 @@ def _build_system_prompt(
         "You are warm, patient, and always explain things clearly — step by step.",
         "You celebrate effort, gently correct mistakes, and use real-world examples.",
         "You are expert in: maths, science, history, geography, English literature, coding, and all school subjects.",
+        "",
+        "━━ MULTILINGUAL CAPABILITY ━━",
+        "You can read, understand, and respond fluently in ANY language.",
+        "If the user writes in a non-English language, you MUST respond in that same language.",
+        "If the user explicitly asks for translation (e.g. 'translate to English', 'traduire en anglais'), translate the content to the requested language.",
+        "You can translate between any languages, including: Korean, Japanese, Chinese, Arabic, Hindi, Russian, Spanish, French, German, Portuguese, Italian, and more.",
+        "You can also explain grammar, vocabulary, and cultural context in any language.",
         "",
     ]
 
@@ -393,6 +474,15 @@ def _build_system_prompt(
             "━━ MEMORY (from past conversations) ━━",
             memory_context,
             "Use this to personalise your response and build on prior knowledge.",
+            "",
+        ]
+
+    if kb_context:
+        parts += [
+            "━━ KNOWLEDGE BASE (from indexed documents) ━━",
+            kb_context,
+            "Use this information to answer the student's question. Cite the source document when relevant.",
+            "If the knowledge base contains relevant information, prioritise it over general knowledge.",
             "",
         ]
 
@@ -541,6 +631,15 @@ def _build_system_prompt(
             "TIMELINE MODE: Create a clear chronological timeline.",
             "Include dates/periods, key events, cause-and-effect relationships.",
             "Format as a structured timeline with clear markers.",
+            "",
+        ]
+    if "translate" in intents:
+        parts += [
+            "TRANSLATION MODE: Translate the content accurately while preserving meaning and tone.",
+            "If a target language is specified, translate to that language.",
+            "If no target language is specified, detect the user's native language from the message and translate to English.",
+            "Include the original text and the translation clearly separated.",
+            "For complex phrases, provide context and usage examples.",
             "",
         ]
 

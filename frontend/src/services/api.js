@@ -402,3 +402,47 @@ export const getKnowledgeGaps = (subject) =>
 
 export const getLearningStyle = () =>
   apiFetch(`${V2}/study/learning-style`).then(r => r.json())
+
+// ── Knowledge Base ──────────────────────────────────────────────────────────
+
+const KB = `${BASE}/kb`
+
+export const uploadToKB = async (file, collection = null) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (collection) form.append('collection', collection)
+  const resp = await apiFetch(`${KB}/upload`, { method: 'POST', body: form })
+  return resp.json()
+}
+
+export const uploadMultipleToKB = async (files, collection = null) => {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  if (collection) form.append('collection', collection)
+  const resp = await apiFetch(`${KB}/upload-multiple`, { method: 'POST', body: form })
+  return resp.json()
+}
+
+export const searchKB = (q, collections = null, n = 5) => {
+  let url = `${KB}/search?q=${encodeURIComponent(q)}&n=${n}`
+  if (collections) url += `&collections=${encodeURIComponent(collections)}`
+  return apiFetch(url).then(r => r.json())
+}
+
+export const listKBDocuments = (collection = null) => {
+  let url = `${KB}/documents`
+  if (collection) url += `?collection=${encodeURIComponent(collection)}`
+  return apiFetch(url).then(r => r.json())
+}
+
+export const deleteKBDocument = (fileHash) =>
+  apiFetch(`${KB}/documents/${fileHash}`, { method: 'DELETE' }).then(r => r.json())
+
+export const getKBStats = () =>
+  apiFetch(`${KB}/stats`).then(r => r.json())
+
+export const getKBCollections = () =>
+  apiFetch(`${KB}/collections`).then(r => r.json())
+
+export const rebuildKBIndex = () =>
+  apiFetch(`${KB}/rebuild`, { method: 'POST' }).then(r => r.json())

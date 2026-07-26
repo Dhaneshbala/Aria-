@@ -137,3 +137,22 @@ class OllamaService:
         except Exception as e:
             logger.warning("Failed to get model info for %s: %s", model_name, e)
         return {}
+
+    async def embed(self, model: str, text: str) -> list[float]:
+        """Generate embedding vector for a single text using Ollama /api/embeddings."""
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(f"{OLLAMA_URL}/api/embeddings", json={"model": model, "prompt": text})
+                if r.status_code == 200:
+                    return r.json().get("embedding", [])
+        except Exception as e:
+            logger.warning("Embedding failed for model %s: %s", model, e)
+        return []
+
+    async def embed_batch(self, model: str, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for multiple texts. Calls embed() sequentially to avoid overloading M4."""
+        embeddings = []
+        for text in texts:
+            emb = await self.embed(model, text)
+            embeddings.append(emb)
+        return embeddings
