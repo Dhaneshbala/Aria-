@@ -1060,3 +1060,25 @@ class StudyService:
         buf.seek(0)
         logger.info(f"Generated PPTX: {topic} ({len(slide_data)} slides, {len(buf.getvalue())} bytes)")
         return buf.read()
+
+    async def generate_worksheet(
+        self, topic: str, grade: str = "Year 10",
+        question_count: int = 10, include_answers: bool = True,
+        model: str = "qwen3:8b"
+    ) -> str:
+        ans = "Include a separate answer key at the end." if include_answers else "Do NOT include answers."
+        prompt = (
+            f"You are a teacher creating a worksheet for a {grade} student.\n\n"
+            f"TOPIC: {topic}\n"
+            f"NUMBER OF QUESTIONS: {question_count}\n\n"
+            f"Create a well-structured worksheet with:\n"
+            f"- A title and instructions section\n"
+            f"- A mix of question types: multiple choice, short answer, and problem-solving\n"
+            f"- Clear space for student answers\n"
+            f"- Appropriate difficulty for {grade}\n"
+            f"- Real-world examples where possible\n\n"
+            f"{ans}\n\n"
+            f"Format the worksheet professionally using markdown with clear section headers."
+        )
+        response = await ollama.complete(model, prompt, timeout=180)
+        return response

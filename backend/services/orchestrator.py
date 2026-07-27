@@ -133,35 +133,22 @@ INTENT_PATTERNS = {
 }
 
 # ── Language detection ────────────────────────────────────────────────────────
-# Common non-English language indicators (not exhaustive, but practical)
 _NON_ENGLISH_INDICATORS = [
-    # Korean
     (r"[\uac00-\ud7af]{3,}", "Korean"),
-    # Japanese (Hiragana/Katakana)
     (r"[\u3040-\u309f\u30a0-\u30ff]{3,}", "Japanese"),
-    # Chinese
     (r"[\u4e00-\u9fff]{3,}", "Chinese"),
-    # Arabic
     (r"[\u0600-\u06ff]{3,}", "Arabic"),
-    # Hindi (Devanagari)
     (r"[\u0900-\u097f]{3,}", "Hindi"),
-    # Russian
+    (r"[\u0b80-\u0bff]{3,}", "Tamil"),
     (r"[\u0400-\u04ff]{3,}", "Russian"),
-    # Spanish indicators
-    (r"\b(por favor|gracias|buenos dias|buenas tardes|como estas|que es|necesito|ayuda|tengo|traducir|en espanol)\b", "Spanish"),
-    # French indicators
-    (r"\b(sil vous plaait|merci|bonjour|comment|quest-ce|jai besoin|jaide|je veux|traduire|en francais|en anglais)\b", "French"),
-    # German indicators
-    (r"\b(bitte|danke|guten tag|wie|ich brauche|ich helfe|ich will|ubersetzen|auf deutsch)\b", "German"),
-    # Portuguese indicators
-    (r"\b(por favor|obrigado|bom dia|como|eu preciso|eu ajudo|eu quero|traduzir|em portugues)\b", "Portuguese"),
-    # Italian indicators
-    (r"\b(per favore|grazie|buongiorno|come|ho bisogno|aiuto|voglio|tradurre|in italiano)\b", "Italian"),
+    (r"\b(por favor|gracias|buenos dias|como estas|necesito|ayuda|tengo|traducir|en espanol)\b", "Spanish"),
+    (r"\b(sil vous plait|merci|bonjour|comment|je veux|traduire|en francais)\b", "French"),
+    (r"\b(bitte|danke|guten tag|wie|ich brauche|ich helfe|ich will)\b", "German"),
+    (r"\b(per favore|grazie|buongiorno|come|ho bisogno|aiuto|voglio)\b", "Italian"),
 ]
 
 
 def detect_message_language(message: str) -> str | None:
-    """Detect if a message is primarily in a non-English language."""
     for pattern, lang in _NON_ENGLISH_INDICATORS:
         if re.search(pattern, message, re.I):
             return lang
@@ -179,11 +166,6 @@ def detect_intents(message: str, has_image: bool = False, has_doc: bool = False)
         if any(re.search(p, msg, re.I) for p in patterns):
             if intent not in intents:
                 intents.append(intent)
-
-    # Detect non-English language — auto-add language context
-    detected_lang = detect_message_language(message)
-    if detected_lang:
-        intents.append("language")
 
     if not intents:
         intents.append("chat")
@@ -204,7 +186,7 @@ def choose_models(intents: list[str], config: dict) -> dict:
         "worksheet_solver", "quote_extraction", "pdf_summarise",
         "math", "explain", "chat", "summary", "doc_chat",
         "web_search", "youtube", "video_summarise", "code", "coding",
-        "essay_feedback", "formula", "timeline", "language", "translate",
+        "essay_feedback", "formula", "timeline", "translate",
     }
     if any(i in intents for i in reasoning_intents):
         if "code" in intents or "coding" in intents:
@@ -318,16 +300,15 @@ async def orchestrate(
         doc_text, memory_context, youtube_results, config, cross_check, kb_context
     )
 
-    # Add language context to system prompt if non-English detected
-    if "language" in intents:
-        detected_lang = detect_message_language(message)
-        if detected_lang:
-            system_prompt += (
-                f"\n\nThe user is writing in {detected_lang}. "
-                f"Respond in {detected_lang}. Be natural and fluent in this language.\n"
-            )
+    # ── Step 4b: Detect language and inject context ──────────────────────────
+    detected_lang = detect_message_language(message)
+    if detected_lang:
+        system_prompt += (
+            f"\nThe user is writing in {detected_lang}. "
+            f"Respond in {detected_lang} for this entire conversation.\n"
+        )
 
-    # ── Step 4b: Apply mode adjustments ───────────────────────────────────────
+    # ── Step 4c: Apply mode adjustments ───────────────────────────────────────
     if mode == "think":
         system_prompt += (
             "\n\nIMPORTANT: You are in THINK MODE. Take your time to reason deeply.\n"
@@ -428,12 +409,12 @@ def _build_system_prompt(
         "You celebrate effort, gently correct mistakes, and use real-world examples.",
         "You are expert in: maths, science, history, geography, English literature, coding, and all school subjects.",
         "",
-        "━━ MULTILINGUAL CAPABILITY ━━",
-        "You can read, understand, and respond fluently in ANY language.",
-        "If the user writes in a non-English language, you MUST respond in that same language.",
-        "If the user explicitly asks for translation (e.g. 'translate to English', 'traduire en anglais'), translate the content to the requested language.",
-        "You can translate between any languages, including: Korean, Japanese, Chinese, Arabic, Hindi, Russian, Spanish, French, German, Portuguese, Italian, and more.",
-        "You can also explain grammar, vocabulary, and cultural context in any language.",
+        "LANGUAGE RULE: Match the language the user writes in.",
+        "If the user writes in English, respond in English.",
+        "If the user writes in Tamil, respond in Tamil.",
+        "If the user writes in Korean, respond in Korean.",
+        "If the user writes in any other language, respond in that same language.",
+        "Keep the same language for the entire conversation.",
         "",
     ]
 

@@ -9,12 +9,14 @@
   --aria-surface: #1a1a1a;
   --aria-border: #2a2a2a;
   --aria-accent: #7c6af7;
+  --aria-glow: rgba(124, 106, 247, 0.15);
+  --aria-gradient: linear-gradient(135deg, #0f0f0f 0%, #1a0a2e 50%, #0f0f0f 100%);
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background: var(--aria-bg);
+  background: var(--aria-gradient);
   color: #e8e8e8;
   font-family: 'Inter', system-ui, sans-serif;
   overflow: hidden;
@@ -23,10 +25,54 @@ body {
 
 #root { height: 100vh; display: flex; }
 
+/* Subtle animated background */
+.aria-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(ellipse at 20% 50%, rgba(124, 106, 247, 0.06) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 20%, rgba(79, 70, 229, 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 80%, rgba(124, 106, 247, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Glass card */
+.glass {
+  background: rgba(20, 20, 30, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-hover:hover {
+  background: rgba(30, 30, 45, 0.8);
+  border-color: rgba(124, 106, 247, 0.2);
+}
+
+/* Accent glow */
+.glow {
+  box-shadow: 0 0 20px var(--aria-glow), 0 0 40px rgba(124, 106, 247, 0.05);
+}
+
+.glow-text {
+  text-shadow: 0 0 20px rgba(124, 106, 247, 0.3);
+}
+
+/* Gradient accent button */
+.btn-accent {
+  background: linear-gradient(135deg, #7c6af7, #6a59e0);
+  transition: all 0.2s;
+}
+.btn-accent:hover {
+  background: linear-gradient(135deg, #8d7df8, #7c6af7);
+  box-shadow: 0 4px 15px rgba(124, 106, 247, 0.3);
+}
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
 
 /* Markdown prose */
 .prose { max-width: none; }
@@ -46,29 +92,23 @@ body {
 
 /* Streaming cursor */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-.cursor::after { content: '▌'; animation: blink 0.8s infinite; color: #7c6af7; }
+.cursor::after { content: '\258C'; animation: blink 0.8s infinite; color: #7c6af7; }
 
 /* Mind map connections */
 .mindmap-line { stroke: #7c6af7; stroke-width: 1.5; opacity: 0.6; }
 
-/* Smooth transitions */
-.page-enter { animation: fadeIn 0.2s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* Page transitions */
+.page-enter { animation: fadeSlideIn 0.25s ease; }
+@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Flashcard flip animation */
 .flashcard-flip {
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   transform-style: preserve-3d;
 }
-.flashcard-flip.flipped {
-  transform: rotateY(180deg);
-}
-.flashcard-front, .flashcard-back {
-  backface-visibility: hidden;
-}
-.flashcard-back {
-  transform: rotateY(180deg);
-}
+.flashcard-flip.flipped { transform: rotateY(180deg); }
+.flashcard-front, .flashcard-back { backface-visibility: hidden; }
+.flashcard-back { transform: rotateY(180deg); }
 
 /* Toast animation */
 @keyframes slideInRight {
@@ -77,18 +117,37 @@ body {
 }
 .animate-in { animation: slideInRight 0.3s ease-out; }
 
+/* Pulse glow for active elements */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(124, 106, 247, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(124, 106, 247, 0.4); }
+}
+.pulse-glow {
+  animation: pulseGlow 2s infinite;
+}
+
 /* Spinner utility */
 .spinner {
   @apply w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin;
 }
 
-/* Admin page inputs */
+/* Input style */
 .input-style {
   @apply w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-[#e8e8e8] outline-none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input-style:focus {
   border-color: rgba(124, 106, 247, 0.5);
+  box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.1);
+}
+
+/* Card hover glow */
+.card-glow {
+  transition: all 0.2s ease;
+}
+.card-glow:hover {
+  border-color: rgba(124, 106, 247, 0.3);
+  box-shadow: 0 0 15px rgba(124, 106, 247, 0.08);
 }
 
 /* Responsive sidebar */

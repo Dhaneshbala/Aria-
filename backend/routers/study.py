@@ -140,3 +140,20 @@ async def assessment_plan(
     model = config.get("reasoning_model", "qwen3:8b")
     result = await study_svc.generate_assessment_study_plan(full_text, days_available, model)
     return result
+
+
+class WorksheetRequest(BaseModel):
+    topic: str
+    grade: str = "Year 10"
+    question_count: int = 10
+    include_answers: bool = True
+
+
+@router.post("/worksheet")
+async def generate_worksheet(req: WorksheetRequest):
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    worksheet = await study_svc.generate_worksheet(
+        req.topic, req.grade, req.question_count, req.include_answers, model
+    )
+    return {"worksheet": worksheet}

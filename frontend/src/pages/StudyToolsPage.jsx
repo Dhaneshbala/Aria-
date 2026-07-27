@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   generateEssayFeedback, generateFormula, generateTimeline, generateAssessmentPlan,
   suggestNextTopic, getRevisionNeeds, getWeakTopics, getLearnedFormulas,
+  generateWorksheet,
 } from '../services/api'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'timeline',     icon: Clock,         label: 'Timeline',        color: 'text-green-400' },
   { id: 'assessment',   icon: FileText,      label: 'Assessment',      color: 'text-purple-400' },
   { id: 'study-intel',  icon: CheckCircle,   label: 'Study Intel',     color: 'text-teal-400' },
+  { id: 'worksheet',    icon: File,           label: 'Worksheet',       color: 'text-orange-400' },
 ]
 
 function generateICS(plan, topic) {
@@ -66,9 +68,15 @@ export default function StudyToolsPage() {
   const [assessDrag, setAssessDrag] = useState(false)
   const [assessDays, setAssessDays] = useState(7)
   const [assessResult, setAssessResult] = useState(saved.assessResult || null)
-  const [assessLoading, setAssessLoading] = useState(false)
   const [assessChecked, setAssessChecked] = useState(saved.assessChecked || {})
   const assessRef = useRef()
+
+  // Worksheet state
+  const [wsTopic, setWsTopic] = useState('')
+  const [wsGrade, setWsGrade] = useState('Year 10')
+  const [wsCount, setWsCount] = useState(10)
+  const [wsIncludeAnswers, setWsIncludeAnswers] = useState(true)
+  const [wsResult, setWsResult] = useState('')
 
   // Auto-persist to store
   useEffect(() => {
@@ -138,6 +146,16 @@ export default function StudyToolsPage() {
     const a = document.createElement('a'); a.href = url
     a.download = `ARIA-Assessment-Plan.ics`; a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const handleWorksheet = async () => {
+    if (!wsTopic.trim()) return
+    setLoading(true); setWsResult('')
+    try {
+      const data = await generateWorksheet(wsTopic, wsGrade, wsCount, wsIncludeAnswers)
+      setWsResult(data.worksheet || 'No worksheet generated.')
+    } catch (e) { setWsResult('Error: ' + e.message) }
+    setLoading(false)
   }
 
   const handleTabSwitch = (id) => {
@@ -458,6 +476,50 @@ export default function StudyToolsPage() {
 
         {/* ── Study Intelligence ─────────────────────────────────────── */}
         {activeTab === 'study-intel' && <StudyIntelTab />}
+
+        {/* ── Worksheet Generator ─────────────────────────────────────── */}
+        {activeTab === 'worksheet' && (
+          <div className="max-w-3xl mx-auto space-y-3">
+            <p className="text-xs text-[#555]">Generate a custom worksheet for any topic with questions and answer key.</p>
+            <div className="grid grid-cols-3 gap-2">
+              <input value={wsTopic} onChange={e => setWsTopic(e.target.value)}
+                placeholder="Topic (e.g. Algebra, Photosynthesis)"
+                className="col-span-2 bg-[#1a1a2e] border border-[#2a2a40] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50" />
+              <select value={wsGrade} onChange={e => setWsGrade(e.target.value)}
+                className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/50">
+                {['Year 7','Year 8','Year 9','Year 10','Year 11','Year 12'].map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#888]">Questions:</span>
+                <input type="number" value={wsCount} onChange={e => setWsCount(Number(e.target.value))}
+                  min="3" max="30" className="w-16 px-2 py-1.5 text-sm rounded-lg bg-[#1a1a2e] border border-[#2a2a40] text-[#e8e8e8] text-center outline-none focus:border-[#7c6af7]/50" />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-[#888] cursor-pointer">
+                <input type="checkbox" checked={wsIncludeAnswers} onChange={e => setWsIncludeAnswers(e.target.checked)}
+                  className="accent-[#7c6af7]" />
+                Include answer key
+              </label>
+            </div>
+            <button onClick={handleWorksheet} disabled={!wsTopic.trim() || loading}
+              className="w-full py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-40 transition-colors">
+              {loading ? 'Generating worksheet...' : 'Generate Worksheet'}
+            </button>
+            {loading && (
+              <div className="flex items-center gap-2 text-xs text-[#555] py-4 justify-center">
+                <Loader size={13} className="animate-spin text-[#7c6af7]" /> Creating your worksheet...
+              </div>
+            )}
+            {wsResult && !loading && (
+              <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4 text-sm text-[#d0d0d0] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto prose">
+                {wsResult}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

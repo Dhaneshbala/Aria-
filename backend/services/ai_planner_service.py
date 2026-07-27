@@ -465,3 +465,213 @@ def add_homework_to_schedule(schedule: list, homework_item: dict, study_len: int
             added += 1
 
     return schedule
+
+
+# ── Cushion calculation (Shovel's "Do you have enough time?") ────────────────
+
+def calculate_cushion(schedule: list, homework: list, tests: list) -> dict:
+    """
+    Calculate the Cushion — how much extra study time you have.
+    Positive = you're ahead. Negative = you're behind.
+    Returns per-day cushion data for a graph.
+    """
+    today = datetime.today()
+    cushion_data = []
+
+    for day in schedule:
+        day_date = day.get("date", "")
+        try:
+            current = datetime.strptime(day_date, "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        # Available study time on this day
+        available = day.get("summary", {}).get("study_minutes", 0)
+
+        # Required time: tasks due on or before this day that haven't been completed
+        required = 0
+        for h in homework:
+            if not h.get("due_date"):
+                continue
+            try:
+                due = datetime.strptime(h["due_date"], "%Y-%m-%d")
+            except ValueError:
+                continue
+            if due >= today and due <= current:
+                required += h.get("estimated_minutes", 30)
+
+        for t in tests:
+            if not t.get("date"):
+                continue
+            try:
+                due = datetime.strptime(t["date"], "%Y-%m-%d")
+            except ValueError:
+                continue
+            if due >= today and due <= current:
+                required += 60  # default test prep time
+
+        # Cumulative cushion
+        prev_cushion = cushion_data[-1]["cushion"] if cushion_data else 0
+        day_cushion = prev_cushion + available - (required / max(1, (current - today).days + 1))
+
+        cushion_data.append({
+            "date": day_date,
+            "day": day.get("day", ""),
+            "available": available,
+            "required": round(required / max(1, (current - today).days + 1)),
+            "cushion": round(day_cushion),
+            "status": "ok" if day_cushion > 30 else "warning" if day_cushion > 0 else "danger",
+        })
+
+    return {
+        "cushion": cushion_data,
+        "total_available": sum(d["available"] for d in cushion_data),
+        "total_required": sum(d["required"] for d in cushion_data),
+        "final_cushion": cushion_data[-1]["cushion"] if cushion_data else 0,
+        "status": "ok" if cushion_data and cushion_data[-1]["cushion"] > 30 else "warning" if cushion_data and cushion_data[-1]["cushion"] > 0 else "danger",
+    }
+
+
+# ── Available time detection ──────────────────────────────────────────────────
+
+def detect_free_slots(schedule: list) -> list:
+    """Find all free/available time slots across the schedule."""
+    free_slots = []
+    for day in schedule:
+        for slot in day.get("slots", []):
+            if slot.get("type") in ("free", "break"):
+                free_slots.append({
+                    "date": day.get("date", ""),
+                    "day": day.get("day", ""),
+                    "time": slot.get("time", ""),
+                    "type": slot.get("type"),
+                    "task": slot.get("task", ""),
+                })
+    return free_slots
+
+
+# ── Study streak tracking ─────────────────────────────────────────────────────
+
+def get_study_streak(schedule: list) -> dict:
+    """Calculate study streak from schedule data."""
+    streak = 0
+    max_streak = 0
+    study_days = []
+
+    for day in schedule:
+        has_study = any(s.get("type") == "study" for s in day.get("slots", []))
+        if has_study:
+            streak += 1
+            max_streak = max(max_streak, streak)
+            study_days.append(day.get("date", ""))
+        else:
+            streak = 0
+
+    return {
+        "current_streak": streak,
+        "max_streak": max_streak,
+        "study_days": study_days,
+        "total_study_days": len(study_days),
+    }
+
+
+# ── Syllabus PDF parsing ──────────────────────────────────────────────────────
+
+def parse_syllabus(text: str) -> dict:
+    """Use AI to extract tasks and events from syllabus text."""
+    today = datetime.today()
+    prompt = f"""You are a study planner assistant. Today is {today.strftime("%A %d %B %Y")}.
+
+Extract all homework, assignments, tests, and exams from this syllabus text.
+For each item, determine:
+- subject (class name)
+- task (what needs to be done)
+- due_date (YYYY-MM-DD format, estimate if only relative dates given)
+- estimated_minutes (how long it will take, estimate reasonably)
+- priority (high for exams/papers, medium for homework, low for readings)
+
+SYLLABUS TEXT:
+{text[:3000]}
+
+Output ONLY a JSON object with:
+{{
+  "tasks": [
+    {{"subject": "...", "task": "...", "due_date": "YYYY-MM-DD", "estimated_minutes": 60, "priority": "medium"}}
+  ],
+  "tests": [
+    {{"subject": "...", "date": "YYYY-MM-DD", "topics": "..."}}
+  ],
+  "summary": "Brief summary of what was found"
+}}"""
+
+    return _ask_ollama(prompt)
+
+    # Calculate how many sessions needed
+    num_sessions = max(1, est_minutes // study_len)
+
+    # Find days before due date that have space
+    added = 0
+    for day in schedule:
+        if added >= num_sessions:
+            break
+        day_date = day.get("date", "")
+        if day_date > due_date:
+            continue
+        if day_date == due_date:
+            # Can still add on due day (morning/afternoon)
+            pass
+
+        # Find free slots on this day
+        existing_studies = sum(1 for s in day.get("slots", []) if s.get("type") == "study")
+        max_per_day = 4 if not day.get("is_weekend") else 6
+
+        if existing_studies < max_per_day:
+            # Find where to insert — after last study slot or after school
+            slots = day.get("slots", [])
+            last_study_end = None
+            for s in slots:
+                if s.get("type") == "study":
+                    t = s.get("time", "")
+                    if "–" in t:
+                        last_study_end = t.split("–")[1].strip()
+
+            if last_study_end:
+                start_time = _add_minutes(last_study_end, 10)
+            elif day.get("is_weekend"):
+                start_time = "10:00" if existing_studies == 0 else _add_minutes("10:00", existing_studies * (study_len + 10))
+            else:
+                start_time = _add_minutes("15:00", 60 + existing_studies * (study_len + 10))
+
+            end_time = _add_minutes(start_time, study_len)
+
+            phase = _get_phase(
+                max(0, (datetime.strptime(due_date, "%Y-%m-%d") - datetime.strptime(day_date, "%Y-%m-%d")).days),
+                priority,
+            )
+
+            new_slot = {
+                "time": f"{start_time} – {end_time}",
+                "task": task,
+                "subject": subject,
+                "type": "study",
+                "date": day_date,
+                "duration": f"{study_len} min",
+                "phase": phase,
+                "due_date": due_date,
+                "priority": priority,
+            }
+
+            # Insert before the last break/wind-down slot
+            insert_idx = len(slots)
+            for i in range(len(slots) - 1, -1, -1):
+                if slots[i].get("type") in ("break", "free"):
+                    insert_idx = i
+                else:
+                    break
+            slots.insert(insert_idx, new_slot)
+            day["slots"] = slots
+            day["summary"]["tasks_scheduled"] = existing_studies + 1
+            day["summary"]["study_minutes"] = day["summary"].get("study_minutes", 0) + study_len
+            added += 1
+
+    return schedule
