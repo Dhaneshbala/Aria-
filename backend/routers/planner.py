@@ -249,79 +249,121 @@ async def upload_syllabus(
 
 # ── ICS calendar import ────────────────────────────────────────────────────────
 
+class ImportICSRequest(BaseModel):
+    timezone_offset: int = 10  # hours ahead of UTC (default AEST = +10)
+
+
 @router.post("/import-ics")
-async def import_ics(file: UploadFile = File(...)):
-    """Import a .ics file (from Google Calendar export) into ARIA events."""
+async def import_ics(
+    file: UploadFile = File(...),
+    timezone_offset: str = Form(default="10"),
+):
+    """Import a .ics file (from Compass/Google Calendar export) into ARIA events.
+    Converts UTC times to local time using the given offset (default +10 for AEST)."""
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 10MB)")
 
+    try:
+        utc_offset_hours = int(timezone_offset)
+    except (ValueError, TypeError):
+        utc_offset_hours = 10
+
     text = content.decode("utf-8", errors="replace")
 
+    # Split into event blocks — handles both proper newlines and single-line files
+    # First normalize \r\n to \n, then split on BEGIN:VEVENT / END:VEVENT
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Also insert newlines before known iCal property names so single-line files work
+    import re
+    text = re.sub(r'\s+(DTSTART|DTEND|SUMMARY|LOCATION|DESCRIPTION|CATEGORIES|UID|STATUS|CLASS|TRANSP|SEQUENCE|DTSTAMP|CREATED|LAST-MODIFIED)\s*:', r'\n\1:', text)
+
     events = []
-    in_event = False
-    current = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if line == "BEGIN:VEVENT":
-            in_event = True
-            current = {}
-        elif line == "END:VEVENT":
-            in_event = False
-            if current.get("start"):
-                events.append(current)
-        elif in_event:
-            if ":" in line:
-                key, _, val = line.partition(":")
-                # Handle folded lines (continuation with space/tab)
-                if key.startswith(" "):
-                    key = key.strip()
-                if key == "SUMMARY":
-                    current["label"] = val.strip()
-                elif key == "DTSTART":
-                    current["raw_start"] = val.strip()
-                elif key == "DTEND":
-                    current["raw_end"] = val.strip()
-                elif key == "DESCRIPTION":
-                    current["description"] = val.strip()
-                elif key == "LOCATION":
-                    current["location"] = val.strip()
-                elif key == "CATEGORIES":
-                    current["categories"] = val.strip()
+    # Split on VEVENT boundaries
+    parts = text.split("BEGIN:VEVENT")
+    for part in parts[1:]:  # skip everything before first BEGIN:VEVENT
+        block = part.split("END:VEVENT")[0]
+        current = {}
+        for line in block.split("\n"):
+            line = line.strip()
+            if not line or ":" not in line:
+                continue
+            key, _, val = line.partition(":")
+            key = key.strip()
+            if key == "SUMMARY":
+                current["label"] = val.strip()
+            elif key == "DTSTART":
+                current["raw_start"] = val.strip()
+            elif key == "DTEND":
+                current["raw_end"] = val.strip()
+            elif key == "DESCRIPTION":
+                current["description"] = val.strip()
+            elif key == "LOCATION":
+                current["location"] = val.strip()
+            elif key == "CATEGORIES":
+                current["categories"] = val.strip()
+        if current.get("raw_start"):
+            events.append(current)
 
     # Parse raw DTSTART/DTEND into dayIdx + start/end times
     import datetime
-    day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    import re
+
     day_idx_map = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 0}  # Mon=1..Sat=6, Sun=0
-    parsed = []
-    for ev in events:
-        raw = ev.get("raw_start", "")
+
+    def parse_ical_dt(raw: str) -> datetime.datetime | None:
+        """Parse iCal datetime, handling Z suffix (UTC) and raw format."""
+        raw = raw.strip()
         if len(raw) < 15:
-            continue
+            return None
+        is_utc = raw.endswith("Z")
+        # Extract just the datetime part: YYYYMMDDTHHMMSS
+        dt_str = raw[:15]
         try:
-            dt = datetime.datetime.strptime(raw[:15], "%Y%m%dT%H%M%S")
+            dt = datetime.datetime.strptime(dt_str, "%Y%m%dT%H%M%S")
         except ValueError:
+            return None
+        if is_utc:
+            # Convert UTC to local time
+            dt = dt + datetime.timedelta(hours=utc_offset_hours)
+        return dt
+
+    parsed = []
+    seen_ids = set()
+    for ev in events:
+        dt = parse_ical_dt(ev.get("raw_start", ""))
+        if dt is None:
             continue
+
+        dt_end = parse_ical_dt(ev.get("raw_end", ""))
+        if dt_end is None:
+            dt_end = dt + datetime.timedelta(hours=1)
+
+        # Calculate day from the LOCAL date (after UTC conversion)
         wd = dt.weekday()
         day_idx = day_idx_map.get(wd, 0)
+
         start_h, start_m = dt.hour, dt.minute
-
-        raw_end = ev.get("raw_end", "")
-        try:
-            dt_end = datetime.datetime.strptime(raw_end[:15], "%Y%m%dT%H%M%S")
-        except ValueError:
-            dt_end = dt + datetime.timedelta(hours=1)
         end_h, end_m = dt_end.hour, dt_end.minute
-
         start_str = f"{start_h:02d}:{start_m:02d}"
         end_str = f"{end_h:02d}:{end_m:02d}"
 
-        # Map Google Calendar categories/colors to ARIA colors
         label = ev.get("label", "Untitled")
+        location = ev.get("location", "")
+        description = ev.get("description", "")
         color = _label_to_color(label, ev.get("categories", ""))
 
+        # Create unique ID using date+time+label to avoid deduplication issues
+        dt_key = dt.strftime("%Y%m%dT%H%M")
+        uid = f"ical-{dt_key}-{hash(label) & 0xFFFF:04x}"
+        if uid in seen_ids:
+            continue
+        seen_ids.add(uid)
+
         parsed.append({
-            "id": f"ical-{hash(label) & 0xFFFF:04x}-{start_str.replace(':', '')}",
+            "id": uid,
+            "date": dt.strftime("%Y-%m-%d"),
             "dayIdx": day_idx,
             "start": start_str,
             "end": end_str,
@@ -329,6 +371,8 @@ async def import_ics(file: UploadFile = File(...)):
             "color": color,
             "type": "imported",
             "completed": False,
+            "location": location,
+            "description": description,
         })
 
     return {"status": "success", "events": parsed, "count": len(parsed)}
@@ -336,6 +380,7 @@ async def import_ics(file: UploadFile = File(...)):
 
 def _label_to_color(label: str, categories: str = "") -> str:
     """Map event label/categories to a color."""
+    _COLORS = ['#7c6af7', '#4ade80', '#f472b6', '#06b6d4', '#f59e0b', '#ef4444', '#3b82f6', '#a78bfa']
     text = (label + " " + categories).lower()
     color_map = [
         (["math", "calculus", "algebra", "geometry"], "#7c6af7"),
@@ -353,7 +398,7 @@ def _label_to_color(label: str, categories: str = "") -> str:
         if any(kw in text for kw in keywords):
             return color
     # Hash label to get consistent color
-    return COLORS[hash(label) % len(COLORS)]
+    return _COLORS[hash(label) % len(_COLORS)]
 
 
 # ── ICS calendar export ────────────────────────────────────────────────────────
@@ -441,3 +486,35 @@ async def streak(req: CushionRequest):
     from services.ai_planner_service import get_study_streak
     result = get_study_streak(req.schedule)
     return result
+
+
+# ── Event & Task persistence ─────────────────────────────────────────────────
+
+_PLANNER_FILE = os.path.expanduser("~/.aria_data/planner_data.json")
+
+
+@router.get("/events")
+async def load_events():
+    """Load saved planner events and tasks."""
+    if not os.path.exists(_PLANNER_FILE):
+        return {"events": [], "tasks": [], "count": 0}
+    try:
+        with open(_PLANNER_FILE, "r") as f:
+            data = json.load(f)
+        return {"events": data.get("events", []), "tasks": data.get("tasks", []), "count": len(data.get("events", []))}
+    except Exception:
+        return {"events": [], "tasks": [], "count": 0}
+
+
+class SaveDataRequest(BaseModel):
+    events: list[dict] = []
+    tasks: list[dict] = []
+
+
+@router.post("/events")
+async def save_events(req: SaveDataRequest):
+    """Save planner events and tasks to disk."""
+    os.makedirs(os.path.dirname(_PLANNER_FILE), exist_ok=True)
+    with open(_PLANNER_FILE, "w") as f:
+        json.dump({"events": req.events, "tasks": req.tasks}, f, indent=2)
+    return {"status": "saved", "count": len(req.events), "tasks": len(req.tasks)}

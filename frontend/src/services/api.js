@@ -144,11 +144,11 @@ export const generateAssessmentPlan = async (file, daysAvailable = 7) => {
   return resp.json()
 }
 
-export const generateWorksheet = (topic, grade = 'Year 10', questionCount = 10, includeAnswers = true) =>
+export const generateWorksheet = (topic, grade = 'Year 8', subject = '', questionCount = 10, includeAnswers = true) =>
   apiFetch(`${BASE}/study/worksheet`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, grade, question_count: questionCount, include_answers: includeAnswers }),
+    body: JSON.stringify({ topic, grade, subject, question_count: questionCount, include_answers: includeAnswers }),
   }).then(r => r.json())
 
 // ── Spaced Repetition ────────────────────────────────────────────────────────
@@ -496,11 +496,22 @@ export const exportICS = (events, calname = 'ARIA Study Plan') =>
     body: JSON.stringify({ events, calname }),
   })
 
-export const importICS = (file) => {
+export const importICS = (file, tzOffset = 10) => {
   const form = new FormData()
   form.append('file', file)
+  form.append('timezone_offset', String(tzOffset))
   return apiFetch(`${PLANNER}/import-ics`, { method: 'POST', body: form }).then(r => r.json())
 }
+
+export const loadPlannerEvents = () =>
+  apiFetch(`${PLANNER}/events`).then(r => r.json())
+
+export const savePlannerEvents = (events, tasks = []) =>
+  apiFetch(`${PLANNER}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events, tasks }),
+  }).then(r => r.json())
 
 // ── Premium Planner ────────────────────────────────────────────────────────────
 

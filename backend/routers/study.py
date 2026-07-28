@@ -144,16 +144,35 @@ async def assessment_plan(
 
 class WorksheetRequest(BaseModel):
     topic: str
-    grade: str = "Year 10"
+    grade: str = "Year 8"
+    subject: str = ""
     question_count: int = 10
     include_answers: bool = True
+    difficulty: str = "mixed"
 
 
 @router.post("/worksheet")
 async def generate_worksheet(req: WorksheetRequest):
     config = get_config()
     model = config.get("reasoning_model", "qwen3:8b")
+
+    # Auto-detect subject from topic if not provided
+    topic = req.topic
+    subject = req.subject or topic.split()[0] if topic else "General"
+
+    # Map common course codes to subjects
+    code_map = {
+        'ENGD': 'English', 'MAT4': 'Mathematics', 'SCID': 'Science',
+        'HSIED': 'HSIE', 'RELD': 'Religion', 'HRC3': 'History',
+        'TEC2': 'Technology', 'VAR2': 'Visual Arts', 'MUSD': 'Music',
+        'PDE2': 'PDHPE',
+    }
+    for code, sub in code_map.items():
+        if code in topic.upper():
+            subject = sub
+            break
+
     worksheet = await study_svc.generate_worksheet(
-        req.topic, req.grade, req.question_count, req.include_answers, model
+        topic, req.grade, req.question_count, req.include_answers, model
     )
-    return {"worksheet": worksheet}
+    return {"worksheet": worksheet, "subject": subject, "grade": req.grade}

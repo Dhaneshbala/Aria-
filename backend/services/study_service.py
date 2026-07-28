@@ -1066,19 +1066,52 @@ class StudyService:
         question_count: int = 10, include_answers: bool = True,
         model: str = "qwen3:8b"
     ) -> str:
-        ans = "Include a separate answer key at the end." if include_answers else "Do NOT include answers."
+        from data.nsw_curriculum import get_curriculum_context, detect_stage
+
+        stage = detect_stage(grade)
+        curriculum_ctx = get_curriculum_context(topic, stage, topic)
+
+        ans = "Include a separate ANSWER KEY at the end with full worked solutions." if include_answers else "Do NOT include answers."
+
         prompt = (
-            f"You are a teacher creating a worksheet for a {grade} student.\n\n"
+            "You are an expert NSW school teacher creating a professional worksheet.\n\n"
             f"TOPIC: {topic}\n"
+            f"GRADE: {grade}\n"
+            f"NSW STAGE: {stage}\n"
             f"NUMBER OF QUESTIONS: {question_count}\n\n"
-            f"Create a well-structured worksheet with:\n"
-            f"- A title and instructions section\n"
-            f"- A mix of question types: multiple choice, short answer, and problem-solving\n"
-            f"- Clear space for student answers\n"
-            f"- Appropriate difficulty for {grade}\n"
-            f"- Real-world examples where possible\n\n"
-            f"{ans}\n\n"
-            f"Format the worksheet professionally using markdown with clear section headers."
+            f"NSW CURRICULUM CONTEXT:\n{curriculum_ctx}\n\n"
+            f"WORKSHEET REQUIREMENTS:\n"
+            f"1. Start with a clear TITLE and STUDENT NAME/DATE fields\n"
+            f"2. Include a LEARNING INTENTION section referencing relevant NSW syllabus outcomes\n"
+            f"3. Include a SUCCESS CRITERIA section (3-4 bullet points)\n"
+            f"4. Question types MUST include a mix of:\n"
+            f"   - Multiple Choice Questions (MCQ) with 4 options (A-D)\n"
+            f"   - Short Answer questions (1-3 sentences)\n"
+            f"   - Extended Response questions (paragraph length)\n"
+            f"   - Problem-solving / calculation questions (where applicable)\n"
+            f"   - Source-based / stimulus questions (using a provided text or data)\n"
+            f"5. Questions should progress from easy → medium → hard (Bloom's taxonomy)\n"
+            f"6. Include THINKING TIME questions to scaffold learning\n"
+            f"7. Provide a marks allocation for each question [x marks]\n"
+            f"8. Use real-world Australian examples where possible\n"
+            f"9. Format professionally with clear section headers and numbering\n"
+            f"10. {ans}\n\n"
+            f"MARK ALLOCATION:\n"
+            f"- Total marks should be around {question_count * 3} marks\n"
+            f"- MCQs: 1 mark each\n"
+            f"- Short answer: 2-3 marks each\n"
+            f"- Extended response: 4-6 marks each\n"
+            f"- Problem-solving: 3-5 marks each\n\n"
+            f"Format the worksheet using clean markdown. Use ## for sections, "
+            f"number questions clearly, and leave visual space for student answers."
         )
-        response = await ollama.complete(model, prompt, timeout=180)
+
+        system = (
+            "You are a senior NSW teacher creating professional worksheets aligned to the "
+            "NESA NSW Curriculum. You create clear, well-structured assessment materials that "
+            "test understanding at multiple levels of Bloom's taxonomy. You use Australian "
+            "examples and terminology appropriate for the student's stage and age."
+        )
+
+        response = await ollama.complete(model, prompt, system=system, timeout=180)
         return response

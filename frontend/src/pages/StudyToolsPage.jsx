@@ -73,7 +73,8 @@ export default function StudyToolsPage() {
 
   // Worksheet state
   const [wsTopic, setWsTopic] = useState('')
-  const [wsGrade, setWsGrade] = useState('Year 10')
+  const [wsGrade, setWsGrade] = useState('Year 8')
+  const [wsSubject, setWsSubject] = useState('')
   const [wsCount, setWsCount] = useState(10)
   const [wsIncludeAnswers, setWsIncludeAnswers] = useState(true)
   const [wsResult, setWsResult] = useState('')
@@ -152,7 +153,7 @@ export default function StudyToolsPage() {
     if (!wsTopic.trim()) return
     setLoading(true); setWsResult('')
     try {
-      const data = await generateWorksheet(wsTopic, wsGrade, wsCount, wsIncludeAnswers)
+      const data = await generateWorksheet(wsTopic, wsGrade, wsSubject, wsCount, wsIncludeAnswers)
       setWsResult(data.worksheet || 'No worksheet generated.')
     } catch (e) { setWsResult('Error: ' + e.message) }
     setLoading(false)
@@ -480,15 +481,27 @@ export default function StudyToolsPage() {
         {/* ── Worksheet Generator ─────────────────────────────────────── */}
         {activeTab === 'worksheet' && (
           <div className="max-w-3xl mx-auto space-y-3">
-            <p className="text-xs text-[#555]">Generate a custom worksheet for any topic with questions and answer key.</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs text-[#888]">Generate a custom NSW curriculum-aligned worksheet with questions and answer key.</p>
+            </div>
+            <div className="bg-[#7c6af7]/10 border border-[#7c6af7]/20 rounded-xl p-3 text-[10px] text-[#a89bf8]">
+              <span className="font-semibold">NSW Curriculum Aligned</span> — Worksheets are aligned to the NESA NSW Curriculum for Stages 4 & 5 (Years 7-10). Questions progress through Bloom's taxonomy levels and include a mix of question types.
+            </div>
+            <div className="grid grid-cols-4 gap-2">
               <input value={wsTopic} onChange={e => setWsTopic(e.target.value)}
                 placeholder="Topic (e.g. Algebra, Photosynthesis)"
-                className="col-span-2 bg-[#1a1a2e] border border-[#2a2a40] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50" />
+                className="col-span-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#555] outline-none focus:border-[#7c6af7]/50" />
               <select value={wsGrade} onChange={e => setWsGrade(e.target.value)}
-                className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/50">
-                {['Year 7','Year 8','Year 9','Year 10','Year 11','Year 12'].map(g => (
+                className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/50">
+                {['Year 7','Year 8','Year 9','Year 10'].map(g => (
                   <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+              <select value={wsSubject || ''} onChange={e => setWsSubject(e.target.value)}
+                className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/50">
+                <option value="">Auto-detect</option>
+                {['English','Mathematics','Science','Geography','History','PDHPE','Technology','Visual Arts','Music'].map(s => (
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
@@ -496,7 +509,7 @@ export default function StudyToolsPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#888]">Questions:</span>
                 <input type="number" value={wsCount} onChange={e => setWsCount(Number(e.target.value))}
-                  min="3" max="30" className="w-16 px-2 py-1.5 text-sm rounded-lg bg-[#1a1a2e] border border-[#2a2a40] text-[#e8e8e8] text-center outline-none focus:border-[#7c6af7]/50" />
+                  min="3" max="30" className="w-16 px-2 py-1.5 text-sm rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[#e8e8e8] text-center outline-none focus:border-[#7c6af7]/50" />
               </div>
               <label className="flex items-center gap-2 text-xs text-[#888] cursor-pointer">
                 <input type="checkbox" checked={wsIncludeAnswers} onChange={e => setWsIncludeAnswers(e.target.checked)}
@@ -514,7 +527,7 @@ export default function StudyToolsPage() {
               </div>
             )}
             {wsResult && !loading && (
-              <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4 text-sm text-[#d0d0d0] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto prose">
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 text-sm text-[#d0d0d0] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto prose">
                 {wsResult}
               </div>
             )}
