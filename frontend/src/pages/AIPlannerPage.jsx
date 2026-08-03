@@ -44,7 +44,21 @@ const DEFAULT_COURSES = [
 const STORAGE_KEY = 'aria_planner'
 
 function loadStorage() {
-  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null } catch { return null }
+  try {
+    const s = localStorage.getItem(STORAGE_KEY)
+    if (!s) return null
+    const data = JSON.parse(s)
+    if (data.events?.length) {
+      const seen = new Set()
+      data.events = data.events.filter(e => {
+        const key = `${e.date}|${e.start}|${e.end}|${e.label}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+    }
+    return data
+  } catch { return null }
 }
 function saveStorage(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) } catch {} }
 
@@ -115,13 +129,149 @@ export default function AIPlannerPage() {
   const removeEvent = (id) => setEvents(prev => prev.filter(e => e.id!==id))
   const toggleCompleteEvent = (id) => setEvents(prev => prev.map(e => e.id===id ? {...e,completed:!e.completed} : e))
 
+  const autoScheduleRef = useRef(false)
+
+  // ── AUTO-SCHEDULE ────────────────────────────────────────────────────────
+  const autoSchedule = (taskList, eventList) => {
+    const tl = taskList || tasks
+    const el = eventList || events
+    const unscheduledTasks = tl.filter(t => {
+      const scheduled = el.filter(e => e.taskId === t.id).reduce((s,e) => s + (toMin(e.end)-toMin(e.start)), 0)
+      return scheduled < t.estimate
+    })
+
+    if (unscheduledTasks.length === 0) {
+      showToast('All tasks are already scheduled!', 'success')
+      return
+    }
+
+    const sorted = [...unscheduledTasks].sort((a,b) => {
+      const ddA = daysUntil(a.dueDate)
+      const ddB = daysUntil(b.dueDate)
+      if (ddA !== ddB) return ddA - ddB
+      const remA = a.estimate - el.filter(e=>e.taskId===a.id).reduce((s,e)=>s+(toMin(e.end)-toMin(e.start)),0)
+      const remB = b.estimate - el.filter(e=>e.taskId===b.id).reduce((s,e)=>s+(toMin(e.end)-toMin(e.start)),0)
+      return remB - remA
+    })
+
+    const newEvents = []
+    let placed = 0
+
+    for (const task of sorted) {
+      const alreadyScheduled = el.filter(e => e.taskId === task.id).reduce((s,e) => s + (toMin(e.end)-toMin(e.start)), 0)
+      const remainingMinutes = task.estimate - alreadyScheduled
+      if (remainingMinutes <= 0) continue
+
+      let minutesToSchedule = remainingMinutes
+      const dueDate = new Date(task.dueDate + 'T23:59:59')
+      const course = courses.find(c => c.id === task.courseId)
+
+      const totalDays = Math.max(0, daysBetween(dueDate, today))
+      for (let d = 0; d <= totalDays + 1 && minutesToSchedule > 0; d++) {
+        const day = addDays(today, d)
+        const ds = dateStr(day)
+
+        const dayEvents = [...el, ...newEvents].filter(e => e.date === ds)
+        const freeGaps = getFreeGaps(dayEvents)
+
+        for (const gap of freeGaps) {
+          if (minutesToSchedule <= 0) break
+
+          const blockMinutes = Math.min(45, minutesToSchedule, gap.end - gap.start)
+          if (blockMinutes < 15) continue
+
+          const startH = Math.floor(gap.start / 60)
+          const startM = gap.start % 60
+          const endMin = gap.start + blockMinutes
+
+          const event = {
+            id: `auto-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+            date: ds,
+            start: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`,
+            end: `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`,
+            label: task.name,
+            color: course?.color || '#7c6af7',
+            courseId: task.courseId,
+            type: 'task',
+            taskId: task.id,
+            completed: false,
+          }
+
+          newEvents.push(event)
+          minutesToSchedule -= blockMinutes
+          placed++
+        }
+      }
+    }
+
+    if (newEvents.length > 0) {
+      setEvents(prev => [...prev, ...newEvents])
+      showToast(`Auto-scheduled ${placed} work sessions for ${sorted.length} tasks`, 'success')
+    } else {
+      showToast('No free time slots found', 'error')
+    }
+  }
+
   const addTask = (task) => {
-    setTasks(prev => [...prev, {
+    const newTask = {
       id: `t${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
       name: task.name, courseId: task.courseId, dueDate: task.dueDate,
       estimate: task.estimate, completed: 0, status: 'todo', createdAt: todayStr,
-    }])
+      recurring: task.recurring || null,
+      isTest: !!task.isTest,
+    }
+    setTasks(prev => {
+      const updated = [...prev, newTask]
+      autoScheduleRef.current = true
+      return updated
+    })
     showToast(`Task added: ${task.name}`, 'success')
+  }
+
+  // ── AUTO-REVISION PLAN for tests/exams < 14 days out ──────────────────────
+  const upcomingTests = tasks
+    .filter(t => t.isTest && t.completed < t.estimate && daysUntil(t.dueDate) >= 0 && daysUntil(t.dueDate) <= 14)
+    .sort((a, b) => daysUntil(a.dueDate) - daysUntil(b.dueDate))
+
+  const autoRevisionPlan = (testTask) => {
+    const days = Math.max(1, daysUntil(testTask.dueDate))
+    const course = courses.find(c => c.id === testTask.courseId)
+    const sessions = []
+    // One 30-min revision session per day before the test (max 5 days)
+    const sessionDays = Math.min(days, 5)
+    for (let d = 1; d <= sessionDays; d++) {
+      const day = addDays(today, days - d)
+      const ds = dateStr(day)
+      const dayEvents = [...events, ...sessions].filter(e => e.date === ds)
+      const gaps = getFreeGaps(dayEvents)
+      if (gaps.length > 0) {
+        const gap = gaps[0]
+        const startMin = gap.start
+        const endMin = Math.min(gap.end, startMin + 30)
+        sessions.push({
+          id: `e${Date.now()}-${Math.random().toString(36).slice(2,6)}-${d}`,
+          date: ds,
+          start: `${String(Math.floor(startMin/60)).padStart(2,'0')}:${String(startMin%60).padStart(2,'0')}`,
+          end: `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`,
+          label: `Revise: ${testTask.name}`,
+          color: course?.color || '#f59e0b',
+          courseId: testTask.courseId,
+          type: 'task', taskId: testTask.id, completed: false,
+        })
+      }
+    }
+    if (sessions.length > 0) {
+      setEvents(prev => [...prev, ...sessions])
+      showToast(`Revision plan created: ${sessions.length} sessions before ${testTask.name}`, 'success')
+    } else {
+      showToast('No free time available for revision — adjust your schedule', 'error')
+    }
+  }
+
+  // ── CLEAR SCHEDULED TASKS ────────────────────────────────────────────────
+  const clearScheduled = () => {
+    setEvents(prev => prev.filter(e => e.type !== 'task'))
+    showToast('Cleared all scheduled task sessions', 'success')
   }
 
   const updateTask = (id, updates) => setTasks(prev => prev.map(t => t.id===id ? {...t,...updates} : t))
@@ -142,17 +292,93 @@ export default function AIPlannerPage() {
       const data = await importICS(calFile, calTzOffset)
       if (data.error) throw new Error(data.error)
       if (data.events?.length) {
-        setEvents(prev => [...prev, ...data.events])
-        showToast(`Imported ${data.count} events!`, 'success')
+        setEvents(prev => {
+          const existingKeys = new Set(prev.map(e => `${e.date}|${e.start}|${e.end}|${e.label}`))
+          const newEvts = data.events.filter(e => !existingKeys.has(`${e.date}|${e.start}|${e.end}|${e.label}`))
+          if (newEvts.length < data.events.length) {
+            showToast(`Imported ${newEvts.length} new events (${data.events.length - newEvts.length} duplicates skipped)`, 'success')
+          } else {
+            showToast(`Imported ${data.count} events!`, 'success')
+          }
+          return [...prev, ...newEvts]
+        })
       } else { showToast('No events found','error') }
     } catch(e) { showToast(`Failed: ${e.message}`,'error') }
     setCalLoading(false); setShowImportCalendar(false); setCalFile(null)
   }
 
+  // Deduplicate events on mount
   useEffect(() => {
-    const h = (e) => { if (e.key==='Escape') { setQuickAddItem(null); setEditEvent(null); setShowAddTask(false); setShowAddCourse(false) } }
-    window.addEventListener('keydown',h); return () => window.removeEventListener('keydown',h)
+    setEvents(prev => {
+      const seen = new Set()
+      const deduped = prev.filter(e => {
+        const key = `${e.date}|${e.start}|${e.end}|${e.label}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      return deduped.length === prev.length ? prev : deduped
+    })
   }, [])
+
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key==='Escape') { setQuickAddItem(null); setEditEvent(null); setShowAddTask(false); setShowAddCourse(false) }
+      if (e.key==='a' && !e.metaKey && !e.ctrlKey && !showAddTask && !showAddCourse) { autoSchedule() }
+      if (e.key==='c' && !e.metaKey && !e.ctrlKey && !showAddTask && !showAddCourse) { clearScheduled() }
+      if (e.key==='t' && !e.metaKey && !e.ctrlKey && !showAddTask && !showAddCourse) { setCurrentDate(today) }
+    }
+    window.addEventListener('keydown',h); return () => window.removeEventListener('keydown',h)
+  }, [tasks, events])
+
+  // Auto-schedule when a new task is added
+  useEffect(() => {
+    if (autoScheduleRef.current) {
+      autoScheduleRef.current = false
+      setTimeout(() => autoSchedule(), 50)
+    }
+  }, [tasks])
+
+  // Generate recurring task instances
+  useEffect(() => {
+    const recurringTasks = tasks.filter(t => t.recurring && t.completed >= t.estimate)
+    if (recurringTasks.length === 0) return
+    const newTasks = []
+    recurringTasks.forEach(t => {
+      const lastDue = new Date(t.dueDate)
+      const nextDue = addDays(lastDue, t.recurring === 'daily' ? 1 : t.recurring === 'weekly' ? 7 : 14)
+      const exists = tasks.some(x => x.recurring === t.recurring && x.dueDate === dateStr(nextDue) && x.name === t.name)
+      if (!exists && nextDue > today) {
+        newTasks.push({
+          id: `t${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+          name: t.name, courseId: t.courseId, dueDate: dateStr(nextDue),
+          estimate: t.estimate, completed: 0, status: 'todo', createdAt: todayStr,
+          recurring: t.recurring,
+        })
+      }
+    })
+    if (newTasks.length > 0) setTasks(prev => [...prev, ...newTasks])
+  }, [tasks])
+
+  // Overdue auto-reschedule — push overdue task sessions forward
+  useEffect(() => {
+    const overdueIds = new Set(
+      tasks.filter(t => daysUntil(t.dueDate) < 0 && t.completed < t.estimate).map(t => t.id)
+    )
+    if (overdueIds.size === 0) return
+    const todayStr2 = dateStr(today)
+    setEvents(prev => {
+      let changed = false
+      const updated = prev.map(e => {
+        if (e.type === 'task' && overdueIds.has(e.taskId) && e.date < todayStr2) {
+          changed = true
+          return { ...e, date: todayStr2 }
+        }
+        return e
+      })
+      return changed ? updated : prev
+    })
+  }, [tasks])
 
   useEffect(() => {
     saveStorage({ events, courses, tasks, currentDate: currentDate.toISOString(), minBlock })
@@ -167,7 +393,16 @@ export default function AIPlannerPage() {
 
   useEffect(() => {
     loadPlannerEvents().then(data => {
-      if (data.events?.length && events.length === 0) setEvents(data.events)
+      if (data.events?.length && events.length === 0) {
+        const seen = new Set()
+        const deduped = data.events.filter(e => {
+          const key = `${e.date}|${e.start}|${e.end}|${e.label}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        setEvents(deduped)
+      }
       if (data.tasks?.length && tasks.length === 0) setTasks(data.tasks)
     }).catch(() => {})
   }, [])
@@ -198,9 +433,9 @@ export default function AIPlannerPage() {
   const overdueTasks = unfinishedTasks.filter(t => daysUntil(t.dueDate) < 0)
   const dueSoonTasks = unfinishedTasks.filter(t => { const d = daysUntil(t.dueDate); return d >= 0 && d <= 3 })
 
-  const cushionMinutes = availableMin - (totalTaskRemaining * 60)
+  const cushionMinutes = availableMin - totalTaskRemaining
   const cushionHours = cushionMinutes / 60
-  const cushionPct = totalTaskEstimate > 0 ? Math.min(100, Math.max(0, (availableMin / (totalTaskEstimate * 60)) * 100)) : 100
+  const cushionPct = totalTaskEstimate > 0 ? Math.min(100, Math.max(0, (availableMin / totalTaskEstimate) * 100)) : 100
 
   // Study streak
   const studyDays = useMemo(() => {
@@ -224,7 +459,7 @@ export default function AIPlannerPage() {
     <div className="flex h-full bg-[#0f0f0f] text-[#e8e8e8] overflow-hidden">
 
       {/* ════════════════════ LEFT SIDEBAR ════════════════════ */}
-      <div className="w-60 flex-shrink-0 border-r border-[#2a2a2a] bg-[#141414] overflow-y-auto flex flex-col">
+      <div className="w-72 flex-shrink-0 border-r border-[#2a2a2a] bg-[#141414] overflow-y-auto flex flex-col">
 
         {/* Top Bar */}
         <div className="p-3 border-b border-[#2a2a2a]">
@@ -405,8 +640,53 @@ export default function AIPlannerPage() {
             <button onClick={goToday} className="px-2 py-1 rounded-lg text-[11px] font-medium text-[#a89bf8] bg-[#7c6af7]/15 hover:bg-[#7c6af7]/25 border border-[#7c6af7]/30 transition-colors">Today</button>
             <button onClick={()=>navWeek(1)} className="px-2 py-1 rounded-lg text-[11px] font-medium text-[#888] hover:text-[#e8e8e8] hover:bg-[#1a1a1a] border border-[#2a2a2a] transition-colors">Next Week</button>
           </div>
-          <div className="text-[10px] text-[#555]">{events.length} events</div>
+          <div className="flex items-center gap-2">
+            {tasks.length > 0 && (
+              <>
+                <button onClick={autoSchedule}
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-medium text-white bg-[#7c6af7] hover:bg-[#6a59e0] transition-colors flex items-center gap-1">
+                  <Zap size={10}/> Auto-Schedule
+                </button>
+                <button onClick={clearScheduled}
+                  className="px-2 py-1 rounded-lg text-[10px] font-medium text-[#888] hover:text-[#e8e8e8] hover:bg-[#1a1a1a] border border-[#2a2a2a] transition-colors">
+                  Clear
+                </button>
+              </>
+            )}
+            <span className="text-[10px] text-[#555]">{events.length} events</span>
+          </div>
         </div>
+
+        {/* ═══ TEST COUNTDOWN + AUTO-REVISION ═══ */}
+        {upcomingTests.length > 0 && (
+          <div className="px-4 py-2 bg-[#f59e0b]/6 border-b border-[#f59e0b]/15 flex gap-2 overflow-x-auto">
+            {upcomingTests.map(test => {
+              const dd = daysUntil(test.dueDate)
+              const course = courses.find(c => c.id === test.courseId)
+              const hasPlan = events.some(e => e.taskId === test.id && e.date !== test.dueDate)
+              return (
+                <div key={test.id}
+                  className={`flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] ${
+                    dd <= 1 ? 'bg-[#ef4444]/10 border-[#ef4444]/30' : 'bg-[#f59e0b]/10 border-[#f59e0b]/25'
+                  }`}>
+                  <span className={dd <= 1 ? 'text-[#ef4444]' : 'text-[#f59e0b]'}>
+                    {dd === 0 ? '🚨 TODAY' : `⏰ ${dd} day${dd===1?'':'s'} until`}
+                  </span>
+                  <span className="font-semibold text-[#e8e8e8]">{test.name}</span>
+                  {course && <span className="text-[#666]">{course.name}</span>}
+                  {!hasPlan ? (
+                    <button onClick={()=>autoRevisionPlan(test)}
+                      className="px-2 py-0.5 rounded-md bg-[#f59e0b] text-black font-medium hover:bg-[#fbbf24] transition-colors">
+                      Auto-revision plan →
+                    </button>
+                  ) : (
+                    <span className="text-green-400">✓ Revision planned</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Quick Task Planner */}
         {unfinishedTasks.length > 0 && (
@@ -526,7 +806,7 @@ export default function AIPlannerPage() {
       </div>
 
       {/* ════════════════════ RIGHT PANEL ════════════════════ */}
-      <div className="w-52 flex-shrink-0 border-l border-[#2a2a2a] bg-[#141414] overflow-y-auto flex flex-col">
+      <div className="w-56 flex-shrink-0 border-l border-[#2a2a2a] bg-[#141414] overflow-y-auto flex flex-col">
 
         {/* Tabs */}
         <div className="flex border-b border-[#2a2a2a]">
@@ -551,10 +831,26 @@ export default function AIPlannerPage() {
                 {cushionMinutes >= 0 ? '+' : ''}{fmtDuration(Math.abs(cushionMinutes))}
               </div>
               <p className="text-[10px] text-[#555] mt-1">
-                {cushionMinutes >= 60*60 ? "You're in great shape!" :
+                {cushionMinutes >= 60 ? "You're in great shape!" :
                  cushionMinutes >= 0 ? "You have just enough time." :
                  "You're overcommitted!"}
               </p>
+              <div className="flex justify-center gap-4 mt-2">
+                <div className="text-center">
+                  <div className="text-[9px] text-[#555]">Free</div>
+                  <div className="text-xs font-bold text-[#4ade80]">{fmtDuration(availableMin)}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] text-[#555]">Tasks</div>
+                  <div className="text-xs font-bold text-[#ef4444]">{fmtDuration(totalTaskRemaining)}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-[9px] text-[#555]">Ratio</div>
+                  <div className={`text-xs font-bold ${cushionPct >= 100 ? 'text-[#4ade80]' : cushionPct >= 50 ? 'text-[#f59e0b]' : 'text-[#ef4444]'}`}>
+                    {totalTaskEstimate > 0 ? `${Math.round(cushionPct)}%` : '—'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Cushion Bar */}
@@ -565,7 +861,7 @@ export default function AIPlannerPage() {
               </div>
               <div className="flex justify-between text-[8px] mt-1">
                 <span className="text-[#4ade80]">Available: {fmtDuration(availableMin)}</span>
-                <span className="text-[#ef4444]">Tasks: {fmtDuration(totalTaskRemaining*60)}</span>
+                <span className="text-[#ef4444]">Tasks: {fmtDuration(totalTaskRemaining)}</span>
               </div>
             </div>
 
@@ -606,7 +902,7 @@ export default function AIPlannerPage() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#888]">Tasks remaining</span>
-                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskRemaining*60)}</span>
+                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskRemaining)}</span>
               </div>
               <div className="border-t border-[#2a2a2a] pt-2 flex items-center justify-between text-xs">
                 <span className="text-[#888]">Cushion</span>
@@ -657,15 +953,15 @@ export default function AIPlannerPage() {
               <div className="text-[10px] text-[#555] uppercase tracking-wider">Time</div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#888]">Total estimate</span>
-                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskEstimate*60)}</span>
+                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskEstimate)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#888]">Completed</span>
-                <span className="font-medium text-[#4ade80]">{fmtDuration(totalTaskCompleted*60)}</span>
+                <span className="font-medium text-[#4ade80]">{fmtDuration(totalTaskCompleted)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#888]">Remaining</span>
-                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskRemaining*60)}</span>
+                <span className="font-medium text-[#e8e8e8]">{fmtDuration(totalTaskRemaining)}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#888]">Available this week</span>
@@ -731,7 +1027,7 @@ export default function AIPlannerPage() {
                         className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-left text-[#e8e8e8] hover:bg-[#1a1a1a] transition-colors">
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{backgroundColor:c?.color||'#7c6af7'}}/>
                         <span className="truncate">{t.name}</span>
-                        <span className="ml-auto text-[9px] text-[#555]">{fmtDuration((t.estimate-t.completed)*60)} left</span>
+                        <span className="ml-auto text-[9px] text-[#555]">{fmtDuration(t.estimate - t.completed)} left</span>
                       </button>
                     )
                   })}
@@ -804,14 +1100,33 @@ function TaskForm({ courses, onSubmit, onCancel }) {
   const [courseId, setCourseId] = useState(courses[0]?.id || '')
   const [dueDate, setDueDate] = useState(dateStr(addDays(new Date(), 7)))
   const [estimate, setEstimate] = useState(60)
+  const [recurring, setRecurring] = useState(null)
+  const [isTest, setIsTest] = useState(false)
   const ref = useRef()
   useEffect(()=>{ref.current?.focus()},[])
+
+  const templates = [
+    { label: 'Homework', estimate: 30 },
+    { label: 'Essay', estimate: 120 },
+    { label: 'Study Session', estimate: 60 },
+    { label: 'Project', estimate: 180 },
+    { label: 'Revision', estimate: 45 },
+    { label: 'Reading', estimate: 30 },
+    { label: 'Test', estimate: 45, test: true },
+    { label: 'Exam', estimate: 45, test: true },
+  ]
 
   return (
     <div className="p-2.5 bg-[#1a1a1a] rounded-lg border border-[#7c6af7]/20 space-y-2">
       <input ref={ref} value={name} onChange={e=>setName(e.target.value)} placeholder="Task name (e.g. Essay, Homework)"
-        onKeyDown={e=>{if(e.key==='Enter'&&name.trim())onSubmit({name,courseId,dueDate,estimate});if(e.key==='Escape')onCancel()}}
+        onKeyDown={e=>{if(e.key==='Enter'&&name.trim())onSubmit({name,courseId,dueDate,estimate,recurring,isTest});if(e.key==='Escape')onCancel()}}
         className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-[#0d0d0d] border border-[#2a2a2a] text-[#e8e8e8] placeholder-[#555] outline-none focus:border-[#7c6af7]"/>
+      <div className="flex flex-wrap gap-1">
+        {templates.map(t=>(
+          <button key={t.label} onClick={()=>{setName(t.label);setEstimate(t.estimate);setIsTest(!!t.test)}}
+            className="px-1.5 py-0.5 rounded text-[8px] bg-[#7c6af7]/10 border border-[#7c6af7]/20 text-[#a89bf8] hover:bg-[#7c6af7]/20 transition-colors">{t.label}</button>
+        ))}
+      </div>
       <div className="flex gap-1.5">
         <select value={courseId} onChange={e=>setCourseId(e.target.value)}
           className="flex-1 px-2 py-1 text-[10px] rounded-lg bg-[#0d0d0d] border border-[#2a2a2a] text-[#e8e8e8] outline-none focus:border-[#7c6af7]">
@@ -829,8 +1144,21 @@ function TaskForm({ courses, onSubmit, onCancel }) {
             }`}>{m}m</button>
         ))}
       </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-[#555]">Repeat:</span>
+        {[null,'daily','weekly','fortnightly'].map(r=>(
+          <button key={r||'none'} onClick={()=>setRecurring(r)}
+            className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+              recurring===r ? 'bg-[#4ade80] text-black' : 'bg-[#0d0d0d] border border-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]'
+            }`}>{r==='daily'?'Daily':r==='weekly'?'Weekly':r==='fortnightly'?'Fortnightly':'None'}</button>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 px-1.5 py-1 rounded-lg bg-[#f59e0b]/8 border border-[#f59e0b]/20 cursor-pointer">
+        <input type="checkbox" checked={isTest} onChange={e=>setIsTest(e.target.checked)} className="accent-[#f59e0b]"/>
+        <span className="text-[10px] text-[#f59e0b]">🎯 This is a Test / Exam — show countdown & auto-revision</span>
+      </label>
       <div className="flex gap-1.5">
-        <button onClick={()=>name.trim() && onSubmit({name,courseId,dueDate,estimate})}
+        <button onClick={()=>name.trim() && onSubmit({name,courseId,dueDate,estimate,recurring,isTest})}
           className="flex-1 py-1.5 rounded-lg bg-[#7c6af7] text-white text-[10px] font-medium hover:bg-[#6a59e0] transition-colors">Add Task</button>
         <button onClick={onCancel} className="px-3 py-1.5 rounded-lg bg-[#2a2a2a] text-[#888] text-[10px] hover:text-[#e8e8e8] transition-colors">Cancel</button>
       </div>

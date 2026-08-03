@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, Upload, MessageSquare, X, Loader, BookOpen,
   Quote, List, Search, ChevronDown, ChevronUp, FileSearch,
-  Presentation, Table2, Code, Hash, ArrowRight, MessagesSquare
+  Presentation, Table2, Code, Hash, ArrowRight, MessagesSquare, Volume2, Download
 } from 'lucide-react'
 import { showToast } from '../components/Toast'
 import { useStore } from '../store'
@@ -144,6 +144,9 @@ export default function DocsPage() {
   const [keyPoints, setKeyPoints] = useState('')
   const [keyPointsLoading, setKeyPointsLoading] = useState(false)
 
+  const [audioUrl, setAudioUrl] = useState('')
+  const [audioLoading, setAudioLoading] = useState(false)
+
   // Conversation picker state
   const [showChatPicker, setShowChatPicker] = useState(false)
   const [chatPickerSearch, setChatPickerSearch] = useState('')
@@ -168,6 +171,7 @@ export default function DocsPage() {
     setQuotes([])
     setAnswer('')
     setKeyPoints('')
+    setAudioUrl('')
     fileDataRef.current = file
 
     const form = new FormData()
@@ -287,6 +291,52 @@ export default function DocsPage() {
     setKeyPointsLoading(false)
   }
 
+  // ── Audio overview ────────────────────────────────────────────────────────
+  const handleListen = async () => {
+    if (!fileDataRef.current) return
+    setAudioLoading(true)
+    setAudioUrl('')
+    try {
+      const form = new FormData()
+      form.append('file', fileDataRef.current)
+      form.append('style', 'brief')
+      const resp = await fetch(`${BASE}/docs/summarise`, { method: 'POST', body: form })
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let text = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const chunk = line.slice(6)
+            if (chunk === '[DONE]') break
+            text += chunk
+          }
+        }
+      }
+      const speech = text.trim().slice(0, 3500) || `No summary could be generated for ${doc?.name || 'this document'}.`
+      const synth = await fetch(`${BASE}/voice/synthesize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: speech }),
+      })
+      if (synth.ok) {
+        const blob = await synth.blob()
+        setAudioUrl(URL.createObjectURL(blob))
+      } else {
+        showToast('Speech synthesis unavailable', 'error')
+      }
+    } catch (e) {
+      showToast('Could not generate audio: ' + e.message, 'error')
+    }
+    setAudioLoading(false)
+  }
+
   // ── Send to chat (with conversation picker) ───────────────────────────────
   const openInChat = async (convId = null, prefill = '') => {
     if (fileDataRef.current) {
@@ -377,7 +427,7 @@ export default function DocsPage() {
                 {((doc.chars || 0) / 1000).toFixed(1)}k characters
               </p>
             </div>
-            <button onClick={() => { setDoc(null); fileDataRef.current = null }}
+            <button onClick={() => { setDoc(null); fileDataRef.current = null; setAudioUrl('') }}
               className="text-[#444] hover:text-[#f87171] p-1 transition-colors">
               <X size={16} />
             </button>
@@ -390,7 +440,7 @@ export default function DocsPage() {
 
           {/* Tabs — adaptive to file type */}
           <div className="flex gap-1 bg-[#111] border border-[#1e1e1e] p-1 rounded-xl overflow-x-auto">
-            {adaptive.tabs.map(tab => (
+            {[...adaptive.tabs, { id: 'listen', icon: <Volume2 size={14}/>, label: 'Listen' }].map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-colors flex-shrink-0 ${
                   activeTab === tab.id
@@ -613,8 +663,32 @@ export default function DocsPage() {
             </div>
           )}
 
+          {/* Tab: Listen — audio overview */}
+          {activeTab === 'listen' && (
+            <div className="space-y-4">
+              <p className="text-xs text-[#555]">
+                Generate a spoken audio overview of <span className="text-[#aaa]">{doc.name}</span> —
+                perfect for listening on the go, like a podcast summary.
+              </p>
+              <button onClick={handleListen} disabled={audioLoading}
+                className="w-full py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                <Volume2 size={15} />
+                {audioLoading ? 'Summarising and speaking...' : 'Generate Audio Overview'}
+              </button>
+              {audioUrl && (
+                <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 space-y-3">
+                  <audio controls src={audioUrl} className="w-full" />
+                  <a href={audioUrl} download={`${doc.name.split('.').slice(0, -1).join('.')}-overview.m4a`}
+                    className="flex items-center justify-center gap-1.5 text-xs text-[#a89bf8] hover:text-[#c4b5fd] transition-colors">
+                    <Download size={12} /> Download audio
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Upload another */}
-          <button onClick={() => { setDoc(null); fileDataRef.current = null; setSummaryText(''); setQuotes([]); setAnswer(''); setKeyPoints('') }}
+          <button onClick={() => { setDoc(null); fileDataRef.current = null; setSummaryText(''); setQuotes([]); setAnswer(''); setKeyPoints(''); setAudioUrl('') }}
             className="w-full text-xs text-[#333] hover:text-[#666] py-2 transition-colors">
             ↑ Upload a different document
           </button>

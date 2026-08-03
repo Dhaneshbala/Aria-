@@ -1,6 +1,10 @@
 """
 Ollama service — wraps all model calls.
 M4 MacBook Air optimised: Metal GPU via num_gpu_layers=-1.
+
+Cloud routing: if a cloud_api_key is configured (Gemini/OpenRouter/Groq),
+complete()/stream() transparently route through the cloud provider and
+fall back to Ollama on any failure.
 """
 import httpx
 import json
@@ -21,6 +25,41 @@ M4_OPTIONS = {
 
 TIMEOUT = 300.0
 
+# Cloud provider cache — avoids re-reading config on every call
+_cloud_cache: dict = {}
+
+
+def _get_cloud():
+    """Return a CloudLLM instance if cloud is configured, else None."""
+    try:
+        from models.database import get_config
+        from services.cloud_llm import CloudLLM, PROVIDERS
+
+        config = get_config()
+        provider = config.get("cloud_provider", "auto")
+        api_key = config.get("cloud_api_key", "").strip()
+
+        if provider in ("auto", ""):
+            # Auto-detect: use cloud if a key exists and provider is known
+            if api_key:
+                provider = "gemini"
+            else:
+                return None
+
+        if provider not in PROVIDERS:
+            logger.warning("Unknown cloud provider '%s', falling back to Ollama", provider)
+            return None
+        if not api_key:
+            return None
+
+        cache_key = f"{provider}:{api_key[:8]}"
+        if cache_key not in _cloud_cache:
+            _cloud_cache[cache_key] = CloudLLM(provider, api_key)
+        return _cloud_cache[cache_key]
+    except Exception as e:
+        logger.warning("Cloud provider init failed: %s", e)
+        return None
+
 
 class OllamaService:
 
@@ -29,6 +68,16 @@ class OllamaService:
         self._pptx_client = httpx.AsyncClient(timeout=300, base_url=OLLAMA_URL)
 
     async def stream(self, model: str, system: str, message: str, context_window: int = 4096, timeout: float = TIMEOUT) -> AsyncGenerator[str, None]:
+        cloud = _get_cloud()
+        if cloud is not None:
+            try:
+                logger.info("Routing to cloud (%s) for %s", cloud.provider, model)
+                async for token in cloud.stream(model, system, message, timeout=timeout):
+                    yield token
+                return
+            except Exception as e:
+                logger.warning("Cloud stream failed (%s), falling back to Ollama: %s", cloud.provider, e)
+
         options = {**M4_OPTIONS, "num_ctx": context_window}
         payload = {
             "model": model,

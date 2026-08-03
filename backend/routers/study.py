@@ -176,3 +176,75 @@ async def generate_worksheet(req: WorksheetRequest):
         topic, req.grade, req.question_count, req.include_answers, model
     )
     return {"worksheet": worksheet, "subject": subject, "grade": req.grade}
+
+
+@router.post("/check-handwriting")
+async def check_handwriting(
+    image: UploadFile = File(...),
+    question: str = Form(default=""),
+    model_answer: str = Form(default=""),
+):
+    """
+    Check a handwritten answer photo against an expected answer.
+    Vision model reads the handwriting, then the reasoning model grades it.
+    """
+    from services.image_service import ImageService
+    from services.ollama_service import OllamaService
+    from services.voice_service import VoiceService
+
+    config = get_config()
+    vision_model = config.get("vision_model", "qwen2.5vl:3b")
+    reasoning_model = config.get("reasoning_model", "qwen3:8b")
+
+    image_data = await image.read()
+    mime = image.content_type or "image/jpeg"
+
+    image_svc = ImageService()
+    llm = OllamaService()
+    tts = VoiceService()
+
+    try:
+        # 1) Read the handwriting with the vision model
+        vision_text = await image_svc.analyse(image_data, mime, vision_model)
+        await llm.unload_model(vision_model)
+    except Exception as e:
+        return {"error": f"Vision failed: {e}"}
+
+    prompt = (
+        "A Year 7 student wrote a handwritten answer, which was transcribed below.\n\n"
+        f"QUESTION: {question}\n\n"
+        f"HANDWRITTEN ANSWER (transcribed):\n{vision_text[:1500]}\n\n"
+    )
+    if model_answer:
+        prompt += f"EXPECTED ANSWER:\n{model_answer[:1500]}\n\n"
+
+    prompt += (
+        "Grade the student's answer out of 10 like a fair Year 7 teacher.\n"
+        "Consider: accuracy, completeness, and understanding.\n"
+        "Then write a short friendly note with 2-3 specific tips to improve.\n"
+        "Return JSON: {\"score\": 0-10, \"summary\": \"1-2 sentence summary\", "
+        "\"tips\": [\"tip1\", \"tip2\", \"tip3\"]}"
+    )
+
+    try:
+        raw = await llm.complete(reasoning_model, prompt,
+            "You are a kind, encouraging Year 7 teacher who grades handwriting.")
+        import re, json
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = json.loads(m.group()) if m else {}
+        score = max(0, min(10, int(data.get("score", 5))))
+        summary = str(data.get("summary", ""))[:400]
+        tips = [str(t)[:200] for t in data.get("tips", [])[:3]]
+    except Exception as e:
+        return {"error": f"Grading failed: {e}"}
+
+    return {
+        "score": score,
+        "summary": summary,
+        "tips": tips,
+        "transcribed": vision_text[:800],
+        "feedback": (
+            f"Score: {score}/10\n\n{summary}\n\n"
+            + "\n".join(f"• {t}" for t in tips)
+        ),
+    }

@@ -94,9 +94,17 @@ INTENT_PATTERNS = {
         r"\b(generate.*diagram|create.*poster|draw.*map)\b",
     ],
     "math": [
-        r"\b(solve|calculate|equation|algebra|geometry|calculus|differentiate|integrate)\b",
+        r"\b(solve|calculate|equation|algebra|calculus|differentiate|integrate)\b",
         r"\b(area|volume|perimeter|gradient|probability|statistics|matrix|vector|fraction)\b",
         r"[\d]+\s*[\+\-\*\/\^]\s*[\d]",
+    ],
+    "geography": [
+        r"\b(geography|continent|country|capital city|population|climate|terrain|landscape)\b",
+        r"\b(river|mountain|ocean|sea|lake|desert|forest|island|peninsula|strait)\b",
+        r"\b(latitude|longitude|hemisphere|equator|tropic|time zone|timezone)\b",
+        r"\b(urba|suburb|rural|settlement|migration|demograph|economy|trade|import|export)\b",
+        r"\b(ecosystem|biome|erosion|weathering|plate tectonic|earthquake|volcano)\b",
+        r"\b(map|globe|atlas|compass|scale|grid reference|aerial photograph)\b",
     ],
     "summary": [
         r"\b(summarise|summarize|summary|tldr|brief overview|key points|main idea|overview)\b",
@@ -219,7 +227,7 @@ async def orchestrate(
 
     # ── Step 1: Parallel lightweight tasks (no LLM yet) ───────────────────────
     parallel = {}
-    cross_check_intents = {"explain", "math", "formula", "timeline", "summary", "worksheet_solver", "notes"}
+    cross_check_intents = {"explain", "math", "formula", "timeline", "summary", "worksheet_solver", "notes", "geography"}
     needs_cross_check = bool(cross_check_intents & set(intents))
 
     if "web_search" in intents and config.get("web_search_enabled", True):
@@ -353,10 +361,34 @@ async def orchestrate(
             yield _sse({"type": "done"})
             return
 
-    # ── Step 6: Structured extras (quiz, flashcards, mindmap, study plan) ─────
-    extras = await _generate_extras(intents, message, full_response, reasoning_model, config)
+    # ── Step 6: Structured extras + reliability checks (run in parallel) ──────
+    extras_task = asyncio.create_task(
+        _generate_extras(intents, message, full_response, reasoning_model, config)
+    )
+    verify_task = None
+    if needs_cross_check and cross_check and len(full_response) > 100:
+        verify_task = asyncio.create_task(
+            _verify_answer(message, full_response, cross_check)
+        )
+    suggest_task = None
+    if len(full_response) > 150 and "translate" not in intents:
+        suggest_task = asyncio.create_task(
+            _generate_suggestions(message, full_response)
+        )
+
+    extras = await extras_task
     if extras:
         yield _sse({"type": "extras", "content": extras})
+
+    if verify_task:
+        verification = await verify_task
+        if verification:
+            yield _sse({"type": "verification", "content": verification})
+
+    if suggest_task:
+        suggestions = await suggest_task
+        if suggestions:
+            yield _sse({"type": "suggestions", "content": suggestions})
 
     # ── Step 6b: Send cross-check sources to frontend ──────────────────────
     if cross_check:
@@ -441,11 +473,20 @@ def _build_system_prompt(
                 "For Geography: follow the NSW Geography syllabus (Geographical Inquiry, Spatial Significance, Interconnections).",
                 "",
             ]
-            # Inject specific content for the student's likely subjects
-            for kla in ["mathematics", "science", "english", "history"]:
-                content = _curr.get_subject_content(kla, stage)
-                if content:
-                    parts.append(f"Stage {stage.replace('S','').replace('ES1','0')} {kla.title()} covers: {'; '.join(content[:5])}")
+            # Inject specific content only for the subject being asked about
+            subject_map = {
+                "math": "mathematics", "formula": "mathematics",
+                "geography": "geography",
+                "explain": None, "chat": None,  # general — inject nothing
+            }
+            injected = set()
+            for intent in intents:
+                kla = subject_map.get(intent)
+                if kla and kla not in injected:
+                    injected.add(kla)
+                    content = _curr.get_subject_content(kla, stage)
+                    if content:
+                        parts.append(f"Stage {stage.replace('S','').replace('ES1','0')} {kla.title()} covers: {'; '.join(content[:5])}")
             parts.append("")
     except Exception:
         pass  # Graceful fallback if curriculum service unavailable
@@ -571,6 +612,13 @@ def _build_system_prompt(
             "Check the answer. Offer one similar practice problem at the end.",
             "",
         ]
+    if "geography" in intents:
+        parts += [
+            "GEOGRAPHY MODE: Use real-world examples and maps where possible.",
+            "Reference specific countries, cities, and landmarks. Include key facts and statistics.",
+            "If discussing climate or ecosystems, mention Australian examples where relevant.",
+            "",
+        ]
     if "explain" in intents:
         parts += [
             "EXPLANATION MODE: Use analogies and everyday examples.",
@@ -628,9 +676,12 @@ def _build_system_prompt(
         parts += [
             "━━ INTERNET CROSS-CHECK (for accuracy) ━━",
             "The following web results were found to verify your answer:",
-            *[f"• {r['title']}: {r['snippet'][:200]}" for r in cross_check[:4]],
+            *[f"[{i+1}] {r['title']}: {r['snippet'][:200]}" for i, r in enumerate(cross_check[:4])],
+            "**CITATIONS:** Support your key facts with the web results by adding the result number",
+            "in square brackets right after the fact, e.g. 'The Nile is 6,650 km long [1]'.",
             "After your answer, add a short section:",
             "**Verify:** [Confirm or correct your answer using the web results above. If any facts differ, note the correction.]",
+            "**Sources:** [List the web result numbers you cited, with their titles and URLs]",
             "",
         ]
 
@@ -695,6 +746,74 @@ async def _generate_extras(
     return extras
 
 
+# ── Answer verification (2nd-model cross-check) ───────────────────────────────
+
+async def _verify_answer(
+    question: str, answer: str, evidence: list[dict], model: str = "llama3.2:3b"
+) -> dict | None:
+    """Check the answer's facts against web evidence with an independent model."""
+    try:
+        evidence_text = "\n".join(
+            f"[{i+1}] {r['title']}: {r['snippet'][:250]}"
+            for i, r in enumerate(evidence[:4])
+        )
+        prompt = (
+            "You are a careful fact-checker for a student's AI tutor answer.\n\n"
+            f"QUESTION: {question[:400]}\n\n"
+            f"AI ANSWER:\n{answer[:2000]}\n\n"
+            f"WEB EVIDENCE:\n{evidence_text}\n\n"
+            "Compare the answer's factual claims against the web evidence.\n"
+            "If every claim is supported or not contradicted by the evidence, set verified to true.\n"
+            "If any claim is wrong or contradicts the evidence, set verified to false and explain briefly.\n"
+            'Reply with ONLY JSON: {"verified": true or false, "notes": "brief explanation or empty string"}'
+        )
+        raw = await ollama.complete(
+            model, prompt, "You are a strict but fair fact-checker."
+        )
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        if m:
+            data = json.loads(m.group())
+            return {
+                "verified": bool(data.get("verified")),
+                "notes": str(data.get("notes", ""))[:300],
+            }
+    except Exception as e:
+        logger.warning("Answer verification failed: %s", e)
+    return None
+
+
+# ── Follow-up suggestions (NotebookLM-style) ──────────────────────────────────
+
+async def _generate_suggestions(
+    question: str, answer: str, model: str = "llama3.2:3b"
+) -> list[str] | None:
+    """Generate 3 short follow-up questions the student would likely ask next."""
+    try:
+        prompt = (
+            "A Year 7 student just asked a question and received this answer.\n\n"
+            f"QUESTION: {question[:300]}\n\n"
+            f"ANSWER:\n{answer[:1200]}\n\n"
+            "Suggest exactly 3 short follow-up questions the student would naturally ask next.\n"
+            "They should dig deeper into the topic and be useful for studying.\n"
+            "Number them 1., 2., 3. Each under 12 words. One per line."
+        )
+        raw = await ollama.complete(
+            model, prompt, "You suggest useful follow-up study questions."
+        )
+        qs = []
+        for line in raw.split("\n"):
+            line = line.strip()
+            if not line or "follow-up question" in line.lower() or line.lower().startswith("here are"):
+                continue
+            q = re.sub(r"^\d+[.)]\s*", "", line).strip()
+            if 3 < len(q) < 120:
+                qs.append(q)
+        return qs[:3] or None
+    except Exception as e:
+        logger.warning("Suggestion generation failed: %s", e)
+    return None
+
+
 # ── Parsers ───────────────────────────────────────────────────────────────────
 
 def _parse_quiz(text: str) -> list[dict]:
@@ -709,9 +828,9 @@ def _parse_quiz(text: str) -> list[dict]:
             if re.match(r"^[A-D][.)]\s*", line):
                 q["options"].append(re.sub(r"^[A-D][.)]\s*", "", line).strip())
             elif re.match(r"(?i)^correct[:\s]", line):
-                m = re.search(r"[A-D]", line)
+                m = re.search(r"correct\s*[):.\s]+([A-Da-d])", line, re.I)
                 if m:
-                    q["correct"] = m.group()
+                    q["correct"] = m.group(1).upper()
             elif re.match(r"(?i)^explanation[:\s]", line) or (q["correct"] and len(line) > 15):
                 q["explanation"] = (q["explanation"] + " " + line).strip()
         if len(q["options"]) >= 2:

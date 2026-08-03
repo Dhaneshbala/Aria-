@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { generateQuiz, checkAnswer } from '../services/api'
+import { generateQuiz, checkAnswer, bulkAddSrCards } from '../services/api'
 import { useStore } from '../store'
-import { BookOpen, Trophy, RotateCcw } from 'lucide-react'
+import { BookOpen, Trophy, RotateCcw, Sparkles } from 'lucide-react'
 
 const LEVELS = ['easy', 'medium', 'hard', 'olympiad']
 const LETTER = ['A', 'B', 'C', 'D']
@@ -19,11 +19,12 @@ export default function QuizPage() {
   const [done, setDone] = useState(saved.done || false)
   const [loading, setLoading] = useState(false)
   const [answers, setAnswers] = useState(saved.answers || [])
+  const [cardState, setCardState] = useState(saved.cardState || { sending: false, done: false, count: 0 })
 
   // Auto-persist to store
   useEffect(() => {
-    setStudyTool('quiz', { questions, current, selected, score, done, answers, topic, level, count })
-  }, [questions, current, selected, score, done, answers, topic, level, count])
+    setStudyTool('quiz', { questions, current, selected, score, done, answers, topic, level, count, cardState })
+  }, [questions, current, selected, score, done, answers, topic, level, count, cardState])
 
   const start = async () => {
     if (!topic.trim()) return
@@ -57,6 +58,25 @@ export default function QuizPage() {
       setSelected(null)
     } else {
       setDone(true)
+    }
+  }
+
+  const wrongAnswers = answers.filter(a => !a.correct)
+
+  const sendToFlashcards = async () => {
+    const cards = wrongAnswers.map(a => {
+      const correctLetter = a.question.correct
+      const correctIdx = LETTER.indexOf(correctLetter)
+      const correctText = a.question.options?.[correctIdx] ?? correctLetter
+      return { question: a.question.question, answer: correctText }
+    })
+    if (cards.length === 0) return
+    setCardState(s => ({ ...s, sending: true }))
+    try {
+      await bulkAddSrCards(cards, topic || 'general')
+      setCardState({ sending: false, done: true, count: cards.length })
+    } catch {
+      setCardState({ sending: false, done: false, count: 0 })
     }
   }
 
@@ -150,7 +170,21 @@ export default function QuizPage() {
             <span className="text-xs text-[#888]">Score: {score}/{current + (selected !== null ? 1 : 0)}</span>
           </div>
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5">
-            <p className="text-[#e8e8e8] text-base mb-5">{q.question}</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[#e8e8e8] text-base flex-1">{q.question}</p>
+              {q.verified && (
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-[9px] font-medium flex-shrink-0 ${
+                  q.verified === 'triple_verified' ? 'bg-green-500/15 text-green-400 border border-green-500/30' :
+                  q.verified === 'majority_verified' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+                  q.verified === 'disputed' ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30' :
+                  'bg-[#2a2a2a] text-[#888] border border-[#333]'
+                }`}>
+                  {q.verified === 'triple_verified' ? '✓ Triple Verified' :
+                   q.verified === 'majority_verified' ? '✓ Majority' :
+                   q.verified === 'disputed' ? '? Disputed' : '— Unverified'}
+                </span>
+              )}
+            </div>
             <div className="space-y-2.5">
               {q.options.map((opt, i) => (
                 <button key={i} onClick={() => handleSelect(i)}
@@ -194,11 +228,35 @@ export default function QuizPage() {
             {answers.map((a, i) => (
               <div key={i} className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${a.correct ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
                 <span>{a.correct ? '✓' : '✗'}</span>
-                <span className="truncate">{a.question.question}</span>
+                <span className="truncate flex-1">{a.question.question}</span>
+                {a.question.verified && (
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${
+                    a.question.verified === 'triple_verified' ? 'bg-green-500/20 text-green-400' :
+                    a.question.verified === 'majority_verified' ? 'bg-blue-500/20 text-blue-400' :
+                    a.question.verified === 'disputed' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-[#2a2a2a] text-[#888]'
+                  }`}>
+                    {a.question.verified === 'triple_verified' ? '3x' :
+                     a.question.verified === 'majority_verified' ? '2x' :
+                     a.question.verified === 'disputed' ? '?' : '—'}
+                  </span>
+                )}
               </div>
             ))}
           </div>
-          <button onClick={() => { setQuestions([]); setTopic('') }}
+          {wrongAnswers.length > 0 && !cardState.done && (
+            <button onClick={sendToFlashcards} disabled={cardState.sending}
+              className="flex items-center gap-2 mx-auto mb-6 px-6 py-2.5 rounded-xl bg-[#f59e0b]/15 border border-[#f59e0b]/30 text-[#f59e0b] text-sm hover:bg-[#f59e0b]/25 transition-colors disabled:opacity-50">
+              <Sparkles size={14} />
+              {cardState.sending ? 'Sending to flashcards...' : `Send ${wrongAnswers.length} missed question${wrongAnswers.length>1?'s':''} to revision flashcards`}
+            </button>
+          )}
+          {cardState.done && (
+            <div className="mx-auto mb-6 max-w-md px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs">
+              ✓ {cardState.count} card{cardState.count>1?'s':''} added to spaced-repetition flashcards — review them in Study Tools → Spaced Repetition
+            </div>
+          )}
+          <button onClick={() => { setQuestions([]); setTopic(''); setCardState({ sending: false, done: false, count: 0 }) }}
             className="flex items-center gap-2 mx-auto px-6 py-2.5 rounded-xl bg-[#7c6af7] text-white text-sm">
             <RotateCcw size={14} /> New Quiz
           </button>

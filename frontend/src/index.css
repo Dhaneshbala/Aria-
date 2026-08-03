@@ -156,3 +156,49 @@ body {
     @apply fixed inset-0 bg-black/50 z-40;
   }
 }
+
+/* ── Accessibility: visible keyboard focus ───────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #a89bf8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── UI preference: font size ────────────────────────────────────────────── */
+.aria-font-sm { font-size: 13px; }
+.aria-font-md { font-size: 14px; }
+.aria-font-lg { font-size: 15.5px; }
+
+/* ── UI preference: high contrast ────────────────────────────────────────── */
+.aria-contrast body {
+  background: #000 !important;
+}
+.aria-contrast body,
+.aria-contrast button,
+.aria-contrast input,
+.aria-contrast textarea,
+.aria-contrast select {
+  color: #ffffff !important;
+}
+.aria-contrast .text-\[\#555\],
+.aria-contrast .text-\[\#444\],
+.aria-contrast .text-\[\#333\] {
+  opacity: 0.95 !important;
+}
+.aria-contrast div,
+.aria-contrast section,
+.aria-contrast aside {
+  border-color: #555 !important;
+}

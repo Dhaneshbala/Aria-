@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
-import { generateFlashcards, bulkAddSrCards } from '../services/api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { generateFlashcards, bulkAddSrCards, importSrCsv, exportSrCsv } from '../services/api'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
-import { CreditCard, RotateCcw, Shuffle, Send, ChevronLeft, ChevronRight, Check, X, Sparkles, Target, Zap } from 'lucide-react'
+import { CreditCard, RotateCcw, Shuffle, Send, ChevronLeft, ChevronRight, Check, X, Sparkles, Target, Zap, FileUp, FileDown } from 'lucide-react'
 
 export default function FlashcardsPage() {
   const { studyTools, setStudyTool } = useStore()
@@ -17,6 +17,8 @@ export default function FlashcardsPage() {
   const [loading, setLoading] = useState(false)
   const [sessionDone, setSessionDone] = useState(false)
   const [streak, setStreak] = useState(0)
+  const csvInputRef = useRef()
+  const [csvBusy, setCsvBusy] = useState(false)
 
   useEffect(() => {
     setStudyTool('flashcards', { cards, order, idx, flipped, known, topic, count })
@@ -74,6 +76,36 @@ export default function FlashcardsPage() {
     } catch { showToast('Failed to send cards', 'error') }
   }
 
+  const handleImportCsv = async (file) => {
+    if (!file) return
+    setCsvBusy(true)
+    try {
+      const res = await importSrCsv(file, topic.trim() || 'general')
+      if (res.status === 'imported') {
+        showToast(`${res.count} cards imported to Spaced Repetition (subject: ${topic.trim() || 'general'})`, 'success')
+      } else {
+        showToast(res.error || 'Import failed', 'error')
+      }
+    } catch { showToast('Import failed', 'error') }
+    setCsvBusy(false)
+  }
+
+  const handleExportCsv = async () => {
+    setCsvBusy(true)
+    try {
+      const resp = await exportSrCsv(topic.trim() || undefined)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'aria_flashcards.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+      showToast('Flashcards exported as CSV', 'success')
+    } catch { showToast('Export failed', 'error') }
+    setCsvBusy(false)
+  }
+
   const restart = () => {
     setIdx(0); setFlipped(false); setKnown(new Set()); setStreak(0); setSessionDone(false)
   }
@@ -125,6 +157,21 @@ export default function FlashcardsPage() {
             className="w-full py-3 rounded-xl bg-gradient-to-r from-[#7c6af7] to-[#6a59e0] text-white text-sm font-semibold disabled:opacity-40 hover:shadow-lg hover:shadow-[#7c6af7]/20 transition-all active:scale-[0.98]">
             Generate Flashcards
           </button>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => csvInputRef.current.click()} disabled={csvBusy}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#888] text-xs hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-40 transition-colors">
+              <FileUp size={12} /> Import CSV
+            </button>
+            <button onClick={handleExportCsv} disabled={csvBusy}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#888] text-xs hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-40 transition-colors">
+              <FileDown size={12} /> Export CSV
+            </button>
+            <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden"
+              onChange={e => { handleImportCsv(e.target.files[0]); e.target.value = '' }} />
+          </div>
+          <p className="text-[10px] text-[#444] text-center">
+            CSV format: <code className="text-[#666]">front,back</code> — imports into Spaced Repetition
+          </p>
         </div>
       </div>
     )

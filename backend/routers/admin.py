@@ -41,6 +41,8 @@ async def health_check():
     config = get_config()
     ok     = h if isinstance(h, bool) else h.get("ok", False)
     models = h.get("models", []) if isinstance(h, dict) else []
+    from services.ollama_service import _get_cloud
+    cloud  = _get_cloud()
     return {
         "ollama":             ok,
         "stable_diffusion":   sd_ok,
@@ -48,7 +50,10 @@ async def health_check():
         "reasoning_model":    config.get("reasoning_model"),
         "vision_model":       config.get("vision_model"),
         "fallback_model":     config.get("fallback_model"),
-        "status":             "ok" if ok else "degraded",
+        "cloud_provider":     config.get("cloud_provider", "auto"),
+        "cloud_active":       cloud is not None,
+        "cloud_model":        cloud.default_model if cloud else None,
+        "status":             "ok" if (ok or cloud is not None) else "degraded",
     }
 
 

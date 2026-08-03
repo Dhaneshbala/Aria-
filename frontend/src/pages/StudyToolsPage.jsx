@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   generateEssayFeedback, generateFormula, generateTimeline, generateAssessmentPlan,
   suggestNextTopic, getRevisionNeeds, getWeakTopics, getLearnedFormulas,
-  generateWorksheet,
+  generateWorksheet, checkHandwriting,
 } from '../services/api'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
@@ -18,6 +18,7 @@ const TABS = [
   { id: 'assessment',   icon: FileText,      label: 'Assessment',      color: 'text-purple-400' },
   { id: 'study-intel',  icon: CheckCircle,   label: 'Study Intel',     color: 'text-teal-400' },
   { id: 'worksheet',    icon: File,           label: 'Worksheet',       color: 'text-orange-400' },
+  { id: 'handwriting',  icon: PenTool,       label: 'Handwriting',     color: 'text-pink-400' },
 ]
 
 function generateICS(plan, topic) {
@@ -69,7 +70,18 @@ export default function StudyToolsPage() {
   const [assessDays, setAssessDays] = useState(7)
   const [assessResult, setAssessResult] = useState(saved.assessResult || null)
   const [assessChecked, setAssessChecked] = useState(saved.assessChecked || {})
+  const [assessLoading, setAssessLoading] = useState(false)
   const assessRef = useRef()
+
+  // Handwriting state
+  const [hwImage, setHwImage] = useState(null)
+  const [hwQuestion, setHwQuestion] = useState('')
+  const [hwModelAnswer, setHwModelAnswer] = useState('')
+  const [hwResult, setHwResult] = useState(null)
+  const [hwLoading, setHwLoading] = useState(false)
+  const [hwPreview, setHwPreview] = useState('')
+  const [hwDrag, setHwDrag] = useState(false)
+  const hwRef = useRef()
 
   // Worksheet state
   const [wsTopic, setWsTopic] = useState('')
@@ -157,6 +169,35 @@ export default function StudyToolsPage() {
       setWsResult(data.worksheet || 'No worksheet generated.')
     } catch (e) { setWsResult('Error: ' + e.message) }
     setLoading(false)
+  }
+
+  const handleHwFile = (e) => {
+    const f = e.target.files[0]
+    if (f && f.type.startsWith('image/')) {
+      setHwImage(f)
+      setHwResult(null)
+      setHwPreview(URL.createObjectURL(f))
+    }
+  }
+
+  const handleHwDrop = (e) => {
+    e.preventDefault()
+    const f = e.dataTransfer.files[0]
+    if (f && f.type.startsWith('image/')) {
+      setHwImage(f)
+      setHwResult(null)
+      setHwPreview(URL.createObjectURL(f))
+    }
+  }
+
+  const handleHandwriting = async () => {
+    if (!hwImage) return
+    setHwLoading(true); setHwResult(null)
+    try {
+      const data = await checkHandwriting(hwImage, hwQuestion, hwModelAnswer)
+      setHwResult(data)
+    } catch (e) { setHwResult({ error: e.message }) }
+    setHwLoading(false)
   }
 
   const handleTabSwitch = (id) => {
@@ -529,6 +570,125 @@ export default function StudyToolsPage() {
             {wsResult && !loading && (
               <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 text-sm text-[#d0d0d0] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto prose">
                 {wsResult}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Handwriting Check ──────────────────────────────────────── */}
+        {activeTab === 'handwriting' && (
+          <div className="max-w-3xl mx-auto space-y-4">
+            <p className="text-xs text-[#555]">
+              Take a photo of your handwritten answer. ARIA reads your writing, then grades it
+              against the expected answer like a fair teacher — with friendly tips to improve.
+            </p>
+
+            {!hwImage && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setHwDrag(true) }}
+                onDragLeave={() => setHwDrag(false)}
+                onDrop={handleHwDrop}
+                onClick={() => hwRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-3 py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                  hwDrag
+                    ? 'border-[#7c6af7] bg-[#7c6af7]/5'
+                    : 'border-[#2a2a40] bg-[#1a1a2e] hover:border-[#444]'
+                }`}
+              >
+                <PenTool size={28} className={hwDrag ? 'text-[#7c6af7]' : 'text-[#555]'} />
+                <div className="text-center">
+                  <p className="text-sm text-[#888]">Drop a photo of your handwritten answer</p>
+                  <p className="text-xs text-[#555] mt-1">or click to browse &middot; JPG, PNG, WEBP</p>
+                </div>
+                <input ref={hwRef} type="file" accept="image/*" onChange={handleHwFile} className="hidden" />
+              </div>
+            )}
+
+            {hwImage && (
+              <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  {hwPreview && <img src={hwPreview} alt="Answer" className="w-16 h-16 rounded-lg object-cover border border-[#2a2a40]" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[#e8e8e8] truncate">{hwImage.name}</p>
+                    <p className="text-xs text-[#555]">{(hwImage.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button onClick={() => { setHwImage(null); setHwResult(null); setHwPreview('') }}
+                    className="text-xs text-[#555] hover:text-[#888]">✕ Remove</button>
+                </div>
+                <input value={hwQuestion} onChange={e => setHwQuestion(e.target.value)}
+                  placeholder="The question your child answered (e.g. What are the 3 states of matter?)"
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] placeholder-[#555] outline-none focus:border-[#7c6af7]/50" />
+                <textarea value={hwModelAnswer} onChange={e => setHwModelAnswer(e.target.value)}
+                  placeholder="Expected answer (optional — helps ARIA grade fairly)"
+                  rows={3}
+                  className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] placeholder-[#555] outline-none focus:border-[#7c6af7]/50 resize-none" />
+                <button onClick={handleHandwriting} disabled={hwLoading}
+                  className="w-full py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-40 transition-colors">
+                  {hwLoading ? 'Reading handwriting and grading...' : 'Check My Answer'}
+                </button>
+              </div>
+            )}
+
+            {hwLoading && (
+              <div className="flex flex-col items-center py-10 gap-3">
+                <div className="w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[#888] text-sm">Vision model reading your handwriting...</p>
+              </div>
+            )}
+
+            {hwResult?.error && (
+              <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4 text-sm text-red-300">
+                {hwResult.error}
+              </div>
+            )}
+
+            {hwResult && !hwResult.error && (
+              <div className="space-y-3">
+                <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-5 text-center">
+                  <div className="text-5xl font-bold mb-1"
+                    style={{ color: hwResult.score >= 7 ? '#4ade80' : hwResult.score >= 5 ? '#f59e0b' : '#f87171' }}>
+                    {hwResult.score}
+                    <span className="text-xl text-[#555]">/10</span>
+                  </div>
+                  <p className="text-xs text-[#555]">
+                    {hwResult.score >= 8 ? 'Excellent work! 🌟' :
+                     hwResult.score >= 6 ? 'Great effort! 👍' :
+                     hwResult.score >= 4 ? 'Good start — keep practising! 💪' : 'Keep trying — you\'ll get it! 📚'}
+                  </p>
+                </div>
+
+                {hwResult.summary && (
+                  <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4">
+                    <h3 className="text-xs font-semibold text-[#e8e8e8] mb-2 uppercase tracking-wide">Feedback</h3>
+                    <p className="text-sm text-[#ccc] leading-relaxed">{hwResult.summary}</p>
+                  </div>
+                )}
+
+                {hwResult.tips?.length > 0 && (
+                  <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4">
+                    <h3 className="text-xs font-semibold text-[#e8e8e8] mb-2 uppercase tracking-wide">Tips to Improve</h3>
+                    <ul className="space-y-2">
+                      {hwResult.tips.map((tip, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-[#aaa]">
+                          <span className="text-[#7c6af7] mt-0.5">•</span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {hwResult.transcribed && (
+                  <div className="bg-[#1a1a2e] border border-[#2a2a40] rounded-xl p-4">
+                    <h3 className="text-xs font-semibold text-[#e8e8e8] mb-2 uppercase tracking-wide">What ARIA read</h3>
+                    <p className="text-xs text-[#888] font-mono leading-relaxed whitespace-pre-wrap">{hwResult.transcribed}</p>
+                  </div>
+                )}
+
+                <button onClick={() => { setHwImage(null); setHwResult(null); setHwPreview(''); setHwQuestion(''); setHwModelAnswer('') }}
+                  className="text-xs text-[#555] hover:text-[#888] w-full text-center">
+                  ↺ Check another answer
+                </button>
               </div>
             )}
           </div>

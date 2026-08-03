@@ -18,5 +18,5 @@ async def synthesize(data: dict):
     text = data.get("text", "")
     audio_bytes = await voice_svc.synthesize(text)
     if audio_bytes:
-        return Response(content=audio_bytes, media_type="audio/mpeg")
+        return Response(content=audio_bytes, media_type="audio/mp4")
     return {"error": "TTS not available"}

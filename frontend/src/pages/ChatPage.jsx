@@ -20,7 +20,7 @@ const SUGGESTIONS = [
 export default function ChatPage() {
   const { id } = useParams()
   const {
-    conversationId, messages, isStreaming,
+    conversationId, messages, isStreaming, ollamaStatus,
     setConversationId, setMessages,
   } = useStore()
   const { sendMessage } = useChat()
@@ -70,6 +70,17 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Offline banner */}
+      {ollamaStatus === 'error' && (
+        <div className="px-4 py-2 bg-red-950/40 border-b border-red-500/20 text-center">
+          <p className="text-xs text-red-300">
+            ⚠ Ollama is offline — ARIA can't answer right now. Start it by running{' '}
+            <code className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 font-mono">ollama serve</code>{' '}
+            in a terminal, then click the status indicator in the top bar to reconnect.
+          </p>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {isEmpty ? (
@@ -77,7 +88,7 @@ export default function ChatPage() {
         ) : (
           <div className="max-w-3xl mx-auto px-4 py-6">
             {messages.map(msg => (
-              <Message key={msg.id} msg={msg} />
+              <Message key={msg.id} msg={msg} onSuggest={(text) => sendMessage({ text })} />
             ))}
             <div ref={bottomRef} />
           </div>
@@ -88,7 +99,7 @@ export default function ChatPage() {
       <div className="max-w-3xl mx-auto w-full px-4 pb-4">
         <ChatInput onSend={sendMessage} disabled={isStreaming} />
         <p className="text-center text-[10px] text-[#333] mt-2">
-          All AI runs locally on your computer · Nothing is sent to the internet
+          AI runs locally on your computer (cloud model optional) · Private &amp; offline-friendly
         </p>
       </div>
     </div>

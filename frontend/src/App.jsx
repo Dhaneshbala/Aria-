@@ -26,6 +26,7 @@ import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
 import AIPlannerPage from './pages/AIPlannerPage'
 import DashboardPage from './pages/DashboardPage'
 import KnowledgeBasePage from './pages/KnowledgeBasePage'
+import FocusPage from './pages/FocusPage'
 
 function NotFound() {
   return (
@@ -41,7 +42,8 @@ function NotFound() {
 }
 
 export default function App() {
-  const { setOllamaStatus, setConversations, setConfig } = useStore()
+  const { setOllamaStatus, setConversations, setConfig, uiPrefs } = useStore()
+  const fontClass = `aria-font-${uiPrefs.fontSize || 'md'}`
 
   useEffect(() => {
     // Check health
@@ -67,7 +69,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-[#0f0f0f] text-[#e8e8e8] overflow-hidden">
+      <div className={`flex h-screen bg-[#0f0f0f] text-[#e8e8e8] overflow-hidden ${fontClass} ${uiPrefs.contrast ? 'aria-contrast' : ''}`}>
         <div className="aria-bg" />
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
@@ -97,6 +99,7 @@ export default function App() {
               <Route path="/spaced-repetition" element={<SpacedRepetitionPage />} />
               <Route path="/ai-planner" element={<AIPlannerPage />} />
               <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
+              <Route path="/focus" element={<FocusPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

@@ -199,7 +199,9 @@ class KnowledgeBaseService:
 
         # Extract text
         try:
-            pages = doc_svc.extract_pages(filepath)
+            with open(filepath, "rb") as fh:
+                file_bytes = fh.read()
+            pages = await doc_svc.extract_pages(file_bytes, filename)
             full_text = "\n\n".join(p.get("text", "") for p in pages)
         except Exception as e:
             return {"status": "error", "error": f"Text extraction failed: {e}"}

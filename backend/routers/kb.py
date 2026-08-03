@@ -4,12 +4,15 @@ Knowledge Base router — upload, search, manage documents for RAG.
 import os
 import tempfile
 from fastapi import APIRouter, UploadFile, File, Form, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional
 from services.knowledge_base_service import KnowledgeBaseService, COLLECTIONS
+from services.ollama_service import OllamaService
+from models.database import get_config
 
 router = APIRouter(prefix="/api/kb", tags=["knowledge-base"])
 kb_svc = KnowledgeBaseService()
+ollama = OllamaService()
 
 
 @router.post("/upload")
@@ -100,3 +103,46 @@ async def rebuild_index():
     """Rebuild all embeddings (e.g. after changing embedding model)."""
     result = await kb_svc.rebuild_index()
     return result
+
+
+@router.post("/ask")
+async def ask_kb(
+    question: str = Form(...),
+    collections: Optional[str] = Form(default=None),
+    n: int = Form(default=6),
+):
+    """Multi-document RAG chat — search the whole library and stream an answer."""
+    col_list = [c.strip() for c in collections.split(",")] if collections else None
+    results = await kb_svc.search(question, collections=col_list, n_results=n)
+
+    if not results:
+        async def no_results():
+            yield "data: I couldn't find anything in your document library about that.\n\n"
+            yield "data: Try uploading documents first on this page.\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(no_results(), media_type="text/event-stream")
+
+    context_parts = []
+    for r in results:
+        src = r.get("metadata", {}).get("source", r.get("collection", "unknown"))
+        context_parts.append(f"[Source: {src}]\n{r['text'][:600]}")
+    context = "\n\n".join(context_parts)
+
+    config = get_config()
+    model = config.get("reasoning_model", "qwen3:8b")
+    system = (
+        "You are ARIA, an AI study assistant. Answer the student's question using ONLY "
+        "the document excerpts below. Quote the source document name for each fact "
+        "(e.g. [Source: Science_Notes.pdf]). If the excerpts don't cover the question, say so.\n\n"
+        f"DOCUMENTS:\n{context}"
+    )
+
+    async def generate():
+        try:
+            async for token in ollama.stream(model, system, question, context_window=4096):
+                yield f"data: {token}\n\n"
+        except Exception as e:
+            yield f"data: ⚠️ AI unavailable: {e}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

@@ -1,4 +1,6 @@
 import { useStore } from '../store'
+import { getHealth } from '../services/api'
+import { useState } from 'react'
 
 const INTENT_LABELS = {
   chat:             null,
@@ -31,23 +33,37 @@ const MODE_LABELS = {
 }
 
 export default function StatusBar() {
-  const { ollamaStatus, currentIntents, config, isStreaming, mode } = useStore()
+  const { ollamaStatus, currentIntents, config, isStreaming, mode, setOllamaStatus } = useStore()
+  const [checking, setChecking] = useState(false)
+
+  const recheck = async () => {
+    setChecking(true)
+    try {
+      const h = await getHealth()
+      setOllamaStatus(h.ollama ? 'ok' : 'error')
+    } catch {
+      setOllamaStatus('error')
+    }
+    setChecking(false)
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#1e1e1e] bg-[#111] text-xs min-h-[34px]">
-      {/* Ollama status dot */}
-      <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* Ollama status dot — click to recheck */}
+      <button onClick={recheck} disabled={checking}
+        className="flex items-center gap-1.5 flex-shrink-0 group" title="Click to re-check connection">
         <div className={`w-1.5 h-1.5 rounded-full ${
           ollamaStatus === 'ok'       ? 'bg-green-400' :
           ollamaStatus === 'error'    ? 'bg-red-400' :
                                         'bg-yellow-400 animate-pulse'
         }`} />
-        <span className="text-[#3a3a3a]">
-          {ollamaStatus === 'ok'    ? (config.reasoning_model || 'Ollama') :
-           ollamaStatus === 'error' ? 'Ollama offline — run: ollama serve' :
+        <span className={`${checking ? 'text-[#666]' : 'text-[#3a3a3a] group-hover:text-[#888] transition-colors'}`}>
+          {checking ? 'Checking...' :
+           ollamaStatus === 'ok'    ? (config.reasoning_model || 'Ollama') :
+           ollamaStatus === 'error' ? 'Ollama offline — click to retry (ollama serve)' :
                                       'Connecting...'}
         </span>
-      </div>
+      </button>
 
       {/* Streaming dots */}
       {isStreaming && (

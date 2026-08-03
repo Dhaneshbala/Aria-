@@ -6,8 +6,10 @@ import {
 import { showToast } from '../components/Toast'
 import {
   Database, Upload, Search, Trash2, FileText, RefreshCw,
-  ChevronDown, ChevronUp, FolderOpen, Zap, Clock, Hash, X
+  ChevronDown, ChevronUp, FolderOpen, Zap, Clock, Hash, X, MessageSquare
 } from 'lucide-react'
+
+const BASE = '/api'
 
 const COLLECTION_LABELS = {
   education_au: { label: 'Education (AU)', emoji: '\u{1F393}', color: 'text-[#f59e0b]' },
@@ -35,6 +37,10 @@ export default function KnowledgeBasePage() {
   const [searching, setSearching] = useState(false)
   const [selectedCollection, setSelectedCollection] = useState(null)
   const [expandedDoc, setExpandedDoc] = useState(null)
+
+  const [chatQuestion, setChatQuestion] = useState('')
+  const [chatAnswer, setChatAnswer] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +77,41 @@ export default function KnowledgeBasePage() {
       setSearchResults(data.results || [])
     } catch (e) { showToast('Search failed', 'error') }
     setSearching(false)
+  }
+
+  const handleAsk = async () => {
+    if (!chatQuestion.trim() || chatLoading) return
+    setChatLoading(true)
+    setChatAnswer('')
+    const form = new FormData()
+    form.append('question', chatQuestion)
+    if (selectedCollection) form.append('collections', selectedCollection)
+    form.append('n', '6')
+    try {
+      const resp = await fetch(`${BASE}/kb/ask`, { method: 'POST', body: form })
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      let doneFlag = false
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const chunk = line.slice(6)
+            if (chunk === '[DONE]') { doneFlag = true; break }
+            setChatAnswer(t => t + chunk)
+          }
+        }
+        if (doneFlag) break
+      }
+    } catch (e) {
+      setChatAnswer('Error: ' + e.message)
+    }
+    setChatLoading(false)
   }
 
   const handleDelete = async (fileHash) => {
@@ -113,6 +154,7 @@ export default function KnowledgeBasePage() {
       <div className="flex gap-1 mb-6 bg-[#0a0a0a] rounded-xl p-1 border border-[#1a1a1a]">
         {[
           { id: 'upload', label: 'Upload', icon: Upload },
+          { id: 'chat', label: 'Ask Docs', icon: MessageSquare },
           { id: 'search', label: 'Search', icon: Search },
           { id: 'documents', label: 'Documents', icon: FileText },
           { id: 'collections', label: 'Collections', icon: FolderOpen },
@@ -184,6 +226,42 @@ export default function KnowledgeBasePage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Ask Docs Tab — multi-document RAG chat */}
+      {tab === 'chat' && (
+        <div className="space-y-4">
+          <p className="text-xs text-[#555]">
+            Ask a question and ARIA will search <span className="text-[#a89bf8]">
+            {selectedCollection ? COLLECTION_LABELS[selectedCollection]?.label || selectedCollection : 'all'}</span>
+            {' '}document{selectedCollection ? '' : 's'} in your knowledge base, then answer with the sources used.
+          </p>
+          <div className="flex gap-2">
+            <textarea value={chatQuestion} onChange={e => setChatQuestion(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk() }}}
+              placeholder="e.g. What are the key facts about the Nile River?"
+              rows={3}
+              className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50 resize-none" />
+            <button onClick={handleAsk} disabled={!chatQuestion.trim() || chatLoading}
+              className="px-4 py-2.5 rounded-xl bg-[#7c6af7] text-white text-sm font-medium hover:bg-[#6a59e0] disabled:opacity-40 transition-colors self-end">
+              {chatLoading ? <RefreshCw size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+            </button>
+          </div>
+          {chatLoading && !chatAnswer && (
+            <div className="flex items-center gap-2 text-xs text-[#555] py-2">
+              <div className="w-3.5 h-3.5 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin" />
+              Searching knowledge base and answering...
+            </div>
+          )}
+          {chatAnswer && (
+            <div className="p-4 rounded-xl bg-[#141414] border border-[#2a2a2a] text-sm text-[#d0d0d0] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+              {chatAnswer}
+            </div>
+          )}
+          <p className="text-[10px] text-[#444]">
+            {stats?.total_documents || 0} documents indexed · answers cite the sources used
+          </p>
         </div>
       )}
 

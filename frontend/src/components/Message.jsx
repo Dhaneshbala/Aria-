@@ -4,11 +4,11 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import MindMapWidget from './MindMapWidget'
-import { Copy, Check, ChevronDown, ChevronUp, Zap, Globe, Eye, Youtube, CheckCircle, Circle } from 'lucide-react'
+import { Copy, Check, ChevronDown, ChevronUp, Zap, Globe, Eye, Youtube, CheckCircle, Circle, Volume2, Loader, ShieldCheck, ShieldAlert, Sparkles, BookOpen } from 'lucide-react'
 
 // ── Root message component ────────────────────────────────────────────────────
 
-function Message({ msg }) {
+function Message({ msg, onSuggest }) {
   const isUser = msg.role === 'user'
 
   return (
@@ -72,6 +72,16 @@ function Message({ msg }) {
           </div>
         )}
 
+        {/* Verification badge (2nd-model fact check) */}
+        {!isUser && msg.verification && !msg.streaming && (
+          <VerificationBadge verification={msg.verification} />
+        )}
+
+        {/* Listen button (local TTS) */}
+        {!isUser && msg.content?.length > 30 && !msg.streaming && (
+          <ListenButton text={msg.content} />
+        )}
+
         {/* Tool results (collapsible) */}
         {!isUser && msg.tools?.length > 0 && (
           <div className="space-y-1.5 w-full">
@@ -93,6 +103,26 @@ function Message({ msg }) {
 
         {/* ALL STRUCTURED EXTRAS — rendered inline in chat */}
         {!isUser && msg.extras && <ExtrasPanel extras={msg.extras} />}
+
+        {/* Follow-up suggestions (NotebookLM-style) */}
+        {!isUser && msg.suggestions?.length > 0 && !msg.streaming && onSuggest && (
+          <div className="w-full mt-2">
+            <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Sparkles size={10} /> Keep exploring
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {msg.suggestions.map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSuggest(q)}
+                  className="text-xs px-3 py-1.5 rounded-full bg-[#141414] border border-[#2a2a2a] text-[#888] hover:border-[#7c6af7]/50 hover:text-[#bbb] hover:bg-[#7c6af7]/5 transition-all text-left"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
@@ -128,10 +158,11 @@ function CodeBlock({ code, lang }) {
 function ToolResult({ tool }) {
   const [open, setOpen] = useState(false)
   const META = {
-    web_search:  { icon: <Globe size={12} />, label: 'Web Search Results', color: 'text-blue-400' },
-    cross_check: { icon: <Globe size={12} />, label: 'Internet Cross-Check', color: 'text-green-400' },
-    vision:      { icon: <Eye size={12} />,   label: 'Image Analysis',     color: 'text-purple-400' },
-    youtube:     { icon: <Youtube size={12} />, label: 'YouTube Transcript', color: 'text-red-400' },
+    web_search:      { icon: <Globe size={12} />, label: 'Web Search Results', color: 'text-blue-400' },
+    cross_check:     { icon: <Globe size={12} />, label: 'Internet Cross-Check', color: 'text-green-400' },
+    vision:          { icon: <Eye size={12} />,   label: 'Image Analysis',     color: 'text-purple-400' },
+    youtube:         { icon: <Youtube size={12} />, label: 'YouTube Transcript', color: 'text-red-400' },
+    knowledge_base:  { icon: <BookOpen size={12} />, label: 'Related Sources from your Library', color: 'text-amber-400' },
   }
   const meta = META[tool.tool] || { icon: '🔧', label: tool.tool, color: 'text-[#888]' }
 
@@ -153,13 +184,29 @@ function ToolResult({ tool }) {
           ))}
           {tool.tool === 'cross_check' && Array.isArray(tool.content) && tool.content.map((r, i) => (
             <div key={i} className="mb-2 pb-2 border-b border-[#1a1a1a] last:border-0">
-              <span className="text-green-400 font-medium">{r.title}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-[#444] font-mono bg-[#1a1a1a] rounded px-1.5 py-0.5">[{i + 1}]</span>
+                <a href={r.url} target="_blank" rel="noreferrer" className="text-green-400 font-medium hover:underline">{r.title}</a>
+              </div>
               <p className="text-[#555] mt-0.5 leading-relaxed">{r.snippet}</p>
             </div>
           ))}
           {tool.tool === 'vision' && (
             <p className="text-[#777] whitespace-pre-wrap leading-relaxed">{tool.content}</p>
           )}
+          {tool.tool === 'knowledge_base' && Array.isArray(tool.content) && tool.content.map((r, i) => (
+            <div key={i} className="mb-2 pb-2 border-b border-[#1a1a1a] last:border-0">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-[10px] text-[#444] font-mono bg-[#1a1a1a] rounded px-1.5 py-0.5">
+                  {r.metadata?.source || r.collection || 'KB'}
+                </span>
+                <span className="text-[10px] text-[#444]">
+                  {r.score ? `${Math.round(r.score * 100)}% match` : ''}
+                </span>
+              </div>
+              <p className="text-[#666] mt-0.5 leading-relaxed line-clamp-3">{r.text}</p>
+            </div>
+          ))}
           {tool.tool === 'youtube' && tool.content && (
             <div>
               <p className="text-[#aaa] font-medium">{tool.content.title}</p>
@@ -377,6 +424,71 @@ function InlineStudyPlan({ plan }) {
         ))}
       </div>
     </div>
+  )
+}
+
+// ── Verification badge (2nd-model fact check) ─────────────────────────────────
+
+function VerificationBadge({ verification }) {
+  const { verified, notes } = verification
+  if (verified) {
+    return (
+      <div className="flex items-start gap-1.5 text-xs text-green-400/90 bg-green-500/8 border border-green-500/20 rounded-lg px-3 py-1.5">
+        <ShieldCheck size={13} className="flex-shrink-0 mt-0.5" />
+        <span>Fact-checked against web sources — no errors found{notes ? ` · ${notes}` : ''}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-start gap-1.5 text-xs text-amber-400/90 bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-1.5">
+      <ShieldAlert size={13} className="flex-shrink-0 mt-0.5" />
+      <span>Fact-check flag: {notes || 'some claims may need verification'}</span>
+    </div>
+  )
+}
+
+// ── Listen button (local TTS) ─────────────────────────────────────────────────
+
+function ListenButton({ text }) {
+  const [playing, setPlaying] = useState(false)
+  const [error, setError] = useState(false)
+
+  const play = async () => {
+    if (playing) return
+    setPlaying(true)
+    setError(false)
+    try {
+      const resp = await fetch('/api/voice/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.slice(0, 3500) }),
+      })
+      if (!resp.ok) throw new Error('TTS failed')
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.onended = () => { URL.revokeObjectURL(url); setPlaying(false) }
+      audio.onerror = () => { URL.revokeObjectURL(url); setPlaying(false); setError(true) }
+      await audio.play()
+    } catch {
+      setPlaying(false)
+      setError(true)
+    }
+  }
+
+  if (error) return (
+    <button onClick={() => setError(false)}
+      className="text-[10px] text-[#555] hover:text-[#888] flex items-center gap-1">
+      <Volume2 size={11} /> Listen unavailable
+    </button>
+  )
+
+  return (
+    <button onClick={play} disabled={playing}
+      className="flex items-center gap-1.5 text-[11px] text-[#666] hover:text-[#a89bf8] transition-colors disabled:opacity-60">
+      {playing ? <Loader size={11} className="animate-spin" /> : <Volume2 size={11} />}
+      {playing ? 'Speaking…' : 'Listen'}
+    </button>
   )
 }
 

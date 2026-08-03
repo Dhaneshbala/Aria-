@@ -4,6 +4,7 @@ import json
 import os
 import re
 import logging
+import asyncio
 from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,139 @@ class StudyService:
             f"Make questions appropriate for a 13-year-old student."
         )
         response = await ollama.complete(model, prompt)
-        return self._parse_quiz(response)
+        raw_questions = self._parse_quiz(response)
+
+        if not raw_questions:
+            return []
+
+        # Cross-verify each question with a second model + Google
+        verified = await self._verify_quiz(raw_questions, topic)
+        return verified
+
+    async def _verify_quiz(self, questions: list[dict], topic: str) -> list[dict]:
+        """Verify each quiz question with llama3.2:3b + Google search."""
+        verify_model = "llama3.2:3b"
+        results = []
+
+        for q in questions:
+            try:
+                verified_q = await self._verify_single_question(q, topic, verify_model)
+                results.append(verified_q)
+            except Exception as e:
+                logger.warning("Verification failed for question, using original: %s", e)
+                q["verified"] = "original"
+                results.append(q)
+
+        return results
+
+    async def _verify_single_question(self, q: dict, topic: str, verify_model: str) -> dict:
+        """Verify a single question with second model + Google."""
+        question_text = q["question"]
+        options = q["options"]
+        claimed_correct = q.get("correct", "")
+
+        options_text = "\n".join(
+            f"{chr(65+i)}) {opt}" for i, opt in enumerate(options)
+        )
+
+        # Step 1: Ask second model to independently pick the answer
+        model_answer = await self._ask_second_model(
+            question_text, options_text, claimed_correct, verify_model
+        )
+
+        # Step 2: Google search to fact-check
+        google_answer = await self._verify_with_google(question_text, options, topic)
+
+        # Step 3: Cross-compare all three
+        final_q = self._cross_compare(q, claimed_correct, model_answer, google_answer)
+        return final_q
+
+    async def _ask_second_model(
+        self, question: str, options_text: str, claimed: str, model: str
+    ) -> str:
+        """Ask a second model to pick the correct answer."""
+        prompt = (
+            f"Answer this multiple-choice question. Reply with ONLY the letter (A, B, C, or D).\n\n"
+            f"Question: {question}\n"
+            f"{options_text}\n\n"
+            f"Your answer (just the letter):"
+        )
+        try:
+            response = await ollama.complete(
+                model, prompt,
+                system="You are a factual assistant. Answer only with the correct letter.",
+                timeout=30,
+            )
+            # Extract letter from response
+            m = re.search(r"([A-Da-d])", response.strip())
+            if m:
+                return m.group(1).upper()
+        except Exception as e:
+            logger.warning("Second model verification failed: %s", e)
+        return ""
+
+    async def _verify_with_google(self, question: str, options: list[str], topic: str) -> str:
+        """Search Google to fact-check the answer."""
+        try:
+            from services.research_service import ResearchService
+            research = ResearchService()
+
+            # Build a search query from the question
+            search_query = f"{topic} {question}"
+            results = await research.search(search_query, max_results=3)
+
+            if not results:
+                return ""
+
+            # Combine search snippets
+            all_text = " ".join(
+                f"{r.get('title', '')} {r.get('snippet', '')}" for r in results
+            ).lower()
+
+            # Check which option's text appears most in the search results
+            best_letter = ""
+            best_count = 0
+            for i, opt in enumerate(options):
+                # Check if the option text (or key parts) appear in search results
+                words = [w.lower() for w in re.split(r'\W+', opt) if len(w) > 3]
+                count = sum(1 for w in words if w in all_text)
+                if count > best_count:
+                    best_count = count
+                    best_letter = chr(65 + i)
+
+            return best_letter if best_count > 0 else ""
+        except Exception as e:
+            logger.warning("Google verification failed: %s", e)
+            return ""
+
+    def _cross_compare(
+        self, q: dict, claimed: str, model_answer: str, google_answer: str
+    ) -> dict:
+        """Compare claimed, model, and google answers. Pick the best."""
+        answers = [claimed, model_answer, google_answer]
+        valid = [a for a in answers if a in "ABCD"]
+
+        if not valid:
+            q["verified"] = "no_data"
+            return q
+
+        # Count votes
+        from collections import Counter
+        votes = Counter(valid)
+        majority_answer, majority_count = votes.most_common(1)[0]
+
+        if majority_count >= 2:
+            # At least 2 agree
+            q["correct"] = majority_answer
+            if majority_count == 3:
+                q["verified"] = "triple_verified"
+            else:
+                q["verified"] = "majority_verified"
+        else:
+            # All disagree — use the original claimed answer but flag it
+            q["verified"] = "disputed"
+
+        return q
 
     async def generate_flashcards(
         self, topic: str, num_cards: int = 10, model: str = "qwen3:8b"
@@ -122,9 +255,9 @@ class StudyService:
                 if re.match(r"[A-D][.):]\s*", line):
                     q["options"].append(re.sub(r"^[A-D][.):]\s*", "", line))
                 elif re.search(r"^correct", line, re.I):
-                    m = re.search(r"[A-D]", line)
+                    m = re.search(r"correct\s*[):.\s]+([A-Da-d])", line, re.I)
                     if m:
-                        q["correct"] = m.group()
+                        q["correct"] = m.group(1).upper()
                 elif "explanation" in line.lower() or (q["correct"] and len(line) > 20):
                     q["explanation"] += line + " "
             if len(q["options"]) >= 2:
@@ -1071,47 +1204,68 @@ class StudyService:
         stage = detect_stage(grade)
         curriculum_ctx = get_curriculum_context(topic, stage, topic)
 
-        ans = "Include a separate ANSWER KEY at the end with full worked solutions." if include_answers else "Do NOT include answers."
+        # Split questions into three difficulty tiers
+        q1 = max(2, question_count // 4)       # mild
+        q2 = max(3, question_count // 2)       # medium
+        q3 = question_count - q1 - q2          # spicy/extension
+
+        ans = (
+            "Include a separate ANSWER KEY at the end with full worked solutions "
+            "for every question. Mark each answer with its question number."
+        ) if include_answers else "Do NOT include answers."
 
         prompt = (
-            "You are an expert NSW school teacher creating a professional worksheet.\n\n"
+            "You are an expert NSW school teacher creating a professional worksheet "
+            "in the style of Tutero.com — clean, differentiated, curriculum-aligned.\n\n"
             f"TOPIC: {topic}\n"
             f"GRADE: {grade}\n"
             f"NSW STAGE: {stage}\n"
-            f"NUMBER OF QUESTIONS: {question_count}\n\n"
+            f"TOTAL QUESTIONS: {question_count} (split: {q1} mild + {q2} medium + {q3} spicy)\n\n"
             f"NSW CURRICULUM CONTEXT:\n{curriculum_ctx}\n\n"
-            f"WORKSHEET REQUIREMENTS:\n"
-            f"1. Start with a clear TITLE and STUDENT NAME/DATE fields\n"
-            f"2. Include a LEARNING INTENTION section referencing relevant NSW syllabus outcomes\n"
-            f"3. Include a SUCCESS CRITERIA section (3-4 bullet points)\n"
-            f"4. Question types MUST include a mix of:\n"
-            f"   - Multiple Choice Questions (MCQ) with 4 options (A-D)\n"
-            f"   - Short Answer questions (1-3 sentences)\n"
-            f"   - Extended Response questions (paragraph length)\n"
-            f"   - Problem-solving / calculation questions (where applicable)\n"
-            f"   - Source-based / stimulus questions (using a provided text or data)\n"
-            f"5. Questions should progress from easy → medium → hard (Bloom's taxonomy)\n"
-            f"6. Include THINKING TIME questions to scaffold learning\n"
-            f"7. Provide a marks allocation for each question [x marks]\n"
-            f"8. Use real-world Australian examples where possible\n"
-            f"9. Format professionally with clear section headers and numbering\n"
-            f"10. {ans}\n\n"
-            f"MARK ALLOCATION:\n"
-            f"- Total marks should be around {question_count * 3} marks\n"
-            f"- MCQs: 1 mark each\n"
-            f"- Short answer: 2-3 marks each\n"
-            f"- Extended response: 4-6 marks each\n"
-            f"- Problem-solving: 3-5 marks each\n\n"
-            f"Format the worksheet using clean markdown. Use ## for sections, "
-            f"number questions clearly, and leave visual space for student answers."
+            "=== WORKSHEET STRUCTURE (Tutero style) ===\n\n"
+            "HEADER:\n"
+            "- Worksheet title (clear, topic-specific)\n"
+            "- Student Name: ____________\n"
+            "- Date: ____________\n"
+            "- Subject & Stage/Grade\n\n"
+            "LEARNING INTENT:\n"
+            "- One sentence: What students will learn\n"
+            "- 3-4 Success Criteria as 'I can...' statements\n\n"
+            "--- SECTION 1: MILD (Foundational) ---\n"
+            f"Provide {q1} questions that check basic understanding.\n"
+            "These are MCQ (4 options A-D) or simple one-line recall questions.\n"
+            "Bloom's level: Remember, Understand.\n"
+            "Include a THINKING TIME hint for the first question.\n\n"
+            "--- SECTION 2: MEDIUM (Proficient) ---\n"
+            f"Provide {q2} questions that apply knowledge.\n"
+            "Mix of short answer (2-4 sentences), calculations, and short-problem questions.\n"
+            "Bloom's level: Apply, Analyse.\n"
+            "Use real-world Australian contexts where relevant.\n\n"
+            "--- SECTION 3: SPICY (Extension) ---\n"
+            f"Provide {q3} questions that challenge thinking.\n"
+            "Extended response, essay-style, evaluate/create tasks, or complex multi-step problems.\n"
+            "Bloom's level: Evaluate, Create.\n"
+            "These are exit-point questions for students who finish early.\n\n"
+            "MARKS:\n"
+            "- Show [x marks] next to each question\n"
+            f"- Total ~{question_count * 3} marks\n"
+            "- MCQs: 1 mark, Short answer: 2-3 marks, Extended: 4-6 marks, Problems: 3-5 marks\n\n"
+            "FORMATTING:\n"
+            "- Use markdown: ## for section headers, numbered questions, bold for key terms\n"
+            "- Leave clear space (blank lines) between questions for student answers\n"
+            "- Clean, uncluttered layout\n\n"
+            f"{ans}\n\n"
+            "Now generate the complete worksheet."
         )
 
         system = (
             "You are a senior NSW teacher creating professional worksheets aligned to the "
-            "NESA NSW Curriculum. You create clear, well-structured assessment materials that "
-            "test understanding at multiple levels of Bloom's taxonomy. You use Australian "
-            "examples and terminology appropriate for the student's stage and age."
+            "NESA NSW Curriculum, modelled after Tutero.com's differentiated format. "
+            "Worksheets must have three clear difficulty tiers: Mild, Medium, Spicy. "
+            "Each tier signals to students where to start and where to stretch. "
+            "Use Australian examples, clear language, and a clean layout. "
+            "Every question must have a marks allocation."
         )
 
-        response = await ollama.complete(model, prompt, system=system, timeout=180)
+        response = await ollama.complete(model, prompt, system=system, timeout=300)
         return response

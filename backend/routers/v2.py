@@ -240,3 +240,46 @@ async def bulk_add_cards(req: BulkAddCardsRequest):
 @router.get("/study/all-cards")
 async def all_cards(subject: str | None = None):
     return await _svc("advanced_study").get_all_cards(subject)
+
+
+@router.post("/study/import-csv")
+async def import_csv(file: UploadFile = File(...), subject: str = Form(default="general")):
+    """Import flashcards from a CSV file (columns: front,back[,subject])."""
+    content = await file.read()
+    text = content.decode("utf-8-sig", errors="replace")
+    import csv as csv_mod
+    import io
+    cards = []
+    reader = csv_mod.reader(io.StringIO(text))
+    for i, row in enumerate(reader):
+        if len(row) < 2:
+            continue
+        front = row[0].strip()
+        back = row[1].strip()
+        if i == 0 and front.lower() in ("front", "question", "q", "front side"):
+            continue
+        if front and back:
+            cards.append({"front": front, "back": back})
+    if not cards:
+        return {"status": "error", "error": "No valid rows found. Expected: front,back", "count": 0}
+    added = await _svc("advanced_study").add_flashcards_bulk(cards, subject)
+    return {"status": "imported", "count": len(added)}
+
+
+@router.get("/study/export-csv")
+async def export_csv(subject: str | None = None):
+    """Export all flashcards as CSV (front,back,subject)."""
+    import csv as csv_mod
+    import io
+    cards = await _svc("advanced_study").get_all_cards(subject)
+    buf = io.StringIO()
+    writer = csv_mod.writer(buf)
+    writer.writerow(["front", "back", "subject"])
+    for c in cards:
+        writer.writerow([c.get("front", ""), c.get("back", ""), c.get("subject", "")])
+    from fastapi.responses import Response
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="aria_flashcards.csv"'},
+    )

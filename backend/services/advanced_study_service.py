@@ -221,6 +221,15 @@ class AdvancedStudyIntelligence:
                 card["next_review"] = next_review.isoformat()
                 card["last_review"] = datetime.now(timezone.utc).isoformat()
 
+                # Record review in history (for streak tracking)
+                history = card.setdefault("review_history", [])
+                history.append({
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "quality": quality,
+                })
+                if len(history) > 200:
+                    card["review_history"] = history[-200:]
+
                 _save_json(SR_FILE, cards)
                 return card
 
@@ -253,6 +262,7 @@ class AdvancedStudyIntelligence:
         due = 0
         learning = 0
         mastered = 0
+        review_days = set()
         for card in cards:
             try:
                 next_rev = datetime.fromisoformat(card["next_review"].replace("Z", "+00:00"))
@@ -264,12 +274,24 @@ class AdvancedStudyIntelligence:
                     learning += 1
             except Exception:
                 due += 1
+            for entry in card.get("review_history", []):
+                review_days.add(entry.get("date", ""))
+
+        # Streak: consecutive days (ending today or yesterday) with a review
+        streak = 0
+        d = datetime.now(timezone.utc).date()
+        if d.strftime("%Y-%m-%d") not in review_days:
+            d -= timedelta(days=1)
+        while d.strftime("%Y-%m-%d") in review_days:
+            streak += 1
+            d -= timedelta(days=1)
 
         return {
             "total_cards": len(cards),
             "due_today": due,
             "learning": learning,
             "mastered": mastered,
+            "review_streak": streak,
         }
 
     async def delete_flashcard(self, card_id: str) -> dict:

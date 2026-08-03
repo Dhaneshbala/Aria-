@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getConfig, saveConfig, getModels, getHealth, clearAllMemory } from '../services/api'
 import { showToast } from '../components/Toast'
-import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info } from 'lucide-react'
+import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info, Cloud } from 'lucide-react'
 import { useStore } from '../store'
 
 // M4 MacBook Air recommended models with disk/RAM info
@@ -22,7 +22,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [clearing, setClearing] = useState(false)
-  const { setConfig: setStoreConfig } = useStore()
+  const { setConfig: setStoreConfig, uiPrefs, setUiPrefs } = useStore()
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => {})
@@ -109,6 +109,9 @@ export default function AdminPage() {
           <StatusRow label="Ollama"
             ok={health?.ollama}
             desc={health?.ollama ? 'Running — Metal GPU active' : 'Not running — open Terminal and type: ollama serve'} />
+          <StatusRow label="Cloud AI"
+            ok={health?.cloud_active}
+            desc={health?.cloud_active ? `${health.cloud_provider} — ${health.cloud_model}` : 'Offline — using local Ollama'} />
           <StatusRow label="Pollinations.ai"
             ok={health?.pollinations !== false}
             desc="Free image generation — needs internet" />
@@ -182,6 +185,92 @@ export default function AdminPage() {
            recommended={RECOMMENDED.filter(m => m.role === 'pptx')}
            onChange={v => setConfig(c => ({ ...c, pptx_model: v }))}
 />
+        </div>
+      </div>
+
+      {/* Accessibility */}
+      <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Settings size={14} className="text-[#7c6af7]" />
+          <h3 className="text-sm font-medium text-[#e8e8e8]">Display &amp; Accessibility</h3>
+        </div>
+        <p className="text-[10px] text-[#555] mb-3">
+          Adjust text size and contrast to make ARIA easier to read. Settings save automatically.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-[#666] mb-1 block">Text size</label>
+            <div className="flex gap-2">
+              {[['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large']].map(([val, label]) => (
+                <button key={val}
+                  onClick={() => setUiPrefs({ fontSize: val })}
+                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${
+                    uiPrefs.fontSize === val
+                      ? 'bg-[#7c6af7] text-white'
+                      : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#777] hover:text-[#aaa]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={() => setUiPrefs({ contrast: !uiPrefs.contrast })}
+            className={`w-full py-2 rounded-lg text-xs transition-colors ${
+              uiPrefs.contrast
+                ? 'bg-[#7c6af7] text-white'
+                : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#777] hover:text-[#aaa]'
+            }`}>
+            {uiPrefs.contrast ? '✓ High contrast: ON' : 'High contrast: OFF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Cloud AI */}
+      <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Cloud size={14} className="text-[#7c6af7]" />
+          <h3 className="text-sm font-medium text-[#e8e8e8]">Cloud AI (Optional)</h3>
+          <span className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#7c6af7]/15 text-[#a89bf8]">
+            {health?.cloud_active ? 'ACTIVE' : 'OFF'}
+          </span>
+        </div>
+        <p className="text-[10px] text-[#555] mb-3">
+          Route all AI through a cloud provider for NotebookLM-level answers.
+          Free tier available. Falls back to local Ollama automatically.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-[#666] mb-1 block">Provider</label>
+            <div className="flex gap-2">
+              {[['auto', '⚡ Auto'], ['ollama', '💻 Local only'], ['gemini', '✨ Gemini'], ['openrouter', '🔀 OpenRouter'], ['groq', '🚀 Groq']].map(([val, label]) => (
+                <button key={val}
+                  onClick={() => setConfig(c => ({ ...c, cloud_provider: val }))}
+                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${
+                    (config.cloud_provider || 'auto') === val
+                      ? 'bg-[#7c6af7] text-white'
+                      : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#777] hover:text-[#aaa]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-[#666] mb-1 block">API Key</label>
+            <input
+              type="password"
+              value={config.cloud_api_key || ''}
+              onChange={e => setConfig(c => ({ ...c, cloud_api_key: e.target.value }))}
+              placeholder="Paste your API key (Gemini/OpenRouter/Groq)"
+              className="w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50 font-mono"
+            />
+          </div>
+          <div className="text-[10px] text-[#444] space-y-1">
+            <p>🔑 <span className="text-[#888]">Get a free Gemini key:</span> aistudio.google.com/apikey</p>
+            <p>🔑 <span className="text-[#888]">OpenRouter:</span> openrouter.ai/keys · <span className="text-[#888]">Groq:</span> console.groq.com/keys</p>
+            <p>💡 <span className="text-[#888]">"Auto" mode</span> uses cloud only when a key is present.</p>
+          </div>
         </div>
       </div>
 

@@ -53,6 +53,15 @@ DEFAULT_CONFIG = {
     # ── Student ────────────────────────────────────────────────────────────
     "student_name": "Student",
     "student_age":  13,
+
+    # ── Cloud AI (optional — free tier available) ───────────────────────────
+    # Set cloud_api_key to route through a cloud provider instead of local Ollama.
+    #   gemini     → Google AI Studio key (free): https://aistudio.google.com/apikey
+    #   openrouter → https://openrouter.ai/keys
+    #   groq       → https://console.groq.com/keys
+    # provider "auto" uses cloud only when a key is set.
+    "cloud_provider": "auto",          # "auto" | "ollama" | "gemini" | "openrouter" | "groq"
+    "cloud_api_key": "",
 }
 
 

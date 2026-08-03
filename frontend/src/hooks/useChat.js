@@ -124,6 +124,28 @@ export function useChat() {
               })
               break
 
+            case 'verification':
+              useStore.setState(s => {
+                const msgs = [...s.messages]
+                const last = msgs[msgs.length - 1]
+                if (last?.role === 'assistant') {
+                  msgs[msgs.length - 1] = { ...last, verification: data.content }
+                }
+                return { messages: msgs }
+              })
+              break
+
+            case 'suggestions':
+              useStore.setState(s => {
+                const msgs = [...s.messages]
+                const last = msgs[msgs.length - 1]
+                if (last?.role === 'assistant') {
+                  msgs[msgs.length - 1] = { ...last, suggestions: data.content }
+                }
+                return { messages: msgs }
+              })
+              break
+
             case 'image':
               useStore.setState(s => {
                 const msgs = [...s.messages]
@@ -187,8 +209,7 @@ export function useChat() {
             ...last,
             content: `❌ Connection error: ${err.message}\n\nMake sure Ollama is running: \`ollama serve\``,
             streaming: false,
-          }
-        }
+          }        }
         return { messages: msgs }
       })
       setIsStreaming(false)

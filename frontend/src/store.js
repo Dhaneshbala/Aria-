@@ -32,6 +32,18 @@ export const useStore = create((set, get) => ({
     student_name: 'Student',
   },
 
+  // UI preferences (persisted)
+  uiPrefs: (() => {
+    try {
+      return JSON.parse(localStorage.getItem('aria_ui_prefs') || '{"fontSize":"md","contrast":false}')
+    } catch { return { fontSize: 'md', contrast: false } }
+  })(),
+  setUiPrefs: (patch) => set(s => {
+    const next = { ...s.uiPrefs, ...patch }
+    try { localStorage.setItem('aria_ui_prefs', JSON.stringify(next)) } catch {}
+    return { uiPrefs: next }
+  }),
+
   // Sidebar
   conversations: [],
   pinnedChats: [],

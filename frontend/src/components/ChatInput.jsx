@@ -1,7 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Paperclip, Mic, MicOff, X, Image, FileText, Brain, Zap, FastForward } from 'lucide-react'
+import { Send, Paperclip, Mic, MicOff, X, Image, FileText, Brain, Zap, FastForward, PenLine, Shapes } from 'lucide-react'
 import { transcribeAudio } from '../services/api'
 import { useStore } from '../store'
+
+const QUICK_SHOTS = [
+  { icon: <FileText size={11} />, label: 'Solve worksheet', hint: 'Solve this worksheet and show your working' },
+  { icon: <Shapes size={11} />, label: 'Explain diagram', hint: 'Explain this diagram step by step' },
+  { icon: <PenLine size={11} />, label: 'Check handwriting', hint: 'Check my handwritten answer and give feedback' },
+]
 
 export default function ChatInput({ onSend, disabled }) {
   const { mode, setMode } = useStore()
@@ -34,6 +40,11 @@ export default function ChatInput({ onSend, disabled }) {
   const handleImageFile = (file) => {
     if (!file || !file.type.startsWith('image/')) return
     setAttachedImage(file)
+  }
+
+  const handleQuickShot = (hint) => {
+    setText(hint)
+    imageInputRef.current.click()
   }
 
   const handleDocFile = (file) => {
@@ -89,6 +100,18 @@ export default function ChatInput({ onSend, disabled }) {
       {dragOver && (
         <div className="absolute inset-0 bg-[#7c6af7]/10 border-2 border-dashed border-[#7c6af7]/50 rounded-2xl flex items-center justify-center text-[#a89bf8] text-sm pointer-events-none z-10">
           Drop image or document here
+        </div>
+      )}
+
+      {/* Photo shortcuts */}
+      {!attachedImage && !attachedDoc && (
+        <div className="flex gap-1.5 mb-1.5 px-1">
+          {QUICK_SHOTS.map(s => (
+            <button key={s.label} onClick={() => handleQuickShot(s.hint)}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[9px] text-[#666] hover:text-[#aaa] hover:border-[#7c6af7]/30 transition-colors">
+              {s.icon} {s.label}
+            </button>
+          ))}
         </div>
       )}
 

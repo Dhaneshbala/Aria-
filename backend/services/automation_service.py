@@ -87,9 +87,9 @@ class AutomationService:
                     if re.match(r"^[A-D][.)]\s*", line):
                         q["options"].append(re.sub(r"^[A-D][.)]\s*", "", line).strip())
                     elif re.match(r"(?i)^correct[:\s]", line):
-                        m = re.search(r"[A-D]", line)
+                        m = re.search(r"correct\s*[):.\s]+([A-Da-d])", line, re.I)
                         if m:
-                            q["correct"] = m.group()
+                            q["correct"] = m.group(1).upper()
                     elif re.match(r"(?i)^explanation[:\s]", line) or (q["correct"] and len(line) > 15):
                         q["explanation"] = (q["explanation"] + " " + line).strip()
                 if len(q["options"]) >= 2:

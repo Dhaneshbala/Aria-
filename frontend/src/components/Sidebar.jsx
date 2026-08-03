@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
-import { deleteConversation, searchConversations } from '../services/api'
+import { deleteConversation, searchConversations, getNotifications } from '../services/api'
 import {
   MessageSquare, BookOpen, CreditCard, Network, Calendar,
   Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
   Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench,
   Brain, Clock, BarChart3, Trophy, GraduationCap, Repeat, Scissors, ListTodo, LayoutDashboard,
-  Database
+  Database, Bell, Timer
 } from 'lucide-react'
 
 const NAV = [
@@ -20,6 +20,7 @@ const NAV = [
   { icon: Network, label: 'Mind Map', path: '/mindmap' },
   { icon: ListTodo, label: 'AI Planner', path: '/ai-planner' },
   { icon: Wrench, label: 'Study Tools', path: '/study-tools' },
+  { icon: Timer, label: 'Focus Mode', path: '/focus' },
   { icon: Presentation, label: 'PowerPoint', path: '/pptx' },
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
   { icon: FileText, label: 'Documents', path: '/docs' },
@@ -48,6 +49,35 @@ export default function Sidebar() {
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState(null)
   const searchTimer = useRef(null)
+  const [notifs, setNotifs] = useState([])
+  const [notifOpen, setNotifOpen] = useState(false)
+  const notifRef = useRef(null)
+
+  // Poll smart notifications every 60s
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        const data = await getNotifications()
+        setNotifs(data.notifications || [])
+      } catch {}
+    }
+    fetchNotifs()
+    const timer = setInterval(fetchNotifs, 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const onClick = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  const openNotif = (n) => {
+    setNotifOpen(false)
+    navigate(n.type === 'flashcards' ? '/spaced-repetition' : '/ai-planner')
+  }
 
   // Debounced content search
   useEffect(() => {
@@ -101,12 +131,55 @@ export default function Sidebar() {
             <span className="font-semibold text-[#e8e8e8]">ARIA</span>
           </div>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors"
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        <div className="flex items-center gap-1" ref={notifRef}>
+          {/* Notifications bell */}
+          <div className="relative">
+            <button
+              onClick={() => setNotifOpen(!notifOpen)}
+              className="relative p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors"
+              title="Notifications"
+            >
+              <Bell size={15} />
+              {notifs.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
+                  {notifs.length > 9 ? '9+' : notifs.length}
+                </span>
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-72 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a]">
+                  <span className="text-xs font-medium text-[#e8e8e8]">Notifications</span>
+                  <button onClick={() => setNotifs([])} className="text-[9px] text-[#555] hover:text-[#aaa] transition-colors">
+                    Clear
+                  </button>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {notifs.length === 0 ? (
+                    <p className="text-xs text-[#555] text-center py-6">All caught up — no reminders</p>
+                  ) : (
+                    notifs.map((n, i) => (
+                      <button key={i} onClick={() => openNotif(n)}
+                        className={`w-full text-left px-3 py-2.5 border-b border-[#141414] hover:bg-[#222] transition-colors ${
+                          n.severity === 'high' ? 'border-l-2 border-l-red-500' :
+                          n.severity === 'medium' ? 'border-l-2 border-l-[#f59e0b]' : 'border-l-2 border-l-[#7c6af7]'
+                        }`}>
+                        <p className="text-xs text-[#e8e8e8] font-medium">{n.title}</p>
+                        <p className="text-[10px] text-[#666] mt-0.5">{n.body}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors"
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
       </div>
 
       {/* New Chat */}

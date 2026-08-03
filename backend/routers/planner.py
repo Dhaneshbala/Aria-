@@ -330,7 +330,7 @@ async def import_ics(
         return dt
 
     parsed = []
-    seen_ids = set()
+    seen_keys = set()
     for ev in events:
         dt = parse_ical_dt(ev.get("raw_start", ""))
         if dt is None:
@@ -340,7 +340,6 @@ async def import_ics(
         if dt_end is None:
             dt_end = dt + datetime.timedelta(hours=1)
 
-        # Calculate day from the LOCAL date (after UTC conversion)
         wd = dt.weekday()
         day_idx = day_idx_map.get(wd, 0)
 
@@ -354,12 +353,13 @@ async def import_ics(
         description = ev.get("description", "")
         color = _label_to_color(label, ev.get("categories", ""))
 
-        # Create unique ID using date+time+label to avoid deduplication issues
-        dt_key = dt.strftime("%Y%m%dT%H%M")
-        uid = f"ical-{dt_key}-{hash(label) & 0xFFFF:04x}"
-        if uid in seen_ids:
+        date_str_val = dt.strftime("%Y-%m-%d")
+        dedup_key = f"{date_str_val}|{start_str}|{end_str}|{label}"
+        if dedup_key in seen_keys:
             continue
-        seen_ids.add(uid)
+        seen_keys.add(dedup_key)
+
+        uid = f"ical-{dt.strftime('%Y%m%dT%H%M')}-{hash(label) & 0xFFFF:04x}"
 
         parsed.append({
             "id": uid,
@@ -518,3 +518,72 @@ async def save_events(req: SaveDataRequest):
     with open(_PLANNER_FILE, "w") as f:
         json.dump({"events": req.events, "tasks": req.tasks}, f, indent=2)
     return {"status": "saved", "count": len(req.events), "tasks": len(req.tasks)}
+
+
+# ── Smart notifications ───────────────────────────────────────────────────────
+
+@router.get("/notifications")
+async def notifications():
+    """Check for things the student should know: upcoming tests, due flashcards."""
+    import datetime
+
+    now = datetime.datetime.now()
+    today = now.strftime("%Y-%m-%d")
+
+    notices = []
+
+    # 1. Upcoming tests from saved planner tasks (type 'test' or label contains test)
+    if os.path.exists(_PLANNER_FILE):
+        try:
+            with open(_PLANNER_FILE, "r") as f:
+                data = json.load(f)
+
+            def is_test_item(item):
+                return (
+                    item.get("type") == "test"
+                    or "test" in (item.get("name", "") or "").lower()
+                    or "exam" in (item.get("name", "") or "").lower()
+                    or "test" in (item.get("title", "") or "").lower()
+                    or "exam" in (item.get("title", "") or "").lower()
+                )
+
+            def due_str(item):
+                return item.get("dueDate") or item.get("date") or ""
+
+            # Tasks and events both count
+            for task in list(data.get("tasks", [])) + list(data.get("events", [])):
+                due = due_str(task)
+                if not due or not is_test_item(task):
+                    continue
+                try:
+                    d = datetime.datetime.strptime(due, "%Y-%m-%d")
+                    days = (d - now).days
+                    if 0 <= days <= 3:
+                        name = task.get("name") or task.get("title") or "Test"
+                        notices.append({
+                            "type": "test",
+                            "title": f"{name} in {days}d" if days else f"{name} today!",
+                            "body": f"Due {due}. Plan revision sessions now.",
+                            "severity": "high" if days <= 1 else "medium",
+                        })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # 2. Due flashcards from spaced repetition
+    try:
+        from services.advanced_study_service import AdvancedStudyIntelligence
+        svc = AdvancedStudyIntelligence()
+        stats = await svc.get_sr_stats()
+        if stats.get("due_today", 0) > 0:
+            notices.append({
+                "type": "flashcards",
+                "title": f"{stats['due_today']} flashcards due today",
+                "body": "Quick review session — 5 minutes keeps the streak alive!",
+                "severity": "low",
+            })
+    except Exception:
+        pass
+
+    return {"notifications": notices, "count": len(notices)}

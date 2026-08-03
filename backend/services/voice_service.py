@@ -1,5 +1,6 @@
 """Voice service — Whisper STT + local TTS."""
 import asyncio
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -38,14 +39,27 @@ class VoiceService:
             Path(tmp_path).unlink(missing_ok=True)
 
     async def synthesize(self, text: str) -> bytes:
-        """Text-to-speech — returns MP3 bytes."""
+        """Text-to-speech — returns audio bytes (m4a on macOS, mp3 fallback)."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._tts_sync, text)
 
     def _tts_sync(self, text: str) -> bytes:
+        # 1) macOS built-in `say` — zero deps, natural voices
+        try:
+            out = Path(tempfile.gettempdir()) / f"aria_tts_{abs(hash(text))}.m4a"
+            cmd = [
+                "say", "-o", str(out), "--data-format=aac", "--file-format=m4af", text,
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=120)
+            if result.returncode == 0 and out.exists() and out.stat().st_size > 0:
+                data = out.read_bytes()
+                out.unlink(missing_ok=True)
+                return data
+        except Exception:
+            pass
+        # 2) pyttsx3 fallback (mp3)
         try:
             import pyttsx3
-            import tempfile
             engine = pyttsx3.init()
             engine.setProperty("rate", 150)
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:

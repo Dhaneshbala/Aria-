@@ -180,6 +180,27 @@ export const getDueCards = (limit = 20) =>
 export const getSrStats = () =>
   apiFetch(`${BASE}/v2/study/sr-stats`).then(r => r.json())
 
+export const importSrCsv = (file, subject = 'general') => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('subject', subject)
+  return apiFetch(`${BASE}/v2/study/import-csv`, { method: 'POST', body: form }).then(r => r.json())
+}
+
+export const exportSrCsv = (subject) =>
+  apiFetch(`${BASE}/v2/study/export-csv${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`)
+
+export const checkHandwriting = (image, question = '', modelAnswer = '') => {
+  const form = new FormData()
+  form.append('image', image)
+  form.append('question', question)
+  form.append('model_answer', modelAnswer)
+  return apiFetch(`${BASE}/study/check-handwriting`, { method: 'POST', body: form }).then(r => r.json())
+}
+
+export const getNotifications = () =>
+  apiFetch(`${BASE}/planner/notifications`).then(r => r.json())
+
 export const reviewSrCard = (card_id, quality) =>
   apiFetch(`${BASE}/v2/study/review-card`, {
     method: 'POST',
