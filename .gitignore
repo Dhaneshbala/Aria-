@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+venv/
+.venv/
+
+# Env — never commit secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Runtime state — never commit local index/logs/backups
+backend/storage/organizer.db
+backend/storage/organizer.db-shm
+backend/storage/organizer.db-wal
+backend/storage/organizer.log
+backend/storage/backups/
+backend/storage/files/
+
+# Node
+frontend/node_modules/
+node_modules/
+
+# Build output — regenerate with `npm run build`
+frontend/dist/
+dist/
+
+# Misc
+.DS_Store
+*.log
+backend/storage/accuracy_corpus/
+backend/storage/accuracy_test.db
+backend/storage/semantic_chroma/
+backend/data/chromadb/
+*.sqlite3
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+
+# ARIA data — private user data
+.aria_data/
+aria_data/
+backend/storage/uploads/
+backend/storage/cache.json
+backend/storage/embed_cache.json
+knowledge_base/
+chroma/
