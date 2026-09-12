@@ -11,15 +11,18 @@ async function apiFetch(url, options = {}) {
 
 // ── Chat (SSE streaming) ──────────────────────────────────────────────────────
 
-export async function streamChat({ message, conversationId, image, document, onChunk, onDone, mode = 'normal' }) {
+export async function streamChat({ message, conversationId, image, document, documents, onChunk, onDone, mode = 'normal', signal }) {
   const form = new FormData()
   form.append('message', message)
   if (conversationId) form.append('conversation_id', conversationId)
   if (image) form.append('image', image)
   if (document) form.append('document', document)
+  if (documents && documents.length) {
+    documents.forEach(d => form.append('documents', d))
+  }
   form.append('mode', mode)
 
-  const resp = await apiFetch(`${BASE}/chat`, { method: 'POST', body: form })
+  const resp = await apiFetch(`${BASE}/chat`, { method: 'POST', body: form, signal })
 
   const newConvId = resp.headers.get('X-Conversation-Id')
   const reader = resp.body.getReader()
@@ -64,35 +67,42 @@ export const searchConversations = (query) =>
 export const getConversationsForDate = (date) =>
   apiFetch(`${BASE}/chat/conversations/date/${date}`).then(r => r.json())
 
-// ── Study ─────────────────────────────────────────────────────────────────────
+export const getConversationTitle = (id) =>
+  apiFetch(`${BASE}/chat/conversations/${id}/title`).then(r => r.json())
 
-export const generateQuiz = (topic, level = 'medium', count = 5) =>
-  apiFetch(`${BASE}/study/quiz`, {
-    method: 'POST',
+export const updateConversationTitle = (id, title) =>
+  apiFetch(`${BASE}/chat/conversations/${id}/title`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, level, count }),
+    body: JSON.stringify({ title }),
   }).then(r => r.json())
 
-export const generateFlashcards = (topic, count = 10) =>
-  apiFetch(`${BASE}/study/flashcards`, {
+export const regenerateConversationTitle = (id) =>
+  apiFetch(`${BASE}/chat/conversations/${id}/regenerate-title`, { method: 'POST' }).then(r => r.json())
+
+// ── Study ─────────────────────────────────────────────────────────────────────
+
+export const generateQuiz = (topic, level = 'medium', count = 5, verify = true, signal) => {
+  // Quiz is verified by default (as requested) — ~8-12s for 5q via parallel checks.
+  // No auto-quit timeout; caller may still pass signal for manual cancel.
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, level, count, verify }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/study/quiz`, opts).then(r => r.json())
+}
+
+export const generateFlashcards = (topic, count = 10, signal) => {
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, count }),
-  }).then(r => r.json())
-
-export const generateMindmap = (topic) =>
-  apiFetch(`${BASE}/study/mindmap`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
-  }).then(r => r.json())
-
-export const generateStudyPlan = (topic, days = 7) =>
-  apiFetch(`${BASE}/study/study-plan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, days }),
-  }).then(r => r.json())
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/study/flashcards`, opts).then(r => r.json())
+}
 
 export const checkAnswer = (subject, correct) =>
   apiFetch(`${BASE}/study/quiz/check`, {
@@ -108,48 +118,47 @@ export const generateNotes = (topic, style = 'structured') =>
     body: JSON.stringify({ topic, level: style }),
   }).then(r => r.json())
 
-export const generateExam = (topic, count = 10) =>
-  apiFetch(`${BASE}/study/exam`, {
+export const generateExam = (topic, count = 10, signal) => {
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, count }),
-  }).then(r => r.json())
-
-export const generateEssayFeedback = (essay, topic = '') =>
-  apiFetch(`${BASE}/study/essay-feedback`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ essay, topic }),
-  }).then(r => r.json())
-
-export const generateFormula = (topic) =>
-  apiFetch(`${BASE}/study/formula`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
-  }).then(r => r.json())
-
-export const generateTimeline = (topic) =>
-  apiFetch(`${BASE}/study/timeline`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
-  }).then(r => r.json())
-
-export const generateAssessmentPlan = async (file, daysAvailable = 7) => {
-  const form = new FormData()
-  form.append('file', file)
-  form.append('days_available', String(daysAvailable))
-  const resp = await apiFetch(`${BASE}/study/assessment-plan`, { method: 'POST', body: form })
-  return resp.json()
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/study/exam`, opts).then(r => r.json())
 }
 
-export const generateWorksheet = (topic, grade = 'Year 8', subject = '', questionCount = 10, includeAnswers = true) =>
-  apiFetch(`${BASE}/study/worksheet`, {
+// ── Exam countdown plans ────────────────────────────────────────────────────
+
+export const createExamPlan = (exam_name, exam_date, subjects, mins_per_day = 45, signalOrExtra, maybeExtra) => {
+  // Backward compat: createExamPlan(name, date, subs, mins, signal)
+  // New: createExamPlan(name, date, subs, mins, {assessment_text, assessment_topics, assessment_summary}, signal)
+  let signal = signalOrExtra
+  let extra = maybeExtra
+  if (signalOrExtra && typeof signalOrExtra === 'object' && !(signalOrExtra instanceof AbortSignal)) {
+    extra = signalOrExtra
+    signal = maybeExtra
+  }
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, grade, subject, question_count: questionCount, include_answers: includeAnswers }),
-  }).then(r => r.json())
+    body: JSON.stringify({ exam_name, exam_date, subjects, mins_per_day, ...(extra || {}) }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/study/exam-plan`, opts).then(r => r.json())
+}
+
+export const parseAssessmentNotification = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return apiFetch(`${BASE}/study/exam-plan/parse-notification`, { method: 'POST', body: form }).then(r => r.json())
+}
+
+export const listExamPlans = () =>
+  apiFetch(`${BASE}/study/exam-plans`).then(r => r.json())
+
+export const deleteExamPlan = (id) =>
+  apiFetch(`${BASE}/study/exam-plans/${id}`, { method: 'DELETE' }).then(r => r.json())
 
 // ── Spaced Repetition ────────────────────────────────────────────────────────
 
@@ -190,17 +199,6 @@ export const importSrCsv = (file, subject = 'general') => {
 export const exportSrCsv = (subject) =>
   apiFetch(`${BASE}/v2/study/export-csv${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`)
 
-export const checkHandwriting = (image, question = '', modelAnswer = '') => {
-  const form = new FormData()
-  form.append('image', image)
-  form.append('question', question)
-  form.append('model_answer', modelAnswer)
-  return apiFetch(`${BASE}/study/check-handwriting`, { method: 'POST', body: form }).then(r => r.json())
-}
-
-export const getNotifications = () =>
-  apiFetch(`${BASE}/planner/notifications`).then(r => r.json())
-
 export const reviewSrCard = (card_id, quality) =>
   apiFetch(`${BASE}/v2/study/review-card`, {
     method: 'POST',
@@ -233,6 +231,28 @@ export const generateImage = (prompt) =>
     body: JSON.stringify({ prompt }),
   }).then(r => r.json())
 
+// ── Napkin-style diagrams (inline visuals, no separate page) ────────────────
+
+export const suggestVisuals = (prompt, signal) => {
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt.slice(0, 1200) }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/diagram/suggest`, opts).then(r => r.json())
+}
+
+export const generateDiagram = (prompt, visual_type = null, signal) => {
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: prompt.slice(0, 1200), visual_type }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/diagram/generate`, opts).then(r => r.json())
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const getConfig = () => apiFetch(`${BASE}/admin/config`).then(r => r.json())
@@ -248,10 +268,24 @@ export const getProfile = () => apiFetch(`${BASE}/admin/profile`).then(r => r.js
 
 // ── Voice ─────────────────────────────────────────────────────────────────────
 
-export const transcribeAudio = (blob) => {
+export const transcribeAudio = (blob, language) => {
   const form = new FormData()
   form.append('audio', blob, 'recording.webm')
+  // Send browser language hint so Tamil/hi/ko aren't misdetected as English.
+  // e.g. navigator.language 'ta-IN' -> backend normalizes to 'ta'.
+  const hint = language || (typeof navigator !== 'undefined' ? navigator.language : '')
+  if (hint) form.append('language', hint)
   return apiFetch(`${BASE}/voice/transcribe`, { method: 'POST', body: form }).then(r => r.json())
+}
+
+export const synthesizeSpeech = async (text) => {
+  const resp = await apiFetch(`${BASE}/voice/synthesize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text.slice(0, 3500) }),
+  })
+  const blob = await resp.blob()
+  return URL.createObjectURL(blob)
 }
 
 // ── Memory management ─────────────────────────────────────────────────────────
@@ -475,117 +509,28 @@ export const getKBCollections = () =>
 export const rebuildKBIndex = () =>
   apiFetch(`${KB}/rebuild`, { method: 'POST' }).then(r => r.json())
 
-// ── Planner (Shovel-inspired) ────────────────────────────────────────────────
+// ── Todos / Assignment Inbox (solo) ───────────────────────────────────────────
 
-const PLANNER = `${BASE}/planner`
+const TODOS = `${BASE}/todos`
 
-export const uploadSyllabus = async (file, schoolStart = '08:30', schoolEnd = '15:00', studyLen = '45') => {
-  const form = new FormData()
-  form.append('file', file)
-  form.append('school_start', schoolStart)
-  form.append('school_end', schoolEnd)
-  form.append('study_len', studyLen)
-  const resp = await apiFetch(`${PLANNER}/upload-syllabus`, { method: 'POST', body: form })
-  return resp.json()
-}
-
-export const getCushion = (schedule, homework = [], tests = []) =>
-  apiFetch(`${PLANNER}/cushion`, {
+export const getTodos = () => apiFetch(`${TODOS}`).then(r => r.json())
+export const createTodo = (subject, task, due_date = null, estimated_mins = 30, priority = 'medium') =>
+  apiFetch(`${TODOS}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schedule, homework, tests }),
+    body: JSON.stringify({ subject, task, due_date, estimated_mins, priority }),
   }).then(r => r.json())
-
-export const getFreeSlots = (schedule, homework = [], tests = []) =>
-  apiFetch(`${PLANNER}/free-slots`, {
+export const createTodoFromChat = (text) =>
+  apiFetch(`${TODOS}/from-chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schedule, homework, tests }),
+    body: JSON.stringify({ text }),
   }).then(r => r.json())
-
-export const getStudyStreak = (schedule, homework = [], tests = []) =>
-  apiFetch(`${PLANNER}/streak`, {
-    method: 'POST',
+export const updateTodo = (id, updates) =>
+  apiFetch(`${TODOS}/${id}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ schedule, homework, tests }),
+    body: JSON.stringify(updates),
   }).then(r => r.json())
-
-export const exportICS = (events, calname = 'ARIA Study Plan') =>
-  apiFetch(`${PLANNER}/export-ics`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ events, calname }),
-  })
-
-export const importICS = (file, tzOffset = 10) => {
-  const form = new FormData()
-  form.append('file', file)
-  form.append('timezone_offset', String(tzOffset))
-  return apiFetch(`${PLANNER}/import-ics`, { method: 'POST', body: form }).then(r => r.json())
-}
-
-export const loadPlannerEvents = () =>
-  apiFetch(`${PLANNER}/events`).then(r => r.json())
-
-export const savePlannerEvents = (events, tasks = []) =>
-  apiFetch(`${PLANNER}/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ events, tasks }),
-  }).then(r => r.json())
-
-// ── Premium Planner ────────────────────────────────────────────────────────────
-
-const PP = '/api/premium-planner'
-
-export const ppUploadSyllabus = (file) => {
-  const form = new FormData()
-  form.append('file', file)
-  return apiFetch(`${PP}/upload-syllabus`, { method: 'POST', body: form }).then(r => r.json())
-}
-
-export const ppGetCourses = () => apiFetch(`${PP}/courses`).then(r => r.json())
-export const ppCreateCourse = (course) => apiFetch(`${PP}/courses`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(course),
-}).then(r => r.json())
-
-export const ppGetAssignments = (courseId) =>
-  apiFetch(`${PP}/assignments${courseId ? `?course_id=${courseId}` : ''}`).then(r => r.json())
-export const ppCreateAssignment = (a) => apiFetch(`${PP}/assignments`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(a),
-}).then(r => r.json())
-export const ppToggleAssignment = (id) => apiFetch(`${PP}/assignments/${id}/toggle`, { method: 'POST' }).then(r => r.json())
-export const ppDeleteAssignment = (id) => apiFetch(`${PP}/assignments/${id}`, { method: 'DELETE' }).then(r => r.json())
-
-export const ppGetExams = () => apiFetch(`${PP}/exams`).then(r => r.json())
-export const ppCreateExam = (e) => apiFetch(`${PP}/exams`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e),
-}).then(r => r.json())
-
-export const ppGetAvailability = () => apiFetch(`${PP}/availability`).then(r => r.json())
-export const ppSetAvailability = (blocks) => apiFetch(`${PP}/availability`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(blocks),
-}).then(r => r.json())
-
-export const ppGetSessions = (from, to) =>
-  apiFetch(`${PP}/sessions${from ? `?date_from=${from}&date_to=${to}` : ''}`).then(r => r.json())
-export const ppToggleSession = (id) => apiFetch(`${PP}/sessions/${id}/toggle`, { method: 'POST' }).then(r => r.json())
-export const ppLockSession = (id) => apiFetch(`${PP}/sessions/${id}/lock`, { method: 'POST' }).then(r => r.json())
-export const ppMoveSession = (id, date, startTime) => apiFetch(`${PP}/sessions/move`, {
-  method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  body: `session_id=${id}&date=${date}&start_time=${startTime}`,
-}).then(r => r.json())
-
-export const ppReschedule = (id) => apiFetch(`${PP}/reschedule/${id}`, { method: 'POST' }).then(r => r.json())
-export const ppRescheduleMissed = () => apiFetch(`${PP}/reschedule-missed`, { method: 'POST' }).then(r => r.json())
-export const ppGenerateBlocks = () => apiFetch(`${PP}/generate-blocks`, { method: 'POST' }).then(r => r.json())
-export const ppGetWorkload = () => apiFetch(`${PP}/workload`).then(r => r.json())
-export const ppGetDailyPlan = () => apiFetch(`${PP}/daily-plan`).then(r => r.json())
-export const ppAiAssist = (sessionId, query) => apiFetch(`${PP}/ai-assist`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ session_id: sessionId, query }),
-}).then(r => r.json())
-export const ppGenerateExamRevision = (examId) => apiFetch(`${PP}/exam-revision/${examId}`, { method: 'POST' }).then(r => r.json())
-export const ppGetAnalytics = () => apiFetch(`${PP}/analytics`).then(r => r.json())
-export const ppGetNotifications = () => apiFetch(`${PP}/notifications`).then(r => r.json())
-export const ppMarkNotificationRead = (id) => apiFetch(`${PP}/notifications/${id}/read`, { method: 'POST' }).then(r => r.json())
+export const deleteTodo = (id) => apiFetch(`${TODOS}/${id}`, { method: 'DELETE' }).then(r => r.json())
+export const getTodoCushion = () => apiFetch(`${TODOS}/cushion`).then(r => r.json())

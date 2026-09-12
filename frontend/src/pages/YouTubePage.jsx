@@ -74,28 +74,31 @@ export default function YouTubePage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 page-enter">
-      <div className="flex items-center gap-2 mb-2">
-        <Youtube size={20} className="text-red-400" />
-        <h1 className="text-lg font-semibold text-[#e8e8e8]">YouTube Analyser</h1>
-      </div>
-      <p className="text-xs text-[#444] mb-6">
-        Paste any YouTube URL — works with or without captions
-      </p>
+    <div className="w-full min-h-full px-6 lg:px-10 py-8 page-enter">
+      <div className="w-full">
+        <div className="flex items-center gap-2 mb-2">
+          <Youtube size={22} className="text-red-400" />
+          <h1 className="text-2xl font-normal text-[#e3e3e3] tracking-tight">YouTube Analyser</h1>
+        </div>
+        <p className="text-sm text-[#9aa0a6] mb-8">
+          Paste any YouTube URL — works with or without captions
+        </p>
 
-      <div className="flex gap-2 mb-6">
-        <input
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && process()}
-          placeholder="Paste a YouTube URL..."
-          className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50"
-        />
-        <button onClick={process} disabled={!url.trim() || loading}
-          className="px-5 py-2.5 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-40 transition-colors">
-          {loading ? 'Analysing...' : 'Analyse'}
-        </button>
+        <div className="flex gap-3 mb-8 w-full">
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && process()}
+            placeholder="Paste a YouTube URL..."
+            className="flex-1 bg-[#1e1f20] border border-[#2d2e30] rounded-full px-5 py-3.5 text-[15px] text-[#e3e3e3] placeholder-[#9aa0a6] outline-none focus:border-[#8ab4f8] focus:bg-[#2d2e30]"
+          />
+          <button onClick={process} disabled={!url.trim() || loading}
+            className="px-7 py-3.5 rounded-full bg-[#8ab4f8] hover:bg-[#aecbfa] text-[#062e6f] text-sm font-medium disabled:opacity-40 disabled:bg-[#2d2e30] disabled:text-[#5f6368] transition-colors shrink-0">
+            {loading ? 'Analysing...' : 'Analyse'}
+          </button>
+        </div>
       </div>
+      <div className="w-full">
 
       {loading && (
         <div className="flex flex-col items-center py-12 gap-3">
@@ -112,33 +115,42 @@ export default function YouTubePage() {
 
       {result && !result.error && (
         <div className="space-y-4">
-          {/* Video info card */}
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4">
+          {/* Video info card — Gemini dark cards */}
+          <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
                 <Youtube size={18} className="text-red-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-[#e8e8e8] font-medium text-sm">{result.title}</h2>
-                <p className="text-xs text-[#555] mt-0.5">
+                <h2 className="text-[#e3e3e3] font-medium text-[15px]">{result.title}</h2>
+                <p className="text-xs text-[#9aa0a6] mt-1">
                   {result.channel && <>{result.channel} · </>}
                   {result.duration_minutes > 0 && <>{result.duration_minutes} min · </>}
                   <a href={result.url} target="_blank" rel="noreferrer"
-                    className="text-[#7c6af7] hover:underline inline-flex items-center gap-1">
+                    className="text-[#8ab4f8] hover:underline inline-flex items-center gap-1">
                     Watch on YouTube <ExternalLink size={10} />
                   </a>
                 </p>
               </div>
             </div>
 
-            {/* Transcript status */}
-            {!result.has_transcript && (
-              <div className="mt-3 flex items-start gap-2 bg-[#1a1a1a] rounded-lg px-3 py-2">
-                <Info size={13} className="text-[#7c6af7] mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-[#666]">
-                  No captions available for this video. Summary and study tools are generated from the
-                  video title and description.
-                </p>
+            {/* Status — captions vs AI inference */}
+            <div className="mt-3 flex items-start gap-2 bg-[#1e1f20] border border-[#2d2e30] rounded-lg px-3 py-2.5">
+              <Info size={13} className={`${result.has_transcript ? 'text-green-400' : 'text-[#8ab4f8]'} mt-0.5 flex-shrink-0`} />
+              <p className="text-xs leading-relaxed text-[#9aa0a6]">
+                {result.fallback === 'audio'
+                  ? 'Analysed via audio transcription (no captions needed) — summary & quiz below are from spoken content.'
+                  : result.has_transcript && result.ai_summary
+                    ? 'Analysed — transcript found + AI summary generated.'
+                    : result.has_transcript
+                      ? 'Captions found — analysis from transcript.'
+                      : 'No captions — AI inferred overview from title/description/tags. Quiz & flashcards still work.'}
+              </p>
+            </div>
+            {result.ai_summary && (
+              <div className="mt-3 bg-[#131314] border border-[#2d2e30] rounded-xl p-4">
+                <p className="text-xs font-medium text-[#8ab4f8] mb-2">AI Analysis</p>
+                <p className="text-sm text-[#e3e3e3] leading-relaxed whitespace-pre-wrap">{result.ai_summary}</p>
               </div>
             )}
 
@@ -170,53 +182,57 @@ export default function YouTubePage() {
           {/* Tabs */}
           <div className="flex gap-1 bg-[#111] border border-[#1e1e1e] p-1 rounded-xl w-fit">
             {[
-              result.transcript && ['transcript', <FileText size={13} />, 'Transcript'],
-              ['summary', <Info size={13} />, 'Summary'],
-              quiz && ['quiz', <BookOpen size={13} />, 'Quiz'],
-              flashcards && ['flashcards', <CreditCard size={13} />, 'Flashcards'],
-            ].filter(Boolean).map(([id, icon, label]) => (
+              ...(result.transcript ? [['transcript', 'Transcript']] : []),
+              ['summary', 'Summary'],
+              ...(quiz ? [['quiz', 'Quiz']] : []),
+              ...(flashcards ? [['flashcards', 'Flashcards']] : []),
+            ].map(([id, label]) => (
               <button key={id} onClick={() => setTab(id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
                   tab === id ? 'bg-[#7c6af7] text-white' : 'text-[#888] hover:text-[#e8e8e8]'
                 }`}>
-                {icon} {label}
+                {id === 'transcript' ? <FileText size={13} /> : id === 'summary' ? <Info size={13} /> : id === 'quiz' ? <BookOpen size={13} /> : <CreditCard size={13} />}
+                {label}
               </button>
             ))}
           </div>
 
           {/* Tab: Transcript */}
           {tab === 'transcript' && result.transcript && (
-            <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 max-h-96 overflow-y-auto">
-              <p className="text-sm text-[#aaa] leading-relaxed whitespace-pre-wrap">{result.transcript}</p>
+            <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5 max-h-96 overflow-y-auto">
+              <p className="text-sm text-[#e3e3e3] leading-relaxed whitespace-pre-wrap">{result.transcript}</p>
             </div>
           )}
 
-          {/* Tab: Summary (always available) */}
+          {/* Tab: Summary (always available — works without captions) */}
           {tab === 'summary' && (
-            <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 space-y-3">
-              <h3 className="text-sm font-medium text-[#e8e8e8]">Video Summary</h3>
-              <div className="space-y-2 text-sm text-[#aaa] leading-relaxed">
-                <p><span className="text-[#7c6af7] font-medium">Title:</span> {result.title}</p>
-                {result.channel && <p><span className="text-[#7c6af7] font-medium">Channel:</span> {result.channel}</p>}
-                {result.duration_minutes > 0 && <p><span className="text-[#7c6af7] font-medium">Duration:</span> {result.duration_minutes} minutes</p>}
-                {result.description && (
-                  <div>
-                    <p className="text-[#7c6af7] font-medium mb-1">Description:</p>
-                    <p className="text-[#888] whitespace-pre-wrap">{result.description}</p>
-                  </div>
-                )}
-                {result.has_transcript && (
-                  <div>
-                    <p className="text-[#7c6af7] font-medium mb-1">Transcript excerpt:</p>
-                    <p className="text-[#888]">{result.transcript.slice(0, 500)}...</p>
-                  </div>
-                )}
-              </div>
-              {!result.has_transcript && (
-                <p className="text-xs text-[#444] border-t border-[#1e1e1e] pt-3">
-                  Tip: Generate a Quiz or Flashcards above to create study materials from this video's content.
-                </p>
+            <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5 space-y-3">
+              <h3 className="text-sm font-medium text-[#e3e3e3]">Video Summary</h3>
+              {result.ai_summary ? (
+                <p className="text-sm text-[#e3e3e3] leading-relaxed whitespace-pre-wrap">{result.ai_summary}</p>
+              ) : (
+                <div className="space-y-2 text-sm text-[#aaa] leading-relaxed">
+                  <p><span className="text-[#8ab4f8] font-medium">Title:</span> {result.title}</p>
+                  {result.channel && <p><span className="text-[#8ab4f8] font-medium">Channel:</span> {result.channel}</p>}
+                  {result.duration_minutes > 0 && <p><span className="text-[#8ab4f8] font-medium">Duration:</span> {result.duration_minutes} minutes</p>}
+                  {result.description && (
+                    <div>
+                      <p className="text-[#8ab4f8] font-medium mb-1">Description:</p>
+                      <p className="text-[#9aa0a6] whitespace-pre-wrap">{result.description}</p>
+                    </div>
+                  )}
+                  {result.has_transcript && result.transcript && (
+                    <div>
+                      <p className="text-[#8ab4f8] font-medium mb-1">Transcript excerpt:</p>
+                      <p className="text-[#9aa0a6]">{result.transcript.slice(0, 500)}...</p>
+                    </div>
+                  )}
+                </div>
               )}
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-[#2d2e30]">
+                <button onClick={makeQuiz} className="px-3 py-1.5 rounded-full bg-[#8ab4f8] text-[#062e6f] text-xs font-medium hover:bg-[#aecbfa]">Quiz from video</button>
+                <button onClick={makeFlashcards} className="px-3 py-1.5 rounded-full bg-[#2d2e30] text-[#e3e3e3] text-xs hover:bg-[#35363a]">Flashcards</button>
+              </div>
             </div>
           )}
 
@@ -224,7 +240,7 @@ export default function YouTubePage() {
           {tab === 'quiz' && quiz && (
             <div className="space-y-3">
               {quiz.map((q, i) => (
-                <div key={i} className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4">
+                <div key={i} className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5">
                   <p className="text-sm text-[#e8e8e8] mb-2">Q{i+1}: {q.question}</p>
                   {q.options.map((opt, j) => (
                     <p key={j} className={`text-xs py-1 ${['A','B','C','D'][j] === q.correct ? 'text-green-400 font-medium' : 'text-[#777]'}`}>
@@ -236,11 +252,11 @@ export default function YouTubePage() {
             </div>
           )}
 
-          {/* Tab: Flashcards */}
+          {/* Tab: Flashcards — full width grid */}
           {tab === 'flashcards' && flashcards && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {flashcards.map((c, i) => (
-                <div key={i} className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-3">
+                <div key={i} className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-4">
                   <p className="text-xs text-[#7c6af7] mb-1">Q</p>
                   <p className="text-xs text-[#e8e8e8] mb-2">{c.front}</p>
                   <p className="text-xs text-[#888] border-t border-[#2a2a2a] pt-2">{c.back}</p>
@@ -250,6 +266,7 @@ export default function YouTubePage() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

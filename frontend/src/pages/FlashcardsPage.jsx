@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { generateFlashcards, bulkAddSrCards, importSrCsv, exportSrCsv } from '../services/api'
+import { startTask, cancelTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
 import { CreditCard, RotateCcw, Shuffle, Send, ChevronLeft, ChevronRight, Check, X, Sparkles, Target, Zap, FileUp, FileDown } from 'lucide-react'
@@ -13,27 +14,84 @@ export default function FlashcardsPage() {
   const [order, setOrder] = useState(saved.order || [])
   const [idx, setIdx] = useState(saved.idx || 0)
   const [flipped, setFlipped] = useState(saved.flipped || false)
-  const [known, setKnown] = useState(saved.known || [])
-  const [loading, setLoading] = useState(false)
+  const [known, setKnown] = useState(() => {
+    const k = saved.known
+    if (k instanceof Set) return k
+    if (Array.isArray(k)) return new Set(k)
+    return new Set()
+  })
+  const [loading, setLoading] = useState(
+    () => useStore.getState().bgTasks?.flashcards?.status === 'running'
+  )
   const [sessionDone, setSessionDone] = useState(false)
   const [streak, setStreak] = useState(0)
   const csvInputRef = useRef()
   const [csvBusy, setCsvBusy] = useState(false)
+  const bg = useBgTask('flashcards')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+
+  // Adopt a background run when returning to this page mid-generation,
+  // or a result that landed in the store while we were away.
+  useEffect(() => {
+    if (bg?.status === 'running') {
+      setLoading(true)
+      if (bg.topic && !topic) setTopic(bg.topic)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (bg?.status === 'done' && cards.length === 0 && saved.cards?.length) {
+      const c = saved.cards
+      setCards(c)
+      setOrder(saved.order?.length ? saved.order : c.map((_, i) => i))
+      setIdx(0); setFlipped(false); setKnown(new Set()); setStreak(0)
+      setTopic(saved.topic || topic)
+      setLoading(false)
+    } else if ((bg?.status === 'error' || bg?.status === 'cancelled') && loading && cards.length === 0) {
+      setLoading(false)
+      if (bg.status === 'error' && bg.error) showToast(bg.error, 'error')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bg?.status])
 
   useEffect(() => {
-    setStudyTool('flashcards', { cards, order, idx, flipped, known, topic, count })
+    setStudyTool('flashcards', { cards, order, idx, flipped, known: Array.from(known), topic, count })
   }, [cards, order, idx, flipped, known, topic, count])
 
   const generate = async () => {
     if (!topic.trim()) return
+    const t = topic.trim(), n = count
     setLoading(true); setSessionDone(false)
     try {
-      const data = await generateFlashcards(topic, count)
+      // Background-safe: navigate away and the cards still land in the store.
+      const data = await startTask('flashcards', {
+        label: `Flashcards: ${t}`,
+        page: '/create',
+        topic: t,
+        run: (signal) => generateFlashcards(t, n, signal),
+        onDone: (d) => {
+          const c = d.cards || []
+          setStudyTool('flashcards', {
+            cards: c, order: c.map((_, i) => i), idx: 0,
+            flipped: false, known: [], topic: t, count: n,
+          })
+        },
+      })
+      if (!mountedRef.current) return
       const c = data.cards || []
       setCards(c)
       setOrder(c.map((_, i) => i))
       setIdx(0); setFlipped(false); setKnown(new Set()); setStreak(0)
-    } catch { showToast('Failed to generate flashcards', 'error') }
+    } catch (e) {
+      if (!mountedRef.current) return
+      if (e?.name !== 'AbortError') showToast('Failed to generate flashcards', 'error')
+    }
+    if (mountedRef.current) setLoading(false)
+  }
+
+  const cancelGenerate = () => {
+    cancelTask('flashcards')
     setLoading(false)
   }
 
@@ -187,7 +245,8 @@ export default function FlashcardsPage() {
         </div>
         <div className="text-center">
           <p className="text-sm text-[#e8e8e8] font-medium">Creating flashcards</p>
-          <p className="text-xs text-[#555] mt-1">for "{topic}"</p>
+          <p className="text-xs text-[#555] mt-1">for "{topic}" — keeps working if you leave this page</p>
+          <button onClick={cancelGenerate} className="mt-3 px-4 py-1.5 rounded-full bg-[#2a2a2e] text-xs text-[#888] hover:text-[#e8e8e8]">Cancel</button>
         </div>
       </div>
     )
@@ -238,7 +297,7 @@ export default function FlashcardsPage() {
 
   // ── Main Flashcard View ──────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col px-4 py-4 max-w-2xl mx-auto">
+    <div className="h-full flex flex-col px-4 py-4 w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div className="flex items-center gap-3">

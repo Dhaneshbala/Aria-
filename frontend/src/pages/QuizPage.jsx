@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { generateQuiz, checkAnswer, bulkAddSrCards } from '../services/api'
+import { startTask, cancelTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { BookOpen, Trophy, RotateCcw, Sparkles } from 'lucide-react'
 
@@ -17,18 +18,68 @@ export default function QuizPage() {
   const [selected, setSelected] = useState(saved.selected || null)
   const [score, setScore] = useState(saved.score || 0)
   const [done, setDone] = useState(saved.done || false)
-  const [loading, setLoading] = useState(false)
+  // If a quiz is already generating in the background (we navigated away
+  // and back), start in loading state — no flash of the setup form.
+  const [loading, setLoading] = useState(
+    () => useStore.getState().bgTasks?.quiz?.status === 'running'
+  )
+  const [elapsed, setElapsed] = useState(0)
+  const [error, setError] = useState('')
   const [answers, setAnswers] = useState(saved.answers || [])
   const [cardState, setCardState] = useState(saved.cardState || { sending: false, done: false, count: 0 })
+  const bg = useBgTask('quiz')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+  const timerRef = useRef(null)
+
+  // Adopt a background run: returning to this page while it works (or after
+  // it finished into the store while we were away) — never lose the task.
+  useEffect(() => {
+    if (bg?.status === 'running') {
+      setLoading(true)
+      if (bg.topic && !topic) setTopic(bg.topic)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (bg?.status === 'done' && questions.length === 0 && saved.questions?.length) {
+      setQuestions(saved.questions)
+      setCurrent(saved.current || 0)
+      setSelected(saved.selected || null)
+      setScore(saved.score || 0)
+      setDone(saved.done || false)
+      setAnswers(saved.answers || [])
+      setTopic(saved.topic || topic)
+      setLoading(false)
+    } else if ((bg?.status === 'error' || bg?.status === 'cancelled') && loading && questions.length === 0) {
+      setLoading(false)
+      if (bg.status === 'error' && bg.error) setError(bg.error)
+      if (bg.status === 'cancelled') setError('Cancelled.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bg?.status])
 
   // Auto-persist to store
   useEffect(() => {
     setStudyTool('quiz', { questions, current, selected, score, done, answers, topic, level, count, cardState })
   }, [questions, current, selected, score, done, answers, topic, level, count, cardState])
 
+  // Elapsed timer while loading
+  useEffect(() => {
+    if (loading) {
+      setElapsed(0)
+      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+    } else {
+      clearInterval(timerRef.current)
+    }
+    return () => clearInterval(timerRef.current)
+  }, [loading])
+
   const start = async () => {
     if (!topic.trim()) return
+    const t = topic.trim(), l = level, c = count
     setLoading(true)
+    setError('')
     setQuestions([])
     setCurrent(0)
     setSelected(null)
@@ -36,9 +87,36 @@ export default function QuizPage() {
     setDone(false)
     setAnswers([])
     try {
-      const data = await generateQuiz(topic, level, count)
-      setQuestions(data.questions || [])
-    } catch {}
+      // Manager-owned request: keeps running if you navigate away; the
+      // result lands in the store via onDone even when this page is gone.
+      const data = await startTask('quiz', {
+        label: `Quiz: ${t}`,
+        page: '/create',
+        topic: t,
+        run: (signal) => generateQuiz(t, l, c, true, signal),
+        onDone: (d) => {
+          const qs = d.questions || []
+          setStudyTool('quiz', {
+            questions: qs, current: 0, selected: null, score: 0,
+            done: false, answers: [], topic: t, level: l, count: c, cardState,
+          })
+        },
+      })
+      if (!mountedRef.current) return
+      const qs = data.questions || []
+      setQuestions(qs)
+      if (qs.length === 0) setError('No questions generated — try a different topic.')
+    } catch (e) {
+      if (!mountedRef.current) return
+      if (e.name === 'AbortError') setError('Cancelled.')
+      else setError(e.message || 'Failed to generate quiz')
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }
+
+  const cancel = () => {
+    cancelTask('quiz')
     setLoading(false)
   }
 
@@ -103,7 +181,7 @@ export default function QuizPage() {
   }, [handleKeyDown])
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 page-enter">
+    <div className="w-full px-6 lg:px-8 py-6 page-enter">
       <div className="flex items-center gap-2 mb-6">
         <BookOpen size={20} className="text-[#7c6af7]" />
         <h1 className="text-lg font-semibold text-[#e8e8e8]">Quiz Generator</h1>
@@ -158,8 +236,15 @@ export default function QuizPage() {
       {loading && (
         <div className="flex flex-col items-center py-16 gap-3">
           <div className="w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin" />
-          <p className="text-[#888] text-sm">Generating quiz on "{topic}"...</p>
+          <p className="text-[#888] text-sm">Generating verified quiz on "{topic}"... {elapsed}s</p>
+          <p className="text-[#555] text-xs">Verified mode • ~8-12 seconds for {count} questions</p>
+          <p className="text-[#555] text-xs">Keeps working if you leave this page — find it in the task pill</p>
+          {elapsed > 12 && <p className="text-[#f59e0b] text-xs">Still verifying — checking answers</p>}
+          <button onClick={cancel} className="mt-2 px-4 py-1.5 rounded-full bg-[#2a2a2a] text-xs text-[#888] hover:text-[#e8e8e8]">Cancel</button>
         </div>
+      )}
+      {error && !loading && questions.length === 0 && (
+        <div className="my-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 text-center">{error}</div>
       )}
 
       {/* Quiz */}

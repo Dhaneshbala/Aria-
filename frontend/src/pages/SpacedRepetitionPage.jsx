@@ -67,7 +67,7 @@ export default function SpacedRepetitionPage() {
   ]
 
   return (
-    <div className="flex flex-col h-full p-4 gap-4 overflow-y-auto">
+    <div className="flex flex-col h-full w-full p-4 gap-4 overflow-y-auto">
       <h1 className="text-xl font-bold text-[#e8e8e8]">Spaced Repetition</h1>
 
       {/* Stats */}
