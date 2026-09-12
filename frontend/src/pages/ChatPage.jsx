@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { getConversation } from '../services/api'
@@ -6,37 +6,83 @@ import { useChat } from '../hooks/useChat'
 import Message from '../components/Message'
 import ChatInput from '../components/ChatInput'
 import ExportButton from '../components/ExportButton'
-import { Zap, BookOpen, Calculator, Globe, FlaskConical, Code, FileText } from 'lucide-react'
+import { Zap, BookOpen, Calculator, Globe, FlaskConical, Code, FileText, MessageCircleQuestion, Drama } from 'lucide-react'
 
 const SUGGESTIONS = [
-  { icon: Calculator,   text: 'Explain solving quadratic equations step by step' },
-  { icon: FlaskConical, text: 'How does photosynthesis work? Draw me a mind map' },
-  { icon: Globe,        text: 'Summarise the causes of World War 1' },
-  { icon: Code,         text: 'Teach me Python for loops with examples' },
-  { icon: BookOpen,     text: 'Make a quiz on the solar system, medium difficulty' },
-  { icon: FileText,     text: 'Create study notes on the French Revolution' },
+  { icon: Calculator,   text: 'Explain quadratic equations step by step', short: 'Solve maths' },
+  { icon: FlaskConical, text: 'How does photosynthesis work? Draw a mind map', short: 'Explain science' },
+  { icon: Globe,        text: 'Summarise the causes of World War 1', short: 'History summary' },
+  { icon: Code,         text: 'Teach me Python for loops with examples', short: 'Coding help' },
+  { icon: BookOpen,     text: 'Make a quiz on the solar system — medium', short: 'Make a quiz' },
+  { icon: FileText,     text: 'Create study notes on the French Revolution', short: 'Study notes' },
 ]
+
+const GEMINI_CHIPS = [
+  { icon: '🎨', label: 'Create image', prompt: 'Draw the solar system in detail, labelled' },
+  { icon: '📝', label: 'Make a quiz', prompt: 'Make a quiz on the solar system, medium difficulty, 5 questions' },
+  { icon: '🧠', label: 'Explain', prompt: 'Explain solving quadratic equations step by step' },
+  { icon: '🗺️', label: 'Mind map', prompt: 'How does photosynthesis work? Draw me a mind map' },
+]
+
+function ProgressBar() {
+  const { progress, progressSteps, isStreaming } = useStore()
+  if (!isStreaming || !progress) return null
+  const pct = progress.pct || 0
+  return (
+    <div className="sticky top-0 z-10 bg-[#131314]/90 backdrop-blur border-b border-[#2d2e30] px-4 py-2">
+      <div className="w-full">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-[#8ab4f8] font-medium flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#8ab4f8] animate-pulse" />
+            {progress.label || 'Thinking...'}
+          </span>
+          <span className="text-[10px] text-[#9aa0a6]">{pct}%</span>
+        </div>
+        <div className="w-full bg-[#1e1f20] rounded-full h-1.5 overflow-hidden">
+          <div className="bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] h-1.5 rounded-full transition-all duration-500 ease-out" style={{ width: `${pct}%` }} />
+        </div>
+        {progressSteps.length > 1 && (
+          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+            {progressSteps.map(s => (
+              <span key={s.step} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${s.status === 'done' ? 'bg-[#8ab4f8]/15 text-[#8ab4f8] border-[#8ab4f8]/20' : s.status === 'running' ? 'bg-[#1e1f20] text-[#9aa0a6] border-[#2d2e30] animate-pulse' : 'bg-[#1e1f20] text-[#5f6368] border-[#2d2e30]'}`}>
+                {s.status === 'done' ? '✓' : s.status === 'running' ? '⏳' : '•'} {s.label || s.step}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function ChatPage() {
   const { id } = useParams()
   const {
-    conversationId, messages, isStreaming, ollamaStatus,
+    conversationId, messages, isStreaming, ollamaStatus, mode,
     setConversationId, setMessages,
   } = useStore()
   const { sendMessage } = useChat()
   const bottomRef = useRef()
 
   // Load existing conversation when navigating to /chat/:id
+  // Don't clobber an in-flight stream — the live messages are in the store
   useEffect(() => {
+    const { isStreaming: streamingNow } = useStore.getState()
+    if (streamingNow) return
     if (id && id !== conversationId) {
       setConversationId(id)
       getConversation(id).then(turns => {
+        // If a stream started while we were fetching, don't overwrite
+        if (useStore.getState().isStreaming) return
+        if (!Array.isArray(turns)) { setMessages([]); return }
         const msgs = turns.flatMap(t => ([
           { id: `u-${t.timestamp}`, role: 'user',      content: t.user, timestamp: t.timestamp },
           { id: `a-${t.timestamp}`, role: 'assistant', content: t.ai,   timestamp: t.timestamp, tools: [], extras: null },
         ]))
         setMessages(msgs)
       }).catch(() => setMessages([]))
+    } else if (!id && !conversationId && messages.length === 0) {
+      // Stay on current chat — don't clear
     }
   }, [id])
 
@@ -62,31 +108,48 @@ export default function ChatPage() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Toolbar */}
+    <div className="flex flex-col h-full w-full bg-[#131314]">
+      {/* Toolbar — only when chatting */}
       {messages.length > 0 && (
-        <div className="flex items-center justify-end px-4 py-1 border-b border-[#1a1a1a]">
+        <div className="flex items-center justify-end px-4 py-1.5">
           <ExportButton messages={messages} conversationId={conversationId} />
         </div>
       )}
 
-      {/* Offline banner */}
+      {/* Offline banner — Gemini style subtle */}
       {ollamaStatus === 'error' && (
-        <div className="px-4 py-2 bg-red-950/40 border-b border-red-500/20 text-center">
-          <p className="text-xs text-red-300">
-            ⚠ Ollama is offline — ARIA can't answer right now. Start it by running{' '}
-            <code className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 font-mono">ollama serve</code>{' '}
-            in a terminal, then click the status indicator in the top bar to reconnect.
+        <div className="mx-4 mt-2 px-4 py-2.5 bg-[#3c1f1a] border border-[#5c2b22] rounded-xl text-center">
+          <p className="text-xs text-[#f28b82]">
+            Ollama offline — ARIA can’t answer. Run <code className="px-1.5 py-0.5 rounded bg-[#5c2b22] text-[#f28b82] font-mono">ollama serve</code> then refresh.
           </p>
         </div>
       )}
 
-      {/* Messages */}
+      {/* Active mode indicator — pill */}
+      {mode === 'socratic' && (
+        <div className="flex justify-center pt-2">
+          <span className="px-3 py-1 rounded-full bg-[#f59e0b]/15 border border-[#f59e0b]/20 text-[11px] text-[#fbbf24] flex items-center gap-1.5">
+            <MessageCircleQuestion size={13} /> Socratic mode — guiding, not answering
+          </span>
+        </div>
+      )}
+      {mode === 'roleplay' && (
+        <div className="flex justify-center pt-2">
+          <span className="px-3 py-1 rounded-full bg-[#ec4899]/15 border border-[#ec4899]/20 text-[11px] text-[#f9a8d4] flex items-center gap-1.5">
+            <Drama size={13} /> Roleplay mode — in character
+          </span>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <ProgressBar />
+
+      {/* Messages / Welcome */}
       <div className="flex-1 overflow-y-auto">
         {isEmpty ? (
-          <Welcome onSuggest={(text) => sendMessage({ text })} />
+          <Welcome onSuggest={(text) => sendMessage({ text })} sendMessage={sendMessage} isStreaming={isStreaming} />
         ) : (
-          <div className="max-w-3xl mx-auto px-4 py-6">
+          <div className="w-full px-6 lg:px-8 py-6">
             {messages.map(msg => (
               <Message key={msg.id} msg={msg} onSuggest={(text) => sendMessage({ text })} />
             ))}
@@ -95,42 +158,87 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Input bar */}
-      <div className="max-w-3xl mx-auto w-full px-4 pb-4">
-        <ChatInput onSend={sendMessage} disabled={isStreaming} />
-        <p className="text-center text-[10px] text-[#333] mt-2">
-          AI runs locally on your computer (cloud model optional) · Private &amp; offline-friendly
-        </p>
-      </div>
+      {/* Input bar — hidden when empty because Welcome has centered input (Gemini behavior) */}
+      {!isEmpty && (
+        <div className="w-full px-6 lg:px-8 pb-4 pt-2 bg-gradient-to-t from-[#131314] via-[#131314] to-transparent">
+          <ChatInput onSend={sendMessage} disabled={isStreaming} />
+          <p className="text-center text-[11px] text-[#5f6368] mt-3">
+            ARIA can make mistakes. Check important info. · Private & on-device
+          </p>
+        </div>
+      )}
     </div>
   )
 }
 
-function Welcome({ onSuggest }) {
+function Welcome({ onSuggest, sendMessage, isStreaming }) {
+  const { config } = useStore()
+  const name = config.student_name && config.student_name !== 'Student' ? config.student_name : 'there'
+  const displayName = name.charAt(0).toUpperCase() + name.slice(1)
+  const handleSend = sendMessage || (({ text }) => onSuggest(text))
+  // Prefill handed off from the dashboard shortcuts (one-shot).
+  const [draft, setDraft] = useState(() => {
+    try {
+      const p = sessionStorage.getItem('aria_chat_prefill')
+      if (p) { sessionStorage.removeItem('aria_chat_prefill'); return p }
+    } catch {}
+    return ''
+  })
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 py-8">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#7c6af7] to-[#4f46e5] flex items-center justify-center mb-5 shadow-lg shadow-[#7c6af7]/20">
-        <Zap size={30} className="text-white" />
-      </div>
-      <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Hi! I'm ARIA 👋</h1>
-      <p className="text-[#666] text-sm mb-8 text-center max-w-md leading-relaxed">
-        Your personal AI study assistant. I can explain anything, solve maths,
-        read your worksheets and homework, make quizzes, flashcards, mind maps, and more.
-        All on your computer — completely private.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-xl">
-        {SUGGESTIONS.map(({ icon: Icon, text }) => (
-          <button
-            key={text}
-            onClick={() => onSuggest(text)}
-            className="flex items-center gap-3 px-4 py-3 bg-[#141414] border border-[#2a2a2a] rounded-xl hover:border-[#7c6af7]/40 hover:bg-[#1a1a1a] transition-all text-left group"
-          >
-            <div className="w-7 h-7 rounded-lg bg-[#7c6af7]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#7c6af7]/20 transition-colors">
-              <Icon size={14} className="text-[#7c6af7]" />
-            </div>
-            <span className="text-xs text-[#888] group-hover:text-[#bbb] transition-colors">{text}</span>
-          </button>
-        ))}
+    <div className="flex flex-col items-center justify-center min-h-full px-6 lg:px-8 py-8 md:py-12">
+      <div className="w-full flex flex-col items-center">
+        {/* Gemini hero greeting */}
+        <h1 className="text-[40px] sm:text-[48px] md:text-[56px] font-normal leading-[1.05] tracking-tight text-center">
+          <span className="gemini-gradient-text">Hello, {displayName}</span>
+        </h1>
+        <h2 className="text-[40px] sm:text-[48px] md:text-[56px] font-normal leading-[1.05] tracking-tight text-[#5f6368] text-center -mt-1">
+          How can I help?
+        </h2>
+        <p className="text-sm text-[#9aa0a6] mt-4 mb-8 text-center">Your private study assistant — offline, on-device</p>
+
+        {/* Centered composer — Gemini puts input in the middle when empty */}
+        <div className="w-full">
+          <ChatInput onSend={handleSend} disabled={isStreaming} autoFocus text={draft} onTextChange={setDraft} />
+          <p className="text-center text-[11px] text-[#5f6368] mt-3">ARIA can make mistakes — verify important work</p>
+        </div>
+
+        {/* Quick chips — Gemini style horizontal pills */}
+        <div className="flex flex-wrap justify-center gap-2 mt-6 w-full">
+          {GEMINI_CHIPS.map(c => (
+            <button
+              key={c.label}
+              onClick={() => onSuggest(c.prompt)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#1e1f20] hover:bg-[#2d2e30] border border-[#2d2e30] hover:border-[#3c4043] text-sm text-[#e3e3e3] transition-colors"
+            >
+              <span>{c.icon}</span> {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Suggestion cards — Gemini 2x2 grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-8">
+          {SUGGESTIONS.slice(0, 4).map(({ icon: Icon, text, short }) => (
+            <button
+              key={text}
+              onClick={() => onSuggest(text)}
+              className="group relative flex flex-col text-left p-4 rounded-2xl bg-[#1e1f20] hover:bg-[#2d2e30] border border-[#2d2e30] hover:border-[#3c4043] transition-all min-h-[110px]"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-xs font-medium text-[#9aa0a6] uppercase tracking-wide">{short}</span>
+                <span className="w-8 h-8 rounded-full bg-[#2d2e30] group-hover:bg-[#35363a] flex items-center justify-center shrink-0">
+                  <Icon size={16} className="text-[#8ab4f8]" />
+                </span>
+              </div>
+              <span className="text-[13px] leading-snug text-[#e3e3e3] line-clamp-2 pr-2">{text}</span>
+              <span className="absolute bottom-3 right-3 w-6 h-6 rounded-full bg-[#131314] group-hover:bg-[#1e1f20] flex items-center justify-center text-[#9aa0a6] text-xs">↗</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 mt-8 text-[11px] text-[#5f6368]">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+          Runs locally on your Mac · No data leaves your device
+        </div>
       </div>
     </div>
   )

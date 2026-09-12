@@ -1,85 +1,39 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
-import { deleteConversation, searchConversations, getNotifications } from '../services/api'
+import { deleteConversation, searchConversations } from '../services/api'
 import {
-  MessageSquare, BookOpen, CreditCard, Network, Calendar,
-  Youtube, Image, FileText, Presentation, User, Settings, Plus, Search, Pin,
-  Trash2, ChevronLeft, ChevronRight, Zap, Code, Wrench,
-  Brain, Clock, BarChart3, Trophy, GraduationCap, Repeat, Scissors, ListTodo, LayoutDashboard,
-  Database, Bell, Timer
+  MessageSquare, Settings, Plus, Search, Pin,
+  Trash2, Zap, LayoutDashboard, Wand2, Library, X, Repeat, PanelLeft, Mic,
 } from 'lucide-react'
 
 const NAV = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: MessageSquare, label: 'Chat', path: '/chat' },
-  { icon: Code, label: 'Coding', path: '/coding' },
-  { icon: BookOpen, label: 'Quiz', path: '/quiz' },
-  { icon: CreditCard, label: 'Flashcards', path: '/flashcards' },
-  { icon: Repeat, label: 'Spaced Rep', path: '/spaced-repetition' },
-  { icon: Network, label: 'Mind Map', path: '/mindmap' },
-  { icon: ListTodo, label: 'AI Planner', path: '/ai-planner' },
-  { icon: Wrench, label: 'Study Tools', path: '/study-tools' },
-  { icon: Timer, label: 'Focus Mode', path: '/focus' },
-  { icon: Presentation, label: 'PowerPoint', path: '/pptx' },
-  { icon: Youtube, label: 'YouTube', path: '/youtube' },
-  { icon: FileText, label: 'Documents', path: '/docs' },
-  { icon: Image, label: 'Image Gen', path: '/imagegen' },
-]
-
-const INTEL_NAV = [
-  { icon: Brain, label: 'Knowledge Graph', path: '/knowledge-graph' },
-  { icon: Clock, label: 'Memory Timeline', path: '/memory-timeline' },
-  { icon: Database, label: 'Knowledge Base', path: '/knowledge-base' },
-  { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-  { icon: Trophy, label: 'Achievements', path: '/achievements' },
-  { icon: GraduationCap, label: 'Curriculum', path: '/curriculum' },
+  { icon: Mic, label: 'Voice Tutor', path: '/voice' },
+  { icon: Wand2, label: 'Create', path: '/create' },
+  { icon: Repeat, label: 'Review', path: '/spaced' },
+  { icon: Library, label: 'Library', path: '/library' },
 ]
 
 const BOTTOM_NAV = [
-  { icon: User, label: 'Profile', path: '/profile' },
-  { icon: Settings, label: 'Admin', path: '/admin' },
+  { icon: Settings, label: 'Settings', path: '/admin' },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen: mobileOpenProp, setMobileOpen: setMobileOpenProp }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { conversations, pinnedChats, newConversation, togglePin, setConversations } = useStore()
-  const [collapsed, setCollapsed] = useState(false)
+  const { conversations, pinnedChats, newConversation, togglePin, setConversations, isStreaming } = useStore()
+  const [internalCollapsed, setInternalCollapsed] = useState(false)
+  const [internalMobileOpen, setInternalMobileOpen] = useState(false)
+  const collapsed = collapsedProp !== undefined ? collapsedProp : internalCollapsed
+  const mobileOpen = mobileOpenProp !== undefined ? mobileOpenProp : internalMobileOpen
+  const setCollapsed = onToggle || setInternalCollapsed
+  const setMobileOpen = setMobileOpenProp || setInternalMobileOpen
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState(null)
   const searchTimer = useRef(null)
-  const [notifs, setNotifs] = useState([])
-  const [notifOpen, setNotifOpen] = useState(false)
-  const notifRef = useRef(null)
 
-  // Poll smart notifications every 60s
-  useEffect(() => {
-    const fetchNotifs = async () => {
-      try {
-        const data = await getNotifications()
-        setNotifs(data.notifications || [])
-      } catch {}
-    }
-    fetchNotifs()
-    const timer = setInterval(fetchNotifs, 60000)
-    return () => clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    const onClick = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false)
-    }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [])
-
-  const openNotif = (n) => {
-    setNotifOpen(false)
-    navigate(n.type === 'flashcards' ? '/spaced-repetition' : '/ai-planner')
-  }
-
-  // Debounced content search
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!search.trim()) {
@@ -97,11 +51,9 @@ export default function Sidebar() {
     return () => clearTimeout(searchTimer.current)
   }, [search])
 
-  // Title-only filter (fast, instant)
   const titleFiltered = conversations.filter(c =>
-    c.title.toLowerCase().includes(search.toLowerCase())
+    (c.title || '').toLowerCase().includes(search.toLowerCase())
   )
-  // Use content search results if available, otherwise title filter
   const filtered = searchResults || titleFiltered
   const pinned = filtered.filter(c => pinnedChats.includes(c.id))
   const recent = filtered.filter(c => !pinnedChats.includes(c.id))
@@ -115,175 +67,159 @@ export default function Sidebar() {
   const handleNew = () => {
     newConversation()
     navigate('/chat')
+    if (window.innerWidth < 768) setMobileOpen(false)
   }
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/')
 
+  // Gemini collapsed width 68px, open 280px
+  const widthClass = collapsed ? 'w-[68px]' : 'w-[280px]'
+
   return (
-    <div className={`flex flex-col bg-[#141414] border-r border-[#2a2a2a] transition-all duration-200 ${collapsed ? 'w-14' : 'w-64'}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-[#2a2a2a]">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#7c6af7] to-[#4f46e5] flex items-center justify-center">
-              <Zap size={14} className="text-white" />
-            </div>
-            <span className="font-semibold text-[#e8e8e8]">ARIA</span>
-          </div>
-        )}
-        <div className="flex items-center gap-1" ref={notifRef}>
-          {/* Notifications bell */}
-          <div className="relative">
-            <button
-              onClick={() => setNotifOpen(!notifOpen)}
-              className="relative p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors"
-              title="Notifications"
-            >
-              <Bell size={15} />
-              {notifs.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
-                  {notifs.length > 9 ? '9+' : notifs.length}
-                </span>
-              )}
+    <>
+      {/* Mobile overlay */}
+      {mobileOpen && !collapsed && (
+        <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />
+      )}
+      {/* Mobile floating hamburger is now in header, keep overlay only */}
+      <div className={`flex flex-col bg-[#1e1f20] md:bg-[#1e1f20] border-r border-[#2d2e30] transition-all duration-200 shrink-0
+        ${mobileOpen ? 'fixed inset-y-0 left-0 z-30 flex' : 'hidden md:flex'}
+        ${widthClass} ${!mobileOpen && collapsed ? 'hidden md:flex' : ''}`}>
+        {/* Header — Gemini style minimal */}
+        <div className="flex items-center justify-between h-[64px] px-3 shrink-0">
+          {!collapsed ? (
+            <button onClick={() => setMobileOpen(false)} className="md:hidden p-2 rounded-full hover:bg-[#2d2e30] text-[#e3e3e3]">
+              <X size={20} />
             </button>
-            {notifOpen && (
-              <div className="absolute left-0 top-full mt-1.5 w-72 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a]">
-                  <span className="text-xs font-medium text-[#e8e8e8]">Notifications</span>
-                  <button onClick={() => setNotifs([])} className="text-[9px] text-[#555] hover:text-[#aaa] transition-colors">
-                    Clear
-                  </button>
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {notifs.length === 0 ? (
-                    <p className="text-xs text-[#555] text-center py-6">All caught up — no reminders</p>
-                  ) : (
-                    notifs.map((n, i) => (
-                      <button key={i} onClick={() => openNotif(n)}
-                        className={`w-full text-left px-3 py-2.5 border-b border-[#141414] hover:bg-[#222] transition-colors ${
-                          n.severity === 'high' ? 'border-l-2 border-l-red-500' :
-                          n.severity === 'medium' ? 'border-l-2 border-l-[#f59e0b]' : 'border-l-2 border-l-[#7c6af7]'
-                        }`}>
-                        <p className="text-xs text-[#e8e8e8] font-medium">{n.title}</p>
-                        <p className="text-[10px] text-[#666] mt-0.5">{n.body}</p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          ) : null}
+          {!collapsed && <div className="hidden md:block w-8" />}
           <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-md hover:bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors"
+            onClick={() => (onToggle ? onToggle() : setInternalCollapsed(v => !v))}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="hidden md:flex p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors ml-auto"
           >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            <PanelLeft size={18} />
           </button>
         </div>
-      </div>
 
-      {/* New Chat */}
-      <div className="p-2">
-        <button
-          onClick={handleNew}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium transition-colors ${collapsed ? 'justify-center' : ''}`}
-        >
-          <Plus size={16} />
-          {!collapsed && 'New Chat'}
-        </button>
-      </div>
+        {/* New Chat — Gemini pill */}
+        <div className={`px-3 pb-3 ${collapsed ? 'flex justify-center' : ''}`}>
+          {!collapsed ? (
+            <button
+              onClick={handleNew}
+              className="flex items-center gap-3 px-4 py-3 rounded-full bg-[#2d2e30] hover:bg-[#35363a] text-[#e3e3e3] text-sm font-medium transition-colors shadow-sm w-fit"
+            >
+              <span className="w-6 h-6 rounded-full bg-[#1e1f20] flex items-center justify-center">
+                <Plus size={14} />
+              </span>
+              New chat
+            </button>
+          ) : (
+            <button
+              onClick={handleNew}
+              className="w-10 h-10 rounded-full bg-[#2d2e30] hover:bg-[#35363a] flex items-center justify-center text-[#e3e3e3] shadow-sm"
+              title="New chat"
+            >
+              <Plus size={16} />
+            </button>
+          )}
+        </div>
 
-      {/* Main Nav */}
-      <nav className="px-2 space-y-0.5">
-        {NAV.map(({ icon: Icon, label, path }) => (
-          <button
-            key={path}
-            onClick={() => navigate(path)}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-              isActive(path)
-                ? 'bg-[#7c6af7]/15 text-[#a89bf8]'
-                : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#2a2a2a]'
-            } ${collapsed ? 'justify-center' : ''}`}
-            title={collapsed ? label : undefined}
-          >
-            <Icon size={16} />
-            {!collapsed && label}
-          </button>
-        ))}
-      </nav>
-
-      {/* Intelligence Nav */}
-      {!collapsed && (
-        <div className="px-2 mt-3">
-          <p className="text-[10px] text-[#555] uppercase tracking-wider px-2 mb-1">Intelligence</p>
-          <nav className="space-y-0.5">
-            {INTEL_NAV.map(({ icon: Icon, label, path }) => (
+        {/* Scrollable middle */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Main Nav — rounded-full like Gemini */}
+          <nav className={`px-2 py-1 space-y-0.5 ${collapsed ? 'flex flex-col items-center' : ''}`}>
+            {NAV.map(({ icon: Icon, label, path }) => (
               <button
                 key={path}
-                onClick={() => navigate(path)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                onClick={() => { setMobileOpen(false); navigate(path) }}
+                className={`flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors relative w-full ${
                   isActive(path)
-                    ? 'bg-[#7c6af7]/15 text-[#a89bf8]'
-                    : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#2a2a2a]'
-                }`}
+                    ? 'bg-[#004a77] text-[#c2e7ff]'
+                    : 'text-[#e3e3e3] hover:bg-[#2d2e30]'
+                } ${collapsed ? 'justify-center w-10 h-10 p-0 rounded-full' : ''}`}
+                title={collapsed ? label : undefined}
               >
-                <Icon size={16} />
-                {label}
+                <Icon size={18} className="shrink-0" />
+                {!collapsed && <span className="truncate">{label}</span>}
+                {isStreaming && path === '/chat' && !isActive(path) && !collapsed && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-[#8ab4f8] animate-pulse" title="Working" />
+                )}
               </button>
             ))}
           </nav>
-        </div>
-      )}
 
-      {/* Conversations */}
-      {!collapsed && (
-        <div className="flex-1 flex flex-col mt-3 min-h-0">
-          <div className="px-3 mb-2">
-            <div className="flex items-center gap-2 bg-[#1a1a1a] rounded-lg px-2 py-1.5">
-              <Search size={13} className="text-[#555]" />
-              <input
-                type="text"
-                placeholder="Search chats..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="bg-transparent text-xs text-[#e8e8e8] placeholder-[#555] flex-1 outline-none"
-              />
+          {/* Hint card — Gemini info style */}
+          {!collapsed && (
+            <div className="mx-3 mt-3 px-3 py-2.5 rounded-xl bg-[#2d2e30] border border-[#35363a]">
+              <p className="text-[11px] leading-relaxed text-[#9aa0a6]">
+                Ask anything — quiz, flashcards, mind map, essay feedback, worksheet & more. Just chat.
+              </p>
             </div>
-          </div>
+          )}
 
-          <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-            {pinned.length > 0 && (
-              <>
-                <p className="text-[10px] text-[#555] uppercase tracking-wider px-2 mb-1">Pinned</p>
-                {pinned.map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} pinned />)}
-              </>
-            )}
-            {recent.length > 0 && (
-              <>
-                {pinned.length > 0 && <p className="text-[10px] text-[#555] uppercase tracking-wider px-2 mt-2 mb-1">Recent</p>}
-                {recent.slice(0, 20).map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} />)}
-              </>
-            )}
-          </div>
+          {/* Conversations */}
+          {!collapsed && (
+            <div className="mt-4">
+              <div className="px-3 mb-2">
+                <div className="flex items-center gap-2 bg-[#2d2e30] rounded-full px-3 py-2 border border-transparent focus-within:border-[#5f6368] focus-within:bg-[#35363a] transition-colors">
+                  <Search size={14} className="text-[#9aa0a6] shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="bg-transparent text-sm text-[#e3e3e3] placeholder-[#9aa0a6] flex-1 outline-none min-w-0"
+                  />
+                </div>
+              </div>
+
+              <div className="px-2 space-y-0.5 pb-2">
+                {pinned.length > 0 && (
+                  <>
+                    <p className="text-[11px] font-medium text-[#9aa0a6] tracking-wide px-3 mb-1 mt-2">Pinned</p>
+                    {pinned.map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} pinned />)}
+                  </>
+                )}
+                {recent.length > 0 && (
+                  <>
+                    <p className="text-[11px] font-medium text-[#9aa0a6] tracking-wide px-3 mb-1 mt-3">Recent</p>
+                    {recent.slice(0, 20).map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} />)}
+                  </>
+                )}
+                {filtered.length === 0 && conversations.length === 0 && (
+                  <p className="text-xs text-[#5f6368] px-3 py-2">No chats yet</p>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
-      )}
 
-      {/* Bottom nav */}
-      <div className="px-2 py-2 border-t border-[#2a2a2a] space-y-0.5">
-        {BOTTOM_NAV.map(({ icon: Icon, label, path }) => (
-          <button
-            key={path}
-            onClick={() => navigate(path)}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-              isActive(path) ? 'bg-[#7c6af7]/15 text-[#a89bf8]' : 'text-[#888] hover:text-[#e8e8e8] hover:bg-[#2a2a2a]'
-            } ${collapsed ? 'justify-center' : ''}`}
-          >
-            <Icon size={16} />
-            {!collapsed && label}
-          </button>
-        ))}
+        {/* Bottom nav */}
+        <div className={`px-2 py-3 border-t border-[#2d2e30] space-y-0.5 ${collapsed ? 'flex flex-col items-center' : ''}`}>
+          {BOTTOM_NAV.map(({ icon: Icon, label, path }) => (
+            <button
+              key={path}
+              onClick={() => { setMobileOpen(false); navigate(path) }}
+              className={`flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors w-full ${
+                isActive(path) ? 'bg-[#004a77] text-[#c2e7ff]' : 'text-[#9aa0a6] hover:text-[#e3e3e3] hover:bg-[#2d2e30]'
+              } ${collapsed ? 'justify-center w-10 h-10 p-0' : ''}`}
+              title={collapsed ? label : undefined}
+            >
+              <Icon size={18} />
+              {!collapsed && label}
+            </button>
+          ))}
+          {!collapsed && (
+            <div className="px-3 pt-3 flex items-center gap-2 text-xs text-[#9aa0a6]">
+              <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-[#e3e3e3] text-[10px]">◉</div>
+              <span className="truncate">Private · on-device</span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -291,26 +227,30 @@ function ConvItem({ c, navigate, togglePin, handleDelete, pinned }) {
   return (
     <div
       onClick={() => navigate(`/chat/${c.id}`)}
-      className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#2a2a2a] cursor-pointer"
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/chat/${c.id}`) } }}
+      aria-label={`Open chat ${c.title}`}
+      className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#7c6af7]/50"
     >
       <div className="flex-1 min-w-0">
-        <span className="text-xs text-[#aaa] truncate block">{c.title}</span>
+        <span className="text-[13px] leading-none text-[#e3e3e3] truncate block">{c.title}</span>
         {c.snippet && (
-          <span className="text-[10px] text-[#555] truncate block mt-0.5">{c.snippet}</span>
+          <span className="text-[11px] text-[#9aa0a6] truncate block mt-0.5">{c.snippet}</span>
         )}
       </div>
-      <div className="hidden group-hover:flex items-center gap-1">
+      <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
         <button
           onClick={e => { e.stopPropagation(); togglePin(c.id) }}
-          className={`p-0.5 rounded ${pinned ? 'text-[#7c6af7]' : 'text-[#555] hover:text-[#aaa]'}`}
+          className={`p-1.5 rounded-full hover:bg-[#35363a] ${pinned ? 'text-[#8ab4f8]' : 'text-[#9aa0a6] hover:text-[#e3e3e3]'}`}
         >
-          <Pin size={11} />
+          <Pin size={12} />
         </button>
         <button
           onClick={e => handleDelete(e, c.id)}
-          className="p-0.5 rounded text-[#555] hover:text-[#f87171]"
+          className="p-1.5 rounded-full hover:bg-[#35363a] text-[#9aa0a6] hover:text-[#f28b82]"
         >
-          <Trash2 size={11} />
+          <Trash2 size={12} />
         </button>
       </div>
     </div>

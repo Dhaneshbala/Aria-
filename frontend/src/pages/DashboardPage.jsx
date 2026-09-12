@@ -1,318 +1,378 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Calendar, Clock, BookOpen, ChevronRight, ArrowRight, Plus, Trash2, CheckCircle, X } from 'lucide-react'
+import { useStore } from '../store'
+import { getSrStats, getWeakTopics, getDueCards, getTodos, getTodoCushion, createTodo, updateTodo, deleteTodo } from '../services/api'
+import { showToast } from '../components/Toast'
+import {
+  Clock, AlertTriangle, CheckSquare, Timer, Play, Pause, RotateCcw,
+  Plus, Pencil, Trash2, X, Check
+} from 'lucide-react'
 
-const SLOT_STYLES = {
-  school: { border: 'border-l-[#555]', bg: 'bg-[#1e1e2e]', icon: '\u{1F3EB}' },
-  study: { border: 'border-l-[#7c6af7]', bg: 'bg-[#1a1a2e]', icon: '\u{1F4D6}' },
-  break: { border: 'border-l-[#06b6d4]', bg: 'bg-[#1a1e2e]', icon: '\u2615' },
-  free: { border: 'border-l-green-400', bg: 'bg-[#1a2020]', icon: '\u{1F3AE}' },
-  activity: { border: 'border-l-pink-400', bg: 'bg-[#201a20]', icon: '\u26BD' },
-}
-
-function saveSchedule(sched) {
-  try {
-    const raw = localStorage.getItem('aria_confirmed_schedule')
-    const data = raw ? JSON.parse(raw) : {}
-    localStorage.setItem('aria_confirmed_schedule', JSON.stringify({ ...data, schedule: sched }))
-  } catch {}
-}
-
-function EditableSlot({ slot, index, onChange, onDelete }) {
-  const [editing, setEditing] = useState(false)
-  const [task, setTask] = useState(slot.task)
-  const [subject, setSubject] = useState(slot.subject || '')
-  const [time, setTime] = useState(slot.time)
-  const [duration, setDuration] = useState(slot.duration || '')
-  const style = SLOT_STYLES[slot.type] || SLOT_STYLES.study
-
-  const save = () => {
-    onChange(index, { ...slot, task, subject, time, duration })
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <div className={`px-3 py-2.5 rounded-lg border-l-[3px] ${style.border} bg-[#1a1a2e] space-y-2`}>
-        <div className="flex items-center gap-2">
-          <input value={task} onChange={e => setTask(e.target.value)} autoFocus
-            className="flex-1 px-2 py-1 text-xs rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-          <button onClick={save} className="p-1 rounded bg-green-600 text-white hover:bg-green-500"><CheckCircle size={12} /></button>
-          <button onClick={() => setEditing(false)} className="p-1 rounded bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]"><X size={12} /></button>
-        </div>
-        <div className="flex gap-2">
-          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
-            className="w-28 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-          <input value={time} onChange={e => setTime(e.target.value)} placeholder="Time"
-            className="flex-1 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] font-mono focus:outline-none focus:border-[#7c6af7]" />
-          <input value={duration} onChange={e => setDuration(e.target.value)} placeholder="Duration"
-            className="w-20 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg border-l-[3px] ${style.border} ${style.bg} cursor-pointer hover:brightness-110 transition-all`}
-      onClick={() => setEditing(true)}>
-      <span className="text-sm">{style.icon}</span>
-      <span className="text-[10px] text-[#666] font-mono w-24 flex-shrink-0">{slot.time}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-[#e8e8e8] truncate">{slot.task}</p>
-        {slot.subject && <p className="text-[10px] text-[#7c6af7] font-medium">{slot.subject}</p>}
-      </div>
-      {slot.duration && <span className="text-[10px] text-[#555]">{slot.duration}</span>}
-      <button onClick={e => { e.stopPropagation(); onDelete(index) }}
-        className="opacity-0 group-hover:opacity-100 p-1 rounded text-[#555] hover:text-red-400 transition-all">
-        <Trash2 size={11} />
-      </button>
-    </div>
-  )
-}
-
-function AddSlotForm({ onAdd, onCancel }) {
-  const [task, setTask] = useState('')
-  const [subject, setSubject] = useState('')
-  const [time, setTime] = useState('16:00')
-  const [duration, setDuration] = useState('45 min')
-  const [type, setType] = useState('study')
-
-  const handleAdd = () => {
-    if (!task.trim()) return
-    onAdd({ task, subject, time: `${time} \u2013 ${time}`, duration, type })
-    onCancel()
-  }
-
-  return (
-    <div className="px-3 py-2.5 rounded-lg border border-dashed border-[#7c6af7]/40 bg-[#1a1a2e]/50 space-y-2">
-      <div className="flex items-center gap-2">
-        <input value={task} onChange={e => setTask(e.target.value)} autoFocus placeholder="Task name"
-          className="flex-1 px-2 py-1 text-xs rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-        <button onClick={handleAdd} className="p-1 rounded bg-green-600 text-white hover:bg-green-500"><CheckCircle size={12} /></button>
-        <button onClick={onCancel} className="p-1 rounded bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]"><X size={12} /></button>
-      </div>
-      <div className="flex gap-2">
-        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
-          className="w-28 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-        <input value={time} onChange={e => setTime(e.target.value)} placeholder="Start time"
-          className="w-20 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] font-mono focus:outline-none focus:border-[#7c6af7]" />
-        <input value={duration} onChange={e => setDuration(e.target.value)} placeholder="Duration"
-          className="w-20 px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]" />
-        <select value={type} onChange={e => setType(e.target.value)}
-          className="px-2 py-1 text-[10px] rounded bg-[#141414] border border-[#2a2a2a] text-[#e8e8e8] focus:outline-none focus:border-[#7c6af7]">
-          <option value="study">Study</option>
-          <option value="break">Break</option>
-          <option value="free">Free</option>
-          <option value="activity">Activity</option>
-        </select>
-      </div>
-    </div>
-  )
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 5) return "Up late — let's make it quick"
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [schedule, setSchedule] = useState(null)
-  const [selectedDay, setSelectedDay] = useState(null)
-  const [showAdd, setShowAdd] = useState(false)
+  const { ollamaStatus } = useStore()
 
+  // Shortcuts hand off to Chat with the composer prefilled — the dashboard
+  // itself has no chat thread (chat lives on /chat).
+  const pickAction = (prefill) => {
+    try { sessionStorage.setItem('aria_chat_prefill', prefill) } catch {}
+    navigate('/chat')
+  }
+
+  const [stats, setStats] = useState({ due: 0, weakest: null, upcoming: null })
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('aria_confirmed_schedule')
-      if (saved) {
-        const data = JSON.parse(saved)
-        setSchedule(data.schedule)
-      }
-    } catch {}
+    // Fetch actionable stats
+    Promise.allSettled([getSrStats(), getWeakTopics(), getDueCards(5)]).then(([sr, wk, due]) => {
+      const dueCount = sr.status === 'fulfilled' ? (sr.value?.due_today ?? sr.value?.due ?? 0) : 0
+      const weak = wk.status === 'fulfilled' ? (wk.value?.weak_topics?.[0] || wk.value?.[0] || null) : null
+      const upcoming = due.status === 'fulfilled' ? (due.value?.cards?.length || due.value?.length || 0) : 0
+      setStats({ due: dueCount, weakest: weak, upcoming })
+    })
   }, [])
 
-  const persist = (newSched) => {
-    setSchedule(newSched)
-    saveSchedule(newSched)
-  }
-
-  const updateSlot = (dayIdx, slotIdx, newSlot) => {
-    const next = schedule.map((d, di) => {
-      if (di !== dayIdx) return d
-      const slots = [...d.slots]
-      slots[slotIdx] = newSlot
-      return { ...d, slots }
-    })
-    persist(next)
-  }
-
-  const deleteSlot = (dayIdx, slotIdx) => {
-    const next = schedule.map((d, di) => {
-      if (di !== dayIdx) return d
-      const slots = d.slots.filter((_, si) => si !== slotIdx)
-      const studyCount = slots.filter(s => s.type === 'study').length
-      const studyMin = slots.filter(s => s.type === 'study').reduce((sum, s) => {
-        const m = parseInt((s.duration || '0'))
-        return sum + (isNaN(m) ? 45 : m)
-      }, 0)
-      return { ...d, slots, summary: { ...d.summary, tasks_scheduled: studyCount, study_minutes: studyMin } }
-    })
-    persist(next)
-  }
-
-  const addSlot = (dayIdx, slot) => {
-    const next = schedule.map((d, di) => {
-      if (di !== dayIdx) return d
-      const slots = [...d.slots]
-      const insertIdx = Math.max(0, slots.length - 1)
-      slots.splice(insertIdx, 0, slot)
-      const studyCount = slots.filter(s => s.type === 'study').length
-      const studyMin = slots.filter(s => s.type === 'study').reduce((sum, s) => {
-        const m = parseInt((s.duration || '0'))
-        return sum + (isNaN(m) ? 45 : m)
-      }, 0)
-      return { ...d, slots, summary: { ...d.summary, tasks_scheduled: studyCount, study_minutes: studyMin } }
-    })
-    persist(next)
-    setShowAdd(false)
-  }
-
-  const today = new Date().toISOString().slice(0, 10)
-  const activeDay = selectedDay !== null ? schedule?.[selectedDay] : null
-
-  if (!schedule) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center px-4">
-        <div className="w-16 h-16 rounded-2xl bg-[#1a1a2e] border border-[#2a2a2a] flex items-center justify-center mb-4">
-          <LayoutDashboard size={28} className="text-[#7c6af7]" />
-        </div>
-        <h1 className="text-xl font-semibold text-[#e8e8e8] mb-1">Dashboard</h1>
-        <p className="text-sm text-[#555] mb-4">No confirmed schedule yet</p>
-        <button onClick={() => navigate('/ai-planner')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7c6af7] text-white text-sm font-medium hover:bg-[#6a59e0] transition-colors">
-          <Calendar size={14} /> Create Schedule <ArrowRight size={14} />
-        </button>
-      </div>
-    )
-  }
-
-  const totalStudy = schedule.reduce((s, d) => s + d.summary.study_minutes, 0)
-  const totalTasks = schedule.reduce((s, d) => s + d.summary.tasks_scheduled, 0)
-  const todayEntry = schedule.find(d => d.date === today)
-  const todayStudySlots = todayEntry ? todayEntry.slots.filter(s => s.type === 'study') : []
-
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto p-4 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-[#e8e8e8]">Dashboard</h1>
-            <p className="text-xs text-[#555]">Your confirmed study schedule</p>
-          </div>
-          <button onClick={() => navigate('/ai-planner')}
-            className="text-[10px] text-[#7c6af7] hover:text-[#a89bf8] transition-colors flex items-center gap-1">
-            Open AI Planner <ChevronRight size={10} />
+    <div className="flex flex-col h-full w-full bg-[#131314]">
+      {ollamaStatus === 'error' && (
+        <div className="mx-4 mt-2 px-4 py-2.5 bg-[#3c1f1a] border border-[#5c2b22] rounded-xl text-center">
+          <p className="text-xs text-[#f28b82]">
+            Ollama offline — run <code className="px-1.5 py-0.5 rounded bg-[#5c2b22] text-[#f28b82] font-mono">ollama serve</code> then refresh.
+          </p>
+        </div>
+      )}
+
+      {/* Welcome cards — no chat thread here (chat lives on /chat) */}
+      <div className="flex-1 overflow-y-auto">
+        <DashboardWelcome onAction={pickAction} />
+      </div>
+    </div>
+  )
+}
+
+function DashboardWelcome({ onAction }) {
+  const navigate = useNavigate()
+  const { config } = useStore()
+  const name = config.student_name && config.student_name !== 'Student' ? config.student_name : ''
+  const [due, setDue] = useState(0)
+  const [weak, setWeak] = useState(null)
+  const [pomRunning, setPomRunning] = useState(false)
+  const [pomSecs, setPomSecs] = useState(25*60)
+  const [pomMode, setPomMode] = useState('work')
+  useEffect(() => {
+    getSrStats().then(s => setDue(s?.due_today ?? s?.due ?? 0)).catch(()=>{})
+    getWeakTopics().then(w => setWeak(w?.weak_topics?.[0] || w?.[0] || null)).catch(()=>{})
+  }, [])
+  useEffect(() => {
+    if (!pomRunning) return
+    const id = setInterval(() => {
+      setPomSecs(s => {
+        if (s <= 1) {
+          setPomRunning(false)
+          const nextMode = pomMode === 'work' ? 'break' : 'work'
+          setPomMode(nextMode)
+          return nextMode === 'work' ? 25*60 : 5*60
+        }
+        return s - 1
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [pomRunning, pomMode])
+
+  const greet = greeting()
+  return (
+    <div className="flex flex-col items-center px-6 lg:px-8 py-8 md:py-10">
+      <div className="w-full flex flex-col items-center">
+        {/* Gemini hero — same as ChatPage */}
+        <h1 className="text-[36px] sm:text-[44px] md:text-[52px] font-normal leading-[1.05] tracking-tight text-center">
+          <span className="gemini-gradient-text">{greet}{name ? `, ${name}` : ''}</span>
+        </h1>
+        <h2 className="text-[36px] sm:text-[44px] md:text-[52px] font-normal leading-[1.05] tracking-tight text-[#5f6368] text-center -mt-1">
+          What to learn?
+        </h2>
+        <p className="text-sm text-[#9aa0a6] mt-3 mb-8 text-center">Pick a shortcut — or just ask anything below</p>
+
+        {/* Actionable cards — Gemini surface */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
+          <button onClick={() => due > 0 ? navigate('/spaced') : onAction('Show my due flashcards')}
+            className="group flex flex-col items-start gap-3 p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl hover:bg-[#2d2e30] hover:border-[#3c4043] transition-all text-left">
+            <div className="w-8 h-8 rounded-full bg-[#2d2e30] group-hover:bg-[#35363a] flex items-center justify-center"><Clock size={16} className="text-[#8ab4f8]"/></div>
+            <div className="w-full">
+              <p className="text-xs font-medium tracking-wide text-[#9aa0a6] uppercase">Due Today</p>
+              <p className="text-[22px] font-normal text-[#e3e3e3] mt-1 leading-none">{due > 0 ? `${due} cards` : 'All caught up'}</p>
+              <p className="text-xs text-[#8ab4f8] mt-2 flex items-center gap-1">{due > 0 ? 'Review now →' : 'No cards due'} </p>
+            </div>
+          </button>
+          <button onClick={() => weak && onAction(`Practice ${typeof weak === 'string' ? weak : weak?.topic || weak?.name || 'my weak topic'}`)}
+            className="group flex flex-col items-start gap-3 p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl hover:bg-[#2d2e30] hover:border-[#3c4043] transition-all text-left">
+            <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center"><AlertTriangle size={16} className="text-amber-400"/></div>
+            <div className="w-full">
+              <p className="text-xs font-medium tracking-wide text-[#9aa0a6] uppercase">Weakest Topic</p>
+              <p className="text-[16px] font-medium text-[#e3e3e3] mt-1 truncate max-w-[220px]">{weak ? (typeof weak === 'string' ? weak : weak?.topic || weak?.name || 'Algebra') : 'No data yet'}</p>
+              <p className="text-xs text-[#9aa0a6] group-hover:text-amber-400 mt-2">Practice →</p>
+            </div>
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
-            <Calendar size={18} className="text-[#7c6af7] mx-auto mb-2" />
-            <div className="text-xl font-bold text-[#e8e8e8]">{schedule.length}</div>
-            <div className="text-[10px] text-[#555]">days planned</div>
-          </div>
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
-            <Clock size={18} className="text-[#7c6af7] mx-auto mb-2" />
-            <div className="text-xl font-bold text-[#e8e8e8]">{totalStudy}m</div>
-            <div className="text-[10px] text-[#555]">total study</div>
-          </div>
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
-            <BookOpen size={18} className="text-[#7c6af7] mx-auto mb-2" />
-            <div className="text-xl font-bold text-[#e8e8e8]">{totalTasks}</div>
-            <div className="text-[10px] text-[#555]">tasks</div>
+        {/* Organisation — inbox + pomodoro — Gemini cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-8">
+          <AssignmentsCard />
+          <div className="p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl flex flex-col items-center">
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${pomMode==='work' ? 'bg-[#8ab4f8]/15' : 'bg-green-500/15'}`}>
+                <Timer size={14} className={pomMode==='work' ? 'text-[#8ab4f8]' : 'text-green-400'} />
+              </div>
+              <p className="text-sm font-medium text-[#e3e3e3]">{pomMode==='work' ? 'Focus' : 'Break'}</p>
+            </div>
+            <p className="text-[32px] font-light font-mono text-[#e3e3e3] my-2 tracking-widest">{String(Math.floor(pomSecs/60)).padStart(2,'0')}:{String(pomSecs%60).padStart(2,'0')}</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPomRunning(!pomRunning)} className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${pomRunning ? 'bg-[#2d2e30] text-[#e3e3e3]' : 'bg-[#8ab4f8] text-[#062e6f] hover:bg-[#aecbfa]'}`}>
+                {pomRunning ? <Pause size={16}/> : <Play size={16} className="ml-0.5"/>}
+              </button>
+              <button onClick={() => { setPomRunning(false); setPomSecs(pomMode==='work'?25*60:5*60)}} className="w-9 h-9 rounded-full bg-[#2d2e30] hover:bg-[#35363a] text-[#9aa0a6] hover:text-[#e3e3e3] flex items-center justify-center"><RotateCcw size={16}/></button>
+              <button onClick={() => { const nm = pomMode==='work'?'break':'work'; setPomMode(nm); setPomSecs(nm==='work'?25*60:5*60); setPomRunning(false)}} className="ml-1 px-3 py-1.5 rounded-full bg-[#2d2e30] hover:bg-[#35363a] text-xs text-[#9aa0a6] hover:text-[#e3e3e3]">Switch</button>
+            </div>
           </div>
         </div>
 
-        {todayStudySlots.length > 0 && (
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-[#e8e8e8] mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#7c6af7] animate-pulse" /> Today&apos;s Study
-            </h2>
-            <div className="space-y-2">
-              {todayStudySlots.map((slot, i) => {
-                const style = SLOT_STYLES[slot.type] || SLOT_STYLES.study
-                return (
-                  <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border-l-[3px] ${style.border} ${style.bg}`}>
-                    <span className="text-sm">{style.icon}</span>
-                    <span className="text-xs text-[#666] font-mono w-24 flex-shrink-0">{slot.time}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#e8e8e8] truncate">{slot.task}</p>
-                      {slot.subject && <p className="text-[10px] text-[#7c6af7] font-medium">{slot.subject}</p>}
-                    </div>
-                    {slot.duration && <span className="text-[10px] text-[#555]">{slot.duration}</span>}
-                  </div>
-                )
-              })}
+        <p className="text-[11px] text-[#5f6368] mt-6 text-center max-w-xl">Try “Essay feedback”, “Timeline for WW2”, “Worksheet on algebra”, “Check my handwriting” with a photo</p>
+      </div>
+    </div>
+  )
+}
+
+const SUBJECTS = ['General', 'Maths', 'English', 'Science', 'History', 'Geography', 'PDHPE', 'Technology', 'Art', 'Music', 'Commerce']
+const PRIORITIES = ['low', 'medium', 'high']
+
+const emptyForm = { subject: 'General', task: '', due_date: '', estimated_mins: 30, priority: 'medium' }
+
+function AssignmentsCard() {
+  const [todos, setTodos] = useState([])
+  const [cushion, setCushion] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState(emptyForm)
+  const [saving, setSaving] = useState(false)
+
+  const refresh = async () => {
+    try {
+      const d = await getTodos()
+      setTodos(d.todos || [])
+      setCushion(d.cushion || null)
+      if (!d.cushion) {
+        getTodoCushion().then(setCushion).catch(() => {})
+      }
+    } catch {
+      // offline — keep existing
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { refresh() }, [])
+
+  const startAdd = () => {
+    setEditingId(null)
+    setForm(emptyForm)
+    setShowForm(true)
+  }
+
+  const startEdit = (t) => {
+    setEditingId(t.id)
+    setForm({
+      subject: t.subject || 'General',
+      task: t.task || '',
+      due_date: t.due_date || '',
+      estimated_mins: t.estimated_mins || 30,
+      priority: t.priority || 'medium',
+    })
+    setShowForm(true)
+  }
+
+  const cancelForm = () => {
+    setShowForm(false)
+    setEditingId(null)
+    setForm(emptyForm)
+  }
+
+  const handleSave = async (e) => {
+    e?.preventDefault?.()
+    if (!form.task.trim()) {
+      showToast('Describe the assignment first', 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      if (editingId) {
+        const updated = await updateTodo(editingId, {
+          subject: form.subject,
+          task: form.task.trim(),
+          due_date: form.due_date || null,
+          estimated_mins: Number(form.estimated_mins) || 30,
+          priority: form.priority,
+        })
+        setTodos(prev => prev.map(t => (t.id === editingId ? updated : t)))
+        showToast('Assignment updated', 'success', 2500)
+      } else {
+        const created = await createTodo(
+          form.subject,
+          form.task.trim(),
+          form.due_date || null,
+          Number(form.estimated_mins) || 30,
+          form.priority
+        )
+        setTodos(prev => [created, ...prev])
+        showToast('Assignment added', 'success', 2500)
+      }
+      cancelForm()
+      refresh()
+    } catch (err) {
+      showToast(`Couldn't save: ${err.message}`, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggle = async (t) => {
+    try {
+      const updated = await updateTodo(t.id, { completed: !t.completed })
+      setTodos(prev => prev.map(x => (x.id === t.id ? updated : x)))
+      refresh()
+    } catch (err) {
+      showToast(`Couldn't update: ${err.message}`, 'error')
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this assignment?')) return
+    try {
+      await deleteTodo(id)
+      setTodos(prev => prev.filter(t => t.id !== id))
+      showToast('Assignment deleted', 'success', 2500)
+      refresh()
+    } catch (err) {
+      showToast(`Couldn't delete: ${err.message}`, 'error')
+    }
+  }
+
+  return (
+    <div className="p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl flex flex-col">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-7 h-7 rounded-full bg-[#2d2e30] flex items-center justify-center"><CheckSquare size={14} className="text-green-400" /></div>
+        <p className="text-sm font-medium text-[#e3e3e3]">Assignments</p>
+        <span className={`ml-auto text-[11px] px-2 py-1 rounded-full border font-medium ${cushion?.status === 'overloaded' ? 'bg-red-500/15 text-[#f28b82] border-red-500/30' : cushion?.status === 'busy' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-green-500/10 text-green-300 border-green-500/20'}`}>
+          {cushion ? `${cushion.status} · ${cushion.total_mins}m` : '…'}
+        </span>
+        <button
+          onClick={showForm ? cancelForm : startAdd}
+          title={showForm ? 'Close' : 'Add assignment'}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${showForm ? 'bg-[#2d2e30] text-[#9aa0a6] hover:text-white' : 'bg-[#8ab4f8] text-[#062e6f] hover:bg-[#aecbfa]'}`}
+        >
+          {showForm ? <X size={14} /> : <Plus size={14} />}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSave} className="mb-3 p-3 rounded-xl bg-[#131314] border border-[#2d2e30] space-y-2">
+          <p className="text-xs font-medium text-[#9aa0a6] uppercase tracking-wide">{editingId ? 'Edit assignment' : 'New assignment'}</p>
+          <input
+            value={form.task}
+            onChange={e => setForm({ ...form, task: e.target.value })}
+            placeholder="e.g. Algebra worksheet p.42 Q1-10"
+            className="w-full px-3 py-2 rounded-lg bg-[#1e1f20] border border-[#2d2e30] text-sm text-[#e3e3e3] placeholder-[#5f6368] outline-none focus:border-[#8ab4f8]"
+            autoFocus
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={form.subject}
+              onChange={e => setForm({ ...form, subject: e.target.value })}
+              className="px-2 py-2 rounded-lg bg-[#1e1f20] border border-[#2d2e30] text-xs text-[#e3e3e3] outline-none"
+            >
+              {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={form.priority}
+              onChange={e => setForm({ ...form, priority: e.target.value })}
+              className="px-2 py-2 rounded-lg bg-[#1e1f20] border border-[#2d2e30] text-xs text-[#e3e3e3] outline-none"
+            >
+              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <input
+              type="date"
+              value={form.due_date || ''}
+              onChange={e => setForm({ ...form, due_date: e.target.value })}
+              className="px-2 py-2 rounded-lg bg-[#1e1f20] border border-[#2d2e30] text-xs text-[#e3e3e3] outline-none"
+            />
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1e1f20] border border-[#2d2e30]">
+              <input
+                type="number"
+                min={5}
+                max={240}
+                step={5}
+                value={form.estimated_mins}
+                onChange={e => setForm({ ...form, estimated_mins: e.target.value })}
+                className="w-full bg-transparent text-xs text-[#e3e3e3] outline-none"
+              />
+              <span className="text-[11px] text-[#5f6368] shrink-0">min</span>
             </div>
           </div>
-        )}
-
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-[#e8e8e8]">Weekly Overview</h2>
-            <button onClick={() => navigate('/ai-planner')} className="text-[10px] text-[#7c6af7] hover:text-[#a89bf8] transition-colors flex items-center gap-1">
-              View full schedule <ChevronRight size={10} />
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-3 py-2 rounded-lg bg-[#8ab4f8] hover:bg-[#aecbfa] disabled:opacity-50 text-[#062e6f] text-xs font-semibold flex items-center justify-center gap-1"
+            >
+              <Check size={13} /> {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add assignment'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelForm}
+              className="px-3 py-2 rounded-lg bg-[#2d2e30] hover:bg-[#35363a] text-xs text-[#9aa0a6]"
+            >
+              Cancel
             </button>
           </div>
+        </form>
+      )}
 
-          {activeDay ? (
-            <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-[#e8e8e8]">{activeDay.day}</h3>
-                  <p className="text-[10px] text-[#555]">{activeDay.date}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setShowAdd(true)}
-                    className="flex items-center gap-1 text-[10px] text-[#7c6af7] hover:text-[#a89bf8] transition-colors">
-                    <Plus size={10} /> Add slot
-                  </button>
-                  <button onClick={() => { setSelectedDay(null); setShowAdd(false) }} className="text-[10px] text-[#555] hover:text-[#888]">Back</button>
-                </div>
+      {loading ? (
+        <p className="text-xs text-[#5f6368] py-2">Loading…</p>
+      ) : todos.length === 0 ? (
+        <p className="text-xs text-[#9aa0a6] leading-relaxed">No assignments — hit + to add one. Chat still works too.</p>
+      ) : (
+        <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+          {todos.map(t => (
+            <div key={t.id} className={`flex items-center gap-2 text-xs rounded-xl px-2.5 py-2 border ${t.completed ? 'bg-[#131314]/60 border-[#2d2e30] opacity-60' : 'bg-[#131314] border-[#2d2e30]'}`}>
+              <button
+                onClick={() => handleToggle(t)}
+                title={t.completed ? 'Mark incomplete' : 'Mark done'}
+                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${t.completed ? 'bg-green-500 border-green-500 text-[#062e6f]' : 'border-[#5f6368] hover:border-green-400 text-transparent'}`}
+              >
+                <Check size={11} />
+              </button>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${t.priority === 'high' ? 'bg-[#f28b82]' : t.priority === 'low' ? 'bg-green-400' : 'bg-amber-400'}`} />
+              <div className="flex-1 min-w-0">
+                <p className={`truncate ${t.completed ? 'line-through text-[#5f6368]' : 'text-[#e3e3e3]'}`}>{t.subject}: {t.task}</p>
+                <p className="text-[10px] text-[#5f6368] mt-0.5">{t.due_date ? `Due ${t.due_date}` : 'No due date'} · {t.estimated_mins}m · {t.priority}</p>
               </div>
-              <div className="space-y-1.5">
-                {activeDay.slots.map((slot, i) => (
-                  <EditableSlot key={i} slot={slot} index={i}
-                    onChange={(si, ns) => updateSlot(selectedDay, si, ns)}
-                    onDelete={(si) => deleteSlot(selectedDay, si)} />
-                ))}
-                {showAdd && (
-                  <AddSlotForm
-                    onAdd={(s) => addSlot(selectedDay, s)}
-                    onCancel={() => setShowAdd(false)} />
-                )}
-              </div>
+              <button onClick={() => startEdit(t)} title="Edit" className="p-1.5 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-white shrink-0">
+                <Pencil size={12} />
+              </button>
+              <button onClick={() => handleDelete(t.id)} title="Delete" className="p-1.5 rounded-full hover:bg-red-500/20 text-[#9aa0a6] hover:text-[#f28b82] shrink-0">
+                <Trash2 size={12} />
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-7 gap-1.5">
-              {schedule.slice(0, 7).map((day, i) => {
-                const isToday = day.date === today
-                const studyCount = day.slots.filter(s => s.type === 'study').length
-                return (
-                  <button key={i} onClick={() => setSelectedDay(i)}
-                    className={`flex flex-col items-center p-2.5 rounded-xl text-xs transition-all ${
-                      isToday ? 'bg-[#7c6af7]/10 border border-[#7c6af7]/30' : 'bg-[#141414] border border-[#2a2a2a] hover:border-[#444]'
-                    }`}>
-                    <span className={`font-medium text-[10px] ${isToday ? 'text-[#7c6af7]' : 'text-[#888]'}`}>{day.day.slice(0, 3)}</span>
-                    <span className="text-[9px] text-[#555] mt-0.5">{day.date.slice(5)}</span>
-                    <div className="mt-1.5 flex items-center gap-0.5">
-                      {studyCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#7c6af7]" />}
-                      {day.summary.overdue > 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
-                      {studyCount === 0 && day.summary.overdue === 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#333]" />}
-                    </div>
-                    <span className="text-[9px] text-[#666] mt-0.5">{studyCount}s</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          ))}
         </div>
-      </div>
+      )}
+      <p className="mt-2 text-[11px] text-[#5f6368]">Tip: you can still say “add maths HW due Fri 45m” in chat.</p>
     </div>
   )
 }

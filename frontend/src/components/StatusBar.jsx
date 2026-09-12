@@ -1,6 +1,7 @@
 import { useStore } from '../store'
 import { getHealth } from '../services/api'
 import { useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 const INTENT_LABELS = {
   chat:             null,
@@ -8,13 +9,12 @@ const INTENT_LABELS = {
   quiz:             '📝 Quiz',
   exam_mode:        '📋 Exam',
   flashcard:        '🃏 Flashcards',
-  mindmap:          '🕸 Mind Map',
-  study_plan:       '📅 Study Plan',
   notes:            '📒 Notes',
   worksheet_solver: '✏️ Worksheet',
   youtube:          '▶ YouTube',
   web_search:       '🔍 Search',
   image_gen:        '🎨 Image Gen',
+  diagram:          '📐 Diagram',
   math:             '➗ Maths',
   summary:          '📋 Summary',
   explain:          '💡 Explain',
@@ -35,6 +35,8 @@ const MODE_LABELS = {
 export default function StatusBar() {
   const { ollamaStatus, currentIntents, config, isStreaming, mode, setOllamaStatus } = useStore()
   const [checking, setChecking] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const recheck = async () => {
     setChecking(true)
@@ -65,9 +67,12 @@ export default function StatusBar() {
         </span>
       </button>
 
-      {/* Streaming dots */}
+      {/* Streaming — clickable to jump back to chat */}
       {isStreaming && (
-        <div className="flex items-center gap-1.5 text-[#7c6af7]">
+        <button
+          onClick={() => { if (!location.pathname.startsWith('/chat')) navigate('/chat') }}
+          className="flex items-center gap-1.5 text-[#7c6af7] hover:text-[#a89bf8] transition-colors"
+          title={location.pathname.startsWith('/chat') ? 'ARIA is working...' : 'Click to return to chat — work continues in background'}>
           <div className="flex gap-0.5 items-end h-3">
             {[0, 1, 2].map(i => (
               <div key={i}
@@ -76,8 +81,8 @@ export default function StatusBar() {
               />
             ))}
           </div>
-          <span>Thinking</span>
-        </div>
+          <span>{location.pathname.startsWith('/chat') ? 'Thinking' : 'Working in background — click to return'}</span>
+        </button>
       )}
 
       {/* Active intent badges */}

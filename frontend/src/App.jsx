@@ -1,32 +1,20 @@
-import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useStore } from './store'
 import { getHealth, getConversations, getConfig } from './services/api'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import { ToastContainer } from './components/Toast'
+import BgTasks from './components/BgTasks'
+import ErrorBoundary from './components/ErrorBoundary'
 import ChatPage from './pages/ChatPage'
-import QuizPage from './pages/QuizPage'
-import FlashcardsPage from './pages/FlashcardsPage'
-import MindMapPage from './pages/MindMapPage'
-import YouTubePage from './pages/YouTubePage'
-import ImageGenPage from './pages/ImageGenPage'
-import ProfilePage from './pages/ProfilePage'
-import DocsPage from './pages/DocsPage'
-import AdminPage from './pages/AdminPage'
-import CodingPage from './pages/CodingPage'
-import StudyToolsPage from './pages/StudyToolsPage'
-import PptxPage from './pages/PptxPage'
-import KnowledgeGraphPage from './pages/KnowledgeGraphPage'
-import MemoryTimelinePage from './pages/MemoryTimelinePage'
-import AnalyticsPage from './pages/AnalyticsPage'
-import GamificationPage from './pages/GamificationPage'
-import CurriculumPage from './pages/CurriculumPage'
-import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
-import AIPlannerPage from './pages/AIPlannerPage'
+import VoiceTutorPage from './pages/VoiceTutorPage'
 import DashboardPage from './pages/DashboardPage'
-import KnowledgeBasePage from './pages/KnowledgeBasePage'
-import FocusPage from './pages/FocusPage'
+import CreatePage from './pages/CreatePage'
+import LibraryPage from './pages/LibraryPage'
+import AdminPage from './pages/AdminPage'
+import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
+import { Menu, ChevronDown, Sparkles, Search, Maximize, Minimize } from 'lucide-react'
 
 function NotFound() {
   return (
@@ -41,9 +29,61 @@ function NotFound() {
   )
 }
 
+function GeminiHeader({ onToggleSidebar }) {
+  const { config } = useStore()
+  const initial = (config.student_name || 'S').trim().charAt(0).toUpperCase() || 'S'
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {}
+  }
+  return (
+    <header className="gemini-header flex items-center justify-between px-3 sm:px-4 shrink-0 sticky top-0 z-20 backdrop-blur-md" style={{ background: 'rgba(19,19,20,0.9)' }}>
+      <div className="flex items-center gap-3">
+        <button onClick={onToggleSidebar} aria-label="Toggle menu"
+          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#e3e3e3] transition-colors">
+          <Menu size={20} />
+        </button>
+        <div className="flex items-center gap-2 select-none">
+          <span className="hidden sm:block text-[22px] font-normal tracking-tight text-[#e3e3e3]" style={{ fontFamily: "'Google Sans', Inter, sans-serif" }}>ARIA</span>
+          <span className="hidden sm:block text-[11px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] text-white ml-1">2.5</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button onClick={toggleFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors">
+          {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+        </button>
+        <div title={config.student_name || 'Student'} className="w-8 h-8 rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#4285f4] flex items-center justify-center text-white text-xs font-medium ml-1">
+          {initial}
+        </div>
+      </div>
+    </header>
+  )
+}
+
 export default function App() {
   const { setOllamaStatus, setConversations, setConfig, uiPrefs } = useStore()
   const fontClass = `aria-font-${uiPrefs.fontSize || 'md'}`
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.innerWidth >= 768
+  })
+  // Keep sidebar responsive on resize — collapse on mobile
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth < 768) setSidebarOpen(false)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   useEffect(() => {
     // Check health
@@ -56,7 +96,11 @@ export default function App() {
       }
     }
     checkHealth()
-    const interval = setInterval(checkHealth, 30000)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') checkHealth()
+    }, 120000)
+    const onVis = () => document.visibilityState === 'visible' && checkHealth()
+    document.addEventListener('visibilitychange', onVis)
 
     // Load conversations
     getConversations().then(setConversations).catch(() => {})
@@ -64,47 +108,38 @@ export default function App() {
     // Load config
     getConfig().then(setConfig).catch(() => {})
 
-    return () => clearInterval(interval)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
   return (
     <BrowserRouter>
-      <div className={`flex h-screen bg-[#0f0f0f] text-[#e8e8e8] overflow-hidden ${fontClass} ${uiPrefs.contrast ? 'aria-contrast' : ''}`}>
-        <div className="aria-bg" />
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className={`flex h-screen w-full bg-[#131314] text-[#e3e3e3] overflow-hidden ${fontClass} ${uiPrefs.contrast ? 'aria-contrast' : ''}`}>
+        <div className="aria-bg opacity-40" />
+        <Sidebar collapsed={!sidebarOpen} onToggle={() => setSidebarOpen(v => !v)} mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
+        <div className="flex-1 flex flex-col min-w-0 w-full">
+          <GeminiHeader onToggleSidebar={() => setSidebarOpen(v => !v)} />
           <StatusBar />
-          <main className="flex-1 overflow-y-auto">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/chat/:id" element={<ChatPage />} />
-              <Route path="/quiz" element={<QuizPage />} />
-              <Route path="/flashcards" element={<FlashcardsPage />} />
-              <Route path="/mindmap" element={<MindMapPage />} />
-              <Route path="/pptx" element={<PptxPage />} />
-              <Route path="/youtube" element={<YouTubePage />} />
-              <Route path="/docs" element={<DocsPage />} />
-              <Route path="/imagegen" element={<ImageGenPage />} />
-              <Route path="/coding" element={<CodingPage />} />
-              <Route path="/study-tools" element={<StudyToolsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="/knowledge-graph" element={<KnowledgeGraphPage />} />
-              <Route path="/memory-timeline" element={<MemoryTimelinePage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/achievements" element={<GamificationPage />} />
-              <Route path="/curriculum" element={<CurriculumPage />} />
-              <Route path="/spaced-repetition" element={<SpacedRepetitionPage />} />
-              <Route path="/ai-planner" element={<AIPlannerPage />} />
-              <Route path="/knowledge-base" element={<KnowledgeBasePage />} />
-              <Route path="/focus" element={<FocusPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+          <main className="flex-1 w-full overflow-y-auto bg-[#131314] flex flex-col">
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/:id" element={<ChatPage />} />
+                <Route path="/voice" element={<VoiceTutorPage />} />
+                <Route path="/create" element={<CreatePage />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/spaced" element={<SpacedRepetitionPage />} />
+                <Route path="/review" element={<SpacedRepetitionPage />} />
+                <Route path="/flashcards" element={<SpacedRepetitionPage />} />
+                <Route path="/admin" element={<AdminPage />} />
+                <Route path="/profile" element={<Navigate to="/admin" replace />} />
+                <Route path="*" element={<Navigate to="/chat" replace />} />
+              </Routes>
+            </ErrorBoundary>
           </main>
         </div>
         <ToastContainer />
+        <BgTasks />
       </div>
     </BrowserRouter>
   )

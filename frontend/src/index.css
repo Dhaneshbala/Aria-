@@ -5,25 +5,91 @@
 @tailwind utilities;
 
 :root {
-  --aria-bg: #0f0f0f;
-  --aria-surface: #1a1a1a;
-  --aria-border: #2a2a2a;
-  --aria-accent: #7c6af7;
-  --aria-glow: rgba(124, 106, 247, 0.15);
-  --aria-gradient: linear-gradient(135deg, #0f0f0f 0%, #1a0a2e 50%, #0f0f0f 100%);
+  /* Gemini-inspired dark palette */
+  --aria-bg: #131314;
+  --aria-surface: #1e1f20;
+  --aria-surface-variant: #2d2e30;
+  --aria-border: #2d2e30;
+  --aria-border-light: #3c4043;
+  --aria-accent: #8ab4f8;
+  --aria-accent-purple: #7c6af7;
+  --aria-glow: rgba(138, 180, 248, 0.12);
+  --aria-gradient: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(138,180,248,0.08), transparent 60%),
+                   radial-gradient(ellipse 60% 40% at 90% 10%, rgba(124,106,247,0.06), transparent 50%);
+  --gemini-blue: #4285f4;
+  --gemini-purple: #9c27b0;
+  --gemini-red: #ea4335;
 }
 
 * { box-sizing: border-box; }
 
 body {
-  background: var(--aria-gradient);
-  color: #e8e8e8;
-  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--aria-bg);
+  color: #e3e3e3;
+  font-family: 'Google Sans', 'Inter', system-ui, sans-serif;
   overflow: hidden;
   height: 100vh;
 }
 
-#root { height: 100vh; display: flex; }
+#root { height: 100vh; width: 100vw; display: flex; }
+/* App root must grow to fill #root — otherwise the whole app shrink-wraps
+   its content and leaves a dead black zone on the right of wide screens. */
+#root > div { flex: 1 1 0%; min-width: 0; }
+
+/* Gemini header */
+.gemini-header {
+  background: var(--aria-bg);
+  border-bottom: 1px solid transparent;
+  height: 64px;
+}
+
+/* Gemini greeting gradient — blue → purple → red like Gemini */
+.gemini-gradient-text {
+  background: linear-gradient(90deg, #4285f4 0%, #9c27b0 35%, #ea4335 65%, #fbbc04 90%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.gemini-gradient-text-alt {
+  background: linear-gradient(90deg, #4f7bff 0%, #8b5cf6 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Pages fill main — 0 black space (targeted, not nuclear) */
+main > div {
+  width: 100%;
+  max-width: none;
+}
+main {
+  width: 100%;
+}
+
+/* Gemini pill input — #1e1f20 surface, 28px radius */
+.gemini-pill-input {
+  background: var(--aria-surface);
+  border: 1px solid var(--aria-border);
+  border-radius: 28px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+}
+.gemini-pill-input:focus-within {
+  background: #2d2e30;
+  border-color: #5f6368;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+
+/* Gemini suggestion chip */
+.gemini-chip {
+  background: var(--aria-surface);
+  border: 1px solid var(--aria-border);
+  border-radius: 16px;
+  transition: all 0.15s;
+}
+.gemini-chip:hover {
+  background: var(--aria-surface-variant);
+  border-color: var(--aria-border-light);
+}
 
 /* Subtle animated background */
 .aria-bg {

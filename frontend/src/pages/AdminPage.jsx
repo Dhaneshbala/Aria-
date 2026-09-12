@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react'
 import { getConfig, saveConfig, getModels, getHealth, clearAllMemory } from '../services/api'
 import { showToast } from '../components/Toast'
-import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info, Cloud } from 'lucide-react'
+import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info } from 'lucide-react'
 import { useStore } from '../store'
 
-// M4 MacBook Air recommended models with disk/RAM info
+// 16 GB MacBook Air recommended models — single generation model + embedding
 const RECOMMENDED = [
-  { name: 'qwen2.5-coder:7b', ram: '7 GB', disk: '4.7 GB', role: 'coding', note: '⭐ Best for coding questions' },
-  { name: 'qwen3:8b',      ram: '8 GB',  disk: '5.2 GB', role: 'reasoning', note: '⭐ Best for M4 16GB' },
-  { name: 'qwen3:4b',      ram: '4 GB',  disk: '2.6 GB', role: 'reasoning', note: 'Faster, less accurate' },
-  { name: 'llama3.2:3b',   ram: '3 GB',  disk: '2.0 GB', role: 'fallback',  note: 'Fastest option' },
-  { name: 'qwen2.5vl:3b',  ram: '4 GB',  disk: '2.2 GB', role: 'vision',    note: '⭐ Best vision for M4 16GB' },
-  { name: 'qwen2.5vl:7b',  ram: '7 GB',  disk: '4.7 GB', role: 'vision',    note: 'Higher quality, tight on RAM' },
-  { name: 'moondream2',    ram: '3 GB',  disk: '1.8 GB', role: 'vision',    note: 'Lightweight vision' },
+  { name: 'gemma4:e4b-mlx',    ram: '5-6 GB', disk: '5-6 GB', role: 'main',      note: '⭐ Main model — chat, reasoning, coding, vision, planning' },
+  { name: 'nomic-embed-text',  ram: '0.3 GB', disk: '274 MB', role: 'embedding', note: '⭐ Embedding — memory & RAG only (not for chat)' },
+  // Legacy — kept available but not required for normal operation
+  { name: 'qwen3:8b',          ram: '8 GB',   disk: '5.2 GB', role: 'reasoning', note: 'Legacy reasoning' },
+  { name: 'qwen2.5vl:3b',      ram: '4 GB',   disk: '2.2 GB', role: 'vision',    note: 'Legacy vision' },
+  { name: 'llama3.2:3b',       ram: '3 GB',   disk: '2.0 GB', role: 'fallback',  note: 'Legacy fallback' },
+  { name: 'qwen2.5-coder:7b',  ram: '7 GB',   disk: '4.7 GB', role: 'coding',    note: 'Legacy coding' },
 ]
 
 export default function AdminPage() {
@@ -60,28 +60,28 @@ export default function AdminPage() {
   const totalDisk = models.reduce((sum, m) => sum + (m.size_gb || 0), 0)
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 page-enter overflow-y-auto h-full">
+    <div className="w-full px-6 lg:px-8 py-6 page-enter overflow-y-auto h-full">
       <div className="flex items-center gap-2 mb-6">
         <Settings size={20} className="text-[#7c6af7]" />
         <h1 className="text-lg font-semibold text-[#e8e8e8]">Admin Settings</h1>
       </div>
 
-      {/* M4 Hardware info banner */}
+      {/* 16GB Hardware info banner */}
       <div className="bg-[#7c6af7]/8 border border-[#7c6af7]/20 rounded-xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-2">
           <Zap size={14} className="text-[#7c6af7]" />
-          <span className="text-xs font-semibold text-[#a89bf8]">Optimised for MacBook Air M4 16 GB</span>
+          <span className="text-xs font-semibold text-[#a89bf8]">Optimised for MacBook Air M4 16 GB — Single Model</span>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <div className="bg-[#0f0f0f] rounded-lg p-2">
-            <p className="text-xs text-[#7c6af7] font-semibold">qwen3:8b</p>
-            <p className="text-[10px] text-[#555] mt-0.5">Reasoning</p>
-            <p className="text-[10px] text-[#444]">5.2 GB · 8 GB RAM</p>
+            <p className="text-xs text-[#7c6af7] font-semibold">gemma4:e4b-mlx</p>
+            <p className="text-[10px] text-[#555] mt-0.5">Main (multimodal)</p>
+            <p className="text-[10px] text-[#444]">5-6 GB · Vision+Chat+Code</p>
           </div>
           <div className="bg-[#0f0f0f] rounded-lg p-2">
-            <p className="text-xs text-[#7c6af7] font-semibold">qwen2.5vl:3b</p>
-            <p className="text-[10px] text-[#555] mt-0.5">Vision</p>
-            <p className="text-[10px] text-[#444]">2.2 GB · 4 GB RAM</p>
+            <p className="text-xs text-[#7c6af7] font-semibold">nomic-embed-text</p>
+            <p className="text-[10px] text-[#555] mt-0.5">Embedding</p>
+            <p className="text-[10px] text-[#444]">274 MB · Memory/RAG only</p>
           </div>
           <div className="bg-[#0f0f0f] rounded-lg p-2">
             <p className="text-xs text-green-400 font-semibold">Pollinations.ai</p>
@@ -90,7 +90,7 @@ export default function AdminPage() {
           </div>
         </div>
         <p className="text-[10px] text-[#444] mt-2 text-center">
-          Ollama uses Metal GPU automatically on Apple Silicon · One model loaded at a time
+          Gemma handles chat, reasoning, math, coding, vision & planning — one model, no swapping. Nomic only for embeddings.
         </p>
       </div>
 
@@ -109,9 +109,6 @@ export default function AdminPage() {
           <StatusRow label="Ollama"
             ok={health?.ollama}
             desc={health?.ollama ? 'Running — Metal GPU active' : 'Not running — open Terminal and type: ollama serve'} />
-          <StatusRow label="Cloud AI"
-            ok={health?.cloud_active}
-            desc={health?.cloud_active ? `${health.cloud_provider} — ${health.cloud_model}` : 'Offline — using local Ollama'} />
           <StatusRow label="Pollinations.ai"
             ok={health?.pollinations !== false}
             desc="Free image generation — needs internet" />
@@ -137,55 +134,53 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* Model selection */}
+      {/* Model selection — single main model */}
       <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-4">
           <Cpu size={14} className="text-[#7c6af7]" />
-          <h3 className="text-sm font-medium text-[#e8e8e8]">AI Models</h3>
-          <span className="text-[10px] text-[#444] ml-auto">Only one loads at a time</span>
+          <h3 className="text-sm font-medium text-[#e8e8e8]">AI Models — Single Model Setup</h3>
+          <span className="text-[10px] text-[#444] ml-auto">Gemma does everything</span>
         </div>
         <div className="space-y-4">
           <ModelPicker
-            label="Reasoning Model"
-            desc="Used for chat, quiz, explanations, notes, study plans — everything"
-            value={config.reasoning_model || 'qwen3:8b'}
+            label="Main Model"
+            desc="Handles chat, reasoning, tutoring, math, coding, vision, planning — multimodal"
+            value={config.model || config.reasoning_model || 'gemma4:e4b-mlx'}
             installed={modelNames}
-            recommended={RECOMMENDED.filter(m => m.role === 'reasoning')}
-            onChange={v => setConfig(c => ({ ...c, reasoning_model: v }))}
+            recommended={RECOMMENDED.filter(m => m.role === 'main')}
+            onChange={v => setConfig(c => ({ ...c, model: v, reasoning_model: v, vision_model: v, fallback_model: v, coding_model: v, pptx_model: v }))}
           />
           <ModelPicker
-            label="Vision Model"
-            desc="Only loaded when you attach an image — reads worksheets, diagrams, handwriting"
-            value={config.vision_model || 'qwen2.5vl:3b'}
+            label="Embedding Model"
+            desc="ONLY for memory/RAG retrieval — tiny, never used for chat"
+            value={config.embedding_model || 'nomic-embed-text'}
             installed={modelNames}
-            recommended={RECOMMENDED.filter(m => m.role === 'vision')}
-            onChange={v => setConfig(c => ({ ...c, vision_model: v }))}
+            recommended={RECOMMENDED.filter(m => m.role === 'embedding')}
+            onChange={v => setConfig(c => ({ ...c, embedding_model: v }))}
           />
-          <ModelPicker
-            label="Fallback Model"
-            desc="Used if reasoning model fails or is too slow"
-            value={config.fallback_model || 'llama3.2:3b'}
-            installed={modelNames}
-            recommended={RECOMMENDED.filter(m => m.role === 'fallback')}
-            onChange={v => setConfig(c => ({ ...c, fallback_model: v }))}
-          />
-          <ModelPicker
-            label="Coding Model"
-            desc="Used when your son asks about Python, JavaScript, algorithms"
-            value={config.coding_model || 'qwen2.5-coder:7b'}
-            installed={modelNames}
-            recommended={RECOMMENDED.filter(m => m.role === 'coding')}
-            onChange={v => setConfig(c => ({ ...c, coding_model: v }))}
-/>
-          <ModelPicker
-           label="PowerPoint Model"
-           desc="Used for generating presentations"
-           value={config.pptx_model || 'qwen3:8b'}
-           installed={modelNames}
-           recommended={RECOMMENDED.filter(m => m.role === 'pptx')}
-           onChange={v => setConfig(c => ({ ...c, pptx_model: v }))}
-/>
+          <details className="pt-2">
+            <summary className="text-xs text-[#666] cursor-pointer hover:text-[#888]">Advanced — legacy model overrides (optional)</summary>
+            <div className="space-y-4 mt-3">
+              <ModelPicker
+                label="Vision Model (optional override)"
+                desc="Override only if you have a specialist vision model — otherwise uses Main model"
+                value={config.vision_model || config.model || 'gemma4:e4b-mlx'}
+                installed={modelNames}
+                recommended={RECOMMENDED.filter(m => m.role === 'vision')}
+                onChange={v => setConfig(c => ({ ...c, vision_model: v }))}
+              />
+              <ModelPicker
+                label="Organizer Model (optional)"
+                desc="File organizer — leave blank to use Main model"
+                value={config.organizer_model || ''}
+                installed={modelNames}
+                recommended={RECOMMENDED.filter(m => m.role === 'reasoning')}
+                onChange={v => setConfig(c => ({ ...c, organizer_model: v }))}
+              />
+            </div>
+          </details>
         </div>
+        <p className="text-[10px] text-[#555] mt-3">Legacy Qwen/Llama models still work if installed, but are not required. Changing Main Model updates all roles at once.</p>
       </div>
 
       {/* Accessibility */}
@@ -226,83 +221,17 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Cloud AI */}
-      <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
-        <div className="flex items-center gap-2 mb-1">
-          <Cloud size={14} className="text-[#7c6af7]" />
-          <h3 className="text-sm font-medium text-[#e8e8e8]">Cloud AI (Optional)</h3>
-          <span className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#7c6af7]/15 text-[#a89bf8]">
-            {health?.cloud_active ? 'ACTIVE' : 'OFF'}
-          </span>
-        </div>
-        <p className="text-[10px] text-[#555] mb-3">
-          Route all AI through a cloud provider for NotebookLM-level answers.
-          Free tier available. Falls back to local Ollama automatically.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-[#666] mb-1 block">Provider</label>
-            <div className="flex gap-2">
-              {[['auto', '⚡ Auto'], ['ollama', '💻 Local only'], ['gemini', '✨ Gemini'], ['openrouter', '🔀 OpenRouter'], ['groq', '🚀 Groq']].map(([val, label]) => (
-                <button key={val}
-                  onClick={() => setConfig(c => ({ ...c, cloud_provider: val }))}
-                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${
-                    (config.cloud_provider || 'auto') === val
-                      ? 'bg-[#7c6af7] text-white'
-                      : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#777] hover:text-[#aaa]'
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-[#666] mb-1 block">API Key</label>
-            <input
-              type="password"
-              value={config.cloud_api_key || ''}
-              onChange={e => setConfig(c => ({ ...c, cloud_api_key: e.target.value }))}
-              placeholder="Paste your API key (Gemini/OpenRouter/Groq)"
-              className="w-full bg-[#0d0d0d] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50 font-mono"
-            />
-          </div>
-          <div className="text-[10px] text-[#444] space-y-1">
-            <p>🔑 <span className="text-[#888]">Get a free Gemini key:</span> aistudio.google.com/apikey</p>
-            <p>🔑 <span className="text-[#888]">OpenRouter:</span> openrouter.ai/keys · <span className="text-[#888]">Groq:</span> console.groq.com/keys</p>
-            <p>💡 <span className="text-[#888]">"Auto" mode</span> uses cloud only when a key is present.</p>
-          </div>
-        </div>
-      </div>
-
       {/* Image generation */}
       <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-4">
           <HardDrive size={14} className="text-[#7c6af7]" />
           <h3 className="text-sm font-medium text-[#e8e8e8]">Image Generation</h3>
         </div>
-        <div className="bg-green-500/8 border border-green-500/20 rounded-lg p-3 mb-3">
+        <div className="bg-green-500/8 border border-green-500/20 rounded-lg p-3">
           <p className="text-xs text-green-400 font-medium mb-1">✅ Pollinations.ai (recommended for M4)</p>
           <p className="text-[10px] text-[#555]">
             Free · No GPU needed · No disk space · No install · Uses internet
           </p>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <label className="text-xs text-[#666] mb-1 block">Image quality</label>
-            <div className="flex gap-2">
-              {[['flux', '🎨 High Quality'], ['turbo', '⚡ Fast']].map(([val, label]) => (
-                <button key={val}
-                  onClick={() => setConfig(c => ({ ...c, pollinations_model: val }))}
-                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${
-                    (config.pollinations_model || 'flux') === val
-                      ? 'bg-[#7c6af7] text-white'
-                      : 'bg-[#1e1e1e] border border-[#2a2a2a] text-[#777] hover:text-[#aaa]'
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
