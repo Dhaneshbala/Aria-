@@ -19,13 +19,22 @@ from chromadb.config import Settings
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / ".aria_data"
+try:
+    from models.database import DATA_DIR as _CENTRAL_DATA_DIR
+    DATA_DIR = _CENTRAL_DATA_DIR
+except Exception:
+    DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
 KB_DIR = DATA_DIR / "knowledge_base"
 KB_DIR.mkdir(parents=True, exist_ok=True)
 
-EMBEDDING_MODEL = "nomic-embed-text"
-CHUNK_SIZE = 600       # tokens (approx 4 chars per token)
-CHUNK_OVERLAP = 100    # tokens
+try:
+    from models.database import MODELS
+    EMBEDDING_MODEL = MODELS["embedding"]
+except Exception:
+    EMBEDDING_MODEL = "nomic-embed-text"
+CHUNK_SIZE = 800       # Phase 2 free win: larger chunks for science/history (was 600)
+CHUNK_OVERLAP = 120    # was 100 — better context retention
 
 COLLECTIONS = {
     "education_au":  "Australian education — NSW syllabus, ACARA, textbooks",
@@ -44,14 +53,19 @@ COLLECTIONS = {
 
 def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     """Split text into overlapping chunks by character count (approx token count)."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap >= chunk_size:
+        overlap = chunk_size // 2  # overlap must leave forward progress
     chunks = []
+    step = (chunk_size - overlap) * 4
     start = 0
     while start < len(text):
         end = start + chunk_size * 4  # ~4 chars per token
         chunk = text[start:end]
         if chunk.strip():
             chunks.append(chunk.strip())
-        start += (chunk_size - overlap) * 4
+        start += step
     return chunks
 
 
@@ -77,8 +91,8 @@ def _detect_collection(filepath: str, text: str) -> str:
 
     # Coding
     code_keywords = ["def ", "function ", "class ", "import ", "const ", "let ",
-                     "python", "javascript", "react", "docker", "git", "api",
-                     "def ", "return ", "async ", "await ", "console.log"]
+                     "python", "javascript", "docker", "api",
+                     "return ", "async ", "await ", "console.log"]
     code_exts = [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".rs", ".go", ".html", ".css"]
     if any(k in lower for k in code_keywords) or any(name.endswith(e) for e in code_exts):
         return "coding"
@@ -175,6 +189,66 @@ class KnowledgeBaseService:
             )
         return self._collections[name]
 
+    async def add_document(
+        self,
+        text: str,
+        collection: str = "general",
+        metadata: dict | None = None,
+        embedding_model: str = EMBEDDING_MODEL,
+    ) -> dict:
+        """Add a raw text document to the knowledge base."""
+        from services.ollama_service import OllamaService
+
+        ollama = OllamaService()
+
+        if not text.strip():
+            return {"status": "error", "error": "Empty text"}
+
+        # Chunk text
+        chunks = _chunk_text(text)
+        if not chunks:
+            return {"status": "error", "error": "Text too short to chunk"}
+
+        # Generate embeddings
+        embeddings = await ollama.embed_batch(embedding_model, chunks)
+
+        # Filter out failed embeddings
+        valid = [(i, emb) for i, emb in enumerate(embeddings) if emb]
+        if not valid:
+            return {"status": "error", "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?"}
+
+        # Generate a hash for dedup
+        content_hash = hashlib.md5(text[:500].encode()).hexdigest()[:12]
+
+        # Store in ChromaDB
+        col = self.get_collection(collection)
+        ids = [f"doc_{content_hash}_{i}" for i, _ in valid]
+        docs = [chunks[i] for i, _ in valid]
+        embs = [e for _, e in valid]
+        metas = [
+            {
+                "source": metadata.get("source", "text_ingest") if metadata else "text_ingest",
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "collection": collection,
+                "ingested_at": datetime.now().isoformat(),
+                **(metadata or {}),
+            }
+            for i, _ in valid
+        ]
+
+        try:
+            col.add(ids=ids, documents=docs, embeddings=embs, metadatas=metas)
+        except Exception as e:
+            return {"status": "error", "error": f"ChromaDB insert failed: {e}"}
+
+        return {
+            "status": "ok",
+            "chunks_stored": len(valid),
+            "total_chunks": len(chunks),
+            "collection": collection,
+        }
+
     async def ingest_file(
         self,
         filepath: str,
@@ -225,7 +299,7 @@ class KnowledgeBaseService:
         # Filter out failed embeddings
         valid = [(i, emb) for i, emb in enumerate(embeddings) if emb]
         if not valid:
-            return {"status": "error", "error": "Embedding generation failed — is nomic-embed-text installed?"}
+            return {"status": "error", "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?"}
 
         # Store in ChromaDB
         col = self.get_collection(collection)
@@ -319,8 +393,33 @@ class KnowledgeBaseService:
             except Exception as e:
                 logger.warning("Search failed on collection %s: %s", col_name, e)
 
+        # Deduplicate identical chunks stored in multiple collections
+        # (e.g. same doc ingested to math + education_au). Keeps best score.
+        seen_texts: dict[str, dict] = {}
+        for r in all_results:
+            key = (r.get("text") or "").strip()
+            if not key:
+                continue
+            if key not in seen_texts or r["score"] > seen_texts[key]["score"]:
+                seen_texts[key] = r
+        all_results = list(seen_texts.values())
         # Sort by score descending
         all_results.sort(key=lambda x: x["score"], reverse=True)
+        # Phase 3 free reranker — local cross-encoder if available
+        try:
+            from services.memory_service import _rerank_local
+            texts = [r["text"] for r in all_results[:20]]
+            ranked = _rerank_local(query, texts, top_k=n_results)
+            # Reorder by reranked texts
+            txt_to_res = {r["text"]: r for r in all_results}
+            reranked_results = [txt_to_res[t] for t in ranked if t in txt_to_res]
+            # Fill remaining if any
+            for r in all_results:
+                if r not in reranked_results and len(reranked_results) < n_results:
+                    reranked_results.append(r)
+            all_results = reranked_results[:n_results]
+        except Exception:
+            pass
         return all_results[:n_results]
 
     def list_documents(self, collection: str | None = None) -> list[dict]:

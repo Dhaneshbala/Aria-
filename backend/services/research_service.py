@@ -1,13 +1,14 @@
-"""Web search service — multi-engine fallback, zero external packages.
+"""Web search service — Google-first, zero external packages.
+
+Google is the primary source (not a fixed internal DB).
 
 Engine chain (first success wins):
-  1. Google HTML scrape      — richest results when accessible
-  2. Wikipedia search + API  — reliable, well-structured, works through proxies
-  3. DuckDuckGo Instant Answer — quick snippets for common facts
+  1. Google HTML scrape      — primary; richest, freshest results
+  2. Wikipedia search + API  — reliable fallback, well-structured
+  3. DuckDuckGo Instant Answer — last-resort snippets
 
-On corporate/school networks (Zscaler etc.) Google often serves a bot-gated
-page; Wikipedia's API is the dependable fallback that keeps the
-cross-check + citation pipeline alive.
+On corporate/school networks (Zscaler etc.) Google can be bot-gated;
+Wikipedia keeps the pipeline alive.
 """
 import asyncio
 import re
@@ -26,7 +27,14 @@ _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-_VERIFY = False  # tolerant of MITM school proxies; plain-HTML scraping only
+_VERIFY = True  # verify TLS by default; fallback to False only on SSL error for school proxies
+
+def _get(url, **kwargs):
+    """GET with TLS verify True, fallback to False on SSL error (school proxy)."""
+    try:
+        return requests.get(url, verify=True, **kwargs)
+    except requests.exceptions.SSLError:
+        return requests.get(url, verify=False, **kwargs)
 
 
 class ResearchService:
@@ -66,7 +74,7 @@ class ResearchService:
 
     def _search_google(self, query: str, max_results: int) -> List[Dict]:
         url = f"https://www.google.com/search?q={quote_plus(query)}&num={max_results + 3}&udm=14"
-        resp = requests.get(url, headers=_HEADERS, timeout=10, verify=_VERIFY)
+        resp = _get(url, headers=_HEADERS, timeout=10)
         resp.raise_for_status()
 
         results = []
@@ -105,7 +113,7 @@ class ResearchService:
             "action": "query", "list": "search", "srsearch": query,
             "format": "json", "srlimit": str(max_results),
         }
-        resp = requests.get(base, params=params, headers=headers, timeout=10, verify=_VERIFY)
+        resp = _get(base, params=params, headers=headers, timeout=10)
         resp.raise_for_status()
         hits = resp.json().get("query", {}).get("search", [])
         if not hits:
@@ -128,7 +136,7 @@ class ResearchService:
                     "explaintext": 1, "redirects": 1,
                     "titles": top_title, "format": "json",
                 }
-                er = requests.get(base, params=ex_params, headers=headers, timeout=10, verify=_VERIFY)
+                er = _get(base, params=ex_params, headers=headers, timeout=10)
                 er.raise_for_status()
                 pages = er.json().get("query", {}).get("pages", {})
                 for page in pages.values():
@@ -144,7 +152,7 @@ class ResearchService:
 
     def _search_ddg_instant(self, query: str, max_results: int) -> List[Dict]:
         url = f"https://api.duckduckgo.com/?q={quote_plus(query)}&format=json&no_html=1&skip_disambig=1"
-        resp = requests.get(url, headers={"User-Agent": "ARIA/1.0"}, timeout=10, verify=_VERIFY)
+        resp = _get(url, headers={"User-Agent": "ARIA/1.0"}, timeout=10)
         if resp.status_code != 200:
             return []
         try:
@@ -186,7 +194,7 @@ class ResearchService:
     def _search_google_news(self, query: str) -> List[Dict]:
         try:
             url = f"https://www.google.com/search?q={quote_plus(query)}&tbm=nws&num=5"
-            resp = requests.get(url, headers=_HEADERS, timeout=10, verify=_VERIFY)
+            resp = _get(url, headers=_HEADERS, timeout=10)
             resp.raise_for_status()
 
             results = []

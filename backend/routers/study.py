@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import Response
 from pydantic import BaseModel
 from services.study_service import StudyService
-from models.database import get_config
+from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/study", tags=["study"])
 study_svc = StudyService()
@@ -13,49 +13,66 @@ class StudyRequest(BaseModel):
     level: str = "medium"
     count: int = 5
     days: int = 7
+    verify: bool = True  # cross-check (second model + Google) — on by default, as requested
 
 
-class EssayRequest(BaseModel):
-    essay: str
-    topic: str = ""
+# ── Response schemas (the contract the frontend depends on) ──────────────────
+
+class QuizQuestion(BaseModel):
+    question: str = "Question text"
+    options: list[str] = "Exactly 4 options, indexed A) B) C) D)"
+    correct: str = "Answer letter ('A'-'D'); may be '' when verification could not run"
+    explanation: str = "Brief explanation of the correct answer"
+    verified: str = "verification status: triple_verified | majority_verified | disputed | original | no_data | unverified"
 
 
-@router.post("/quiz")
+class QuizResponse(BaseModel):
+    """Response of POST /quiz and POST /exam.
+
+    Both endpoints return the SAME question schema; the only difference is
+    that /exam adds "mode": "exam". Each question has exactly 4 options and
+    a correct letter. The frontend must render questions by this shape only.
+    """
+    questions: list[QuizQuestion]
+    mode: str | None = None  # present ("exam") only on the /exam endpoint
+
+
+class FlashcardsResponse(BaseModel):
+    cards: list[dict]
+
+
+class SummaryResponse(BaseModel):
+    summary: str
+
+
+@router.post("/quiz", response_model=QuizResponse)
 async def generate_quiz(req: StudyRequest):
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    questions = await study_svc.generate_quiz(req.topic, req.level, req.count, model)
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
+    # verify flag: request body takes precedence; config/env also honoured.
+    # Default is True (verified) as requested — no auto-quit.
+    if req.verify is False:
+        verify = False
+    elif req.verify is True:
+        verify = True
+    else:
+        verify = config.get("quiz_verify", True)
+    questions = await study_svc.generate_quiz(req.topic, req.level, req.count, model, verify=verify)
     return {"questions": questions}
 
 
 @router.post("/flashcards")
 async def generate_flashcards(req: StudyRequest):
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     cards = await study_svc.generate_flashcards(req.topic, req.count, model)
     return {"cards": cards}
-
-
-@router.post("/mindmap")
-async def generate_mindmap(req: StudyRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    mindmap = await study_svc.generate_mindmap(req.topic, model)
-    return {"mindmap": mindmap}
-
-
-@router.post("/study-plan")
-async def generate_study_plan(req: StudyRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    plan = await study_svc.generate_study_plan(req.topic, req.days, model)
-    return {"plan": plan}
 
 
 @router.post("/summary")
 async def generate_summary(req: StudyRequest):
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     summary = await study_svc.generate_summary(req.topic, model)
     return {"summary": summary}
 
@@ -70,25 +87,159 @@ async def check_answer(data: dict):
     return {"profile": profile}
 
 
+@router.post("/quiz/adaptive-difficulty")
+async def adaptive_difficulty(data: dict):
+    """Real-time difficulty adjustment based on rolling accuracy.
+    POST {"current_difficulty": "easy|medium|hard", "correct": true/false, "history": [true,false,true,true]}
+    Returns {"suggested_difficulty": "easy|medium|hard", "reason": "..."}
+    """
+    current = data.get("current_difficulty", "medium")
+    history = data.get("history", [])  # last N answers as booleans
+    if not history:
+        return {"suggested_difficulty": current, "reason": "No history yet"}
+
+    # Rolling accuracy over last 5 questions
+    recent = history[-5:]
+    accuracy = sum(1 for x in recent if x) / len(recent)
+    total = len(history)
+    total_correct = sum(1 for x in history if x)
+    total_accuracy = total_correct / total if total else 0
+
+    suggested = current
+    reason = ""
+
+    if current == "easy":
+        if accuracy >= 0.8 and total >= 3:
+            suggested = "medium"
+            reason = f"Great job! {accuracy:.0%} correct in last {len(recent)} — level up to medium"
+        else:
+            reason = f"Keep practicing — {accuracy:.0%} recent accuracy"
+    elif current == "medium":
+        if accuracy >= 0.8 and total >= 4:
+            suggested = "hard"
+            reason = f"Impressive! {accuracy:.0%} correct — you're ready for harder questions"
+        elif accuracy <= 0.4 and total >= 3:
+            suggested = "easy"
+            reason = f"Let's slow down — {accuracy:.0%} recent accuracy, building foundations"
+        else:
+            reason = f"Steady progress — {accuracy:.0%} recent accuracy"
+    elif current == "hard":
+        if accuracy <= 0.4 and total >= 3:
+            suggested = "medium"
+            reason = f"Let's review — {accuracy:.0%} recent accuracy, reinforcing concepts"
+        elif accuracy >= 0.8:
+            reason = f"Excellent! {accuracy:.0%} at hard level — keep pushing!"
+        else:
+            reason = f"Challenging but good — {accuracy:.0%} recent accuracy"
+
+    return {
+        "suggested_difficulty": suggested,
+        "reason": reason,
+        "recent_accuracy": round(accuracy, 2),
+        "total_accuracy": round(total_accuracy, 2),
+        "questions_answered": total,
+    }
+
+
 @router.post("/notes")
 async def generate_notes(req: StudyRequest):
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    notes = await study_svc.generate_notes(req.topic, model=model)
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
+    notes = await study_svc.generate_notes(req.topic, style=req.level, model=model)
     return {"notes": notes}
 
 
-@router.post("/exam")
+@router.post("/exam", response_model=QuizResponse)
 async def generate_exam(req: StudyRequest):
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     questions = await study_svc.generate_exam_questions(req.topic, req.count, model)
     return {"questions": questions, "mode": "exam"}
+
+
+# ── Exam countdown plans ────────────────────────────────────────────────────
+
+class ExamPlanRequest(BaseModel):
+    exam_name: str = "Exam"
+    exam_date: str = ""  # YYYY-MM-DD
+    subjects: list[str] = []
+    mins_per_day: int = 45
+    assessment_text: str | None = None
+    assessment_topics: list[str] | None = None
+    assessment_summary: str | None = None
+
+
+@router.post("/exam-plan")
+async def create_exam_plan(req: ExamPlanRequest):
+    from fastapi import HTTPException
+    from services.exam_plan_service import create_plan
+    try:
+        return await create_plan(
+            req.exam_name, req.exam_date, req.subjects, req.mins_per_day,
+            assessment_text=req.assessment_text,
+            assessment_topics=req.assessment_topics,
+            assessment_summary=req.assessment_summary,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/exam-plan/parse-notification")
+async def parse_exam_notification(file: UploadFile = File(...)):
+    """Upload an assessment notification (PDF/DOCX/TXT/image) so ARIA knows
+    what the assessment is about. Returns extracted text + parsed fields
+    (exam_name, exam_date, subjects, topics, summary) to prefill the plan form."""
+    from fastapi import HTTPException
+    from services.document_service import DocumentService
+    from services.exam_plan_service import parse_notification
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    fname = file.filename or "notification"
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    try:
+        if ext in ("png", "jpg", "jpeg", "webp", "heic", "bmp"):
+            from services.image_service import ImageService
+            from models.database import get_config, MODELS
+            cfg = get_config()
+            model = cfg.get("model", cfg.get("reasoning_model", MODELS["main"]))
+            mime = file.content_type or "image/jpeg"
+            text = await ImageService().analyse(data, mime, model)
+        else:
+            text = await DocumentService().extract_text(data, fname)
+    except Exception as e:
+        raise HTTPException(400, f"Could not read file: {e}")
+    text = (text or "").strip()
+    if not text:
+        raise HTTPException(400, "No text found in file — try a clearer photo or PDF")
+    parsed = await parse_notification(text)
+    return {
+        "filename": fname,
+        "text_preview": text[:1500],
+        "assessment_text": text[:4000],
+        **parsed,
+    }
+
+
+@router.get("/exam-plans")
+async def get_exam_plans():
+    from services.exam_plan_service import list_plans
+    return list_plans()
+
+
+@router.delete("/exam-plans/{plan_id}")
+async def remove_exam_plan(plan_id: str):
+    from fastapi import HTTPException
+    from services.exam_plan_service import delete_plan
+    if not delete_plan(plan_id):
+        raise HTTPException(404, "Plan not found")
+    return {"deleted": True}
+
 
 @router.post("/pptx")
 async def generate_pptx(req: StudyRequest):
     config = get_config()
-    model  = config.get("pptx_model", "qwen3:8b")
+    model  = config.get("model", config.get("pptx_model", MODELS["main"]))
     pptx_bytes = await study_svc.generate_pptx(req.topic, req.count or 10, model)
     return Response(
         content=pptx_bytes,
@@ -98,153 +249,3 @@ async def generate_pptx(req: StudyRequest):
             "Content-Length": str(len(pptx_bytes)),
         }
     )
-
-
-@router.post("/essay-feedback")
-async def essay_feedback(req: EssayRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    feedback = await study_svc.generate_essay_feedback(req.essay, req.topic, model)
-    return {"feedback": feedback}
-
-
-@router.post("/formula")
-async def formula_reference(req: StudyRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    reference = await study_svc.generate_formula_reference(req.topic, model)
-    return {"reference": reference}
-
-
-@router.post("/timeline")
-async def timeline(req: StudyRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    timeline_text = await study_svc.generate_timeline(req.topic, model)
-    return {"timeline": timeline_text}
-
-
-@router.post("/assessment-plan")
-async def assessment_plan(
-    file: UploadFile = File(...),
-    days_available: int = Form(default=7),
-):
-    from services.document_service import DocumentService
-    doc_svc = DocumentService()
-    data = await file.read()
-    pages = await doc_svc.extract_pages(data, file.filename or "notification.pdf")
-    full_text = "\n\n".join(f"[Page {p['page']}]\n{p['text']}" for p in pages)
-    if not full_text.strip():
-        full_text = f"[Filename: {file.filename}] — no text could be extracted from this PDF."
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-    result = await study_svc.generate_assessment_study_plan(full_text, days_available, model)
-    return result
-
-
-class WorksheetRequest(BaseModel):
-    topic: str
-    grade: str = "Year 8"
-    subject: str = ""
-    question_count: int = 10
-    include_answers: bool = True
-    difficulty: str = "mixed"
-
-
-@router.post("/worksheet")
-async def generate_worksheet(req: WorksheetRequest):
-    config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
-
-    # Auto-detect subject from topic if not provided
-    topic = req.topic
-    subject = req.subject or topic.split()[0] if topic else "General"
-
-    # Map common course codes to subjects
-    code_map = {
-        'ENGD': 'English', 'MAT4': 'Mathematics', 'SCID': 'Science',
-        'HSIED': 'HSIE', 'RELD': 'Religion', 'HRC3': 'History',
-        'TEC2': 'Technology', 'VAR2': 'Visual Arts', 'MUSD': 'Music',
-        'PDE2': 'PDHPE',
-    }
-    for code, sub in code_map.items():
-        if code in topic.upper():
-            subject = sub
-            break
-
-    worksheet = await study_svc.generate_worksheet(
-        topic, req.grade, req.question_count, req.include_answers, model
-    )
-    return {"worksheet": worksheet, "subject": subject, "grade": req.grade}
-
-
-@router.post("/check-handwriting")
-async def check_handwriting(
-    image: UploadFile = File(...),
-    question: str = Form(default=""),
-    model_answer: str = Form(default=""),
-):
-    """
-    Check a handwritten answer photo against an expected answer.
-    Vision model reads the handwriting, then the reasoning model grades it.
-    """
-    from services.image_service import ImageService
-    from services.ollama_service import OllamaService
-    from services.voice_service import VoiceService
-
-    config = get_config()
-    vision_model = config.get("vision_model", "qwen2.5vl:3b")
-    reasoning_model = config.get("reasoning_model", "qwen3:8b")
-
-    image_data = await image.read()
-    mime = image.content_type or "image/jpeg"
-
-    image_svc = ImageService()
-    llm = OllamaService()
-    tts = VoiceService()
-
-    try:
-        # 1) Read the handwriting with the vision model
-        vision_text = await image_svc.analyse(image_data, mime, vision_model)
-        await llm.unload_model(vision_model)
-    except Exception as e:
-        return {"error": f"Vision failed: {e}"}
-
-    prompt = (
-        "A Year 7 student wrote a handwritten answer, which was transcribed below.\n\n"
-        f"QUESTION: {question}\n\n"
-        f"HANDWRITTEN ANSWER (transcribed):\n{vision_text[:1500]}\n\n"
-    )
-    if model_answer:
-        prompt += f"EXPECTED ANSWER:\n{model_answer[:1500]}\n\n"
-
-    prompt += (
-        "Grade the student's answer out of 10 like a fair Year 7 teacher.\n"
-        "Consider: accuracy, completeness, and understanding.\n"
-        "Then write a short friendly note with 2-3 specific tips to improve.\n"
-        "Return JSON: {\"score\": 0-10, \"summary\": \"1-2 sentence summary\", "
-        "\"tips\": [\"tip1\", \"tip2\", \"tip3\"]}"
-    )
-
-    try:
-        raw = await llm.complete(reasoning_model, prompt,
-            "You are a kind, encouraging Year 7 teacher who grades handwriting.")
-        import re, json
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(m.group()) if m else {}
-        score = max(0, min(10, int(data.get("score", 5))))
-        summary = str(data.get("summary", ""))[:400]
-        tips = [str(t)[:200] for t in data.get("tips", [])[:3]]
-    except Exception as e:
-        return {"error": f"Grading failed: {e}"}
-
-    return {
-        "score": score,
-        "summary": summary,
-        "tips": tips,
-        "transcribed": vision_text[:800],
-        "feedback": (
-            f"Score: {score}/10\n\n{summary}\n\n"
-            + "\n".join(f"• {t}" for t in tips)
-        ),
-    }

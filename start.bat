@@ -22,12 +22,17 @@ echo [1/4] Starting Ollama...
 start /min "Ollama" ollama serve
 timeout /t 3 /nobreak > nul
 
-:: Check and pull models
-echo [2/4] Checking AI models...
-ollama list | findstr /i "qwen3" > nul
+:: Check and pull models (gemma4 + nomic)
+echo [2/4] Checking AI models (gemma4 + nomic)...
+ollama list | findstr /i "gemma" > nul
 if %errorlevel% neq 0 (
-    echo       Pulling qwen3:8b (this may take a while)...
-    ollama pull qwen3:8b
+    echo       Pulling gemma4:e4b-mlx (this may take a while)...
+    ollama pull gemma4:e4b-mlx
+)
+ollama list | findstr /i "nomic" > nul
+if %errorlevel% neq 0 (
+    echo       Pulling nomic-embed-text...
+    ollama pull nomic-embed-text
 )
 
 :: Backend
@@ -36,9 +41,18 @@ cd /d "%~dp0backend"
 if not exist venv (
     python -m venv venv
 )
-call venv\Scripts\activate.bat
-pip install -q -r requirements.txt
-start /min "ARIA Backend" python -m uvicorn main:app --host 0.0.0.0 --port 8000
+if exist "..\.venv\Scripts\activate.bat" (
+    call "..\.venv\Scripts\activate.bat"
+) else (
+    call venv\Scripts\activate.bat
+)
+pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo [ERROR] pip install failed
+    pause
+    exit /b 1
+)
+start /min "ARIA Backend" python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 timeout /t 5 /nobreak > nul
 

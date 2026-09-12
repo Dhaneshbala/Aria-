@@ -49,22 +49,21 @@ Press **Ctrl+C** in the Terminal window.
 |---|---|---|
 | Frontend | http://localhost:5173 | Opens automatically |
 | Backend API | http://localhost:8000 | FastAPI |
-| Ollama | http://localhostx:11434 | AI model server |
+| Ollama | http://localhost:11434 | AI model server |
 
 If port 5173 is already in use, the frontend will start on 5174 (check Terminal output).
 
 ---
 
-## AI Models
+## AI Models (16 GB unified memory — env overrides `ARIA_MAIN_MODEL` / `OLLAMA_URL`)
 
 | Model | Size | RAM | Purpose |
 |---|---|---|---|
-| **qwen3:8b** | 5.2 GB | ~8 GB | Main reasoning — chat, quiz, notes, plans |
-| **qwen2.5vl:3b** | 2.2 GB | ~4 GB | Vision — reads images & worksheets |
-| **llama3.2:3b** | 2.0 GB | ~3 GB | Fast fallback |
+| **gemma4:e4b-mlx** | ~5-6 GB | ~9 GB | Main (multimodal) — chat, reasoning, vision, coding, math |
+| **nomic-embed-text** | 274 MB | ~0.5 GB | Embeddings only — memory/RAG |
 | **Pollinations.ai** | 0 GB | 0 GB | Image generation (free, uses internet) |
 
-Ollama loads ONE model at a time. M4 chip runs models on its built-in GPU via Metal.
+Single generation model avoids RAM pressure. Env: `OLLAMA_URL=http://localhost:11434/api/generate` (see `backend/models/database.py:OLLAMA_URL`).
 
 ---
 
@@ -72,19 +71,25 @@ Ollama loads ONE model at a time. M4 chip runs models on its built-in GPU via Me
 
 Just type naturally — ARIA figures out what you need:
 
-| What you type | What ARIA does |
+| What you type | What ARIA does (all via Chat brain) |
 |---|---|
 | *"Explain photosynthesis"* | Full explanation + auto-generates flashcards |
 | *"Quiz me on World War 2"* | Interactive multiple-choice quiz |
 | *"Make a mind map of the water cycle"* | SVG mind map rendered in chat |
-| *"Study plan for my maths exam next week"* | 7-day plan with tick boxes |
-| *[attaches worksheet photo]* | Vision model reads it, answers each question |
+| *[attaches worksheet photo]* | Vision reads it, answers each question |
+| *[attaches handwriting photo] “check my answer”* | Transcribes + grades 0-10 with tips |
+| *"Essay feedback on …"* | Detailed feedback (thesis/evidence/grammar) |
+| *"Formula for quadratic"* | Formula sheet + worked example |
+| *"Timeline for WW2"* | Chronological timeline with causes |
+| *"Exam sim on algebra – 10q hard"* | Timed mock exam with explanations |
+| *"Audio overview of photosynthesis"* | 3-5 min script → Listen button (TTS) |
+| *"What are my weak topics?"* | Study intel from profile + NSW outcomes |
+| *"Worksheet on fractions Year 7"* | NSW-aligned worksheet + answer key |
 | *[attaches PDF]* "What are quotes about diversity?" | Extracts relevant quotes with page numbers |
 | *"Draw the solar system"* | Generates image (Pollinations.ai, free) |
 | *[pastes YouTube URL]* | Gets transcript, summary, quiz, flashcards |
 | *"Search for latest discoveries about black holes"* | Live web search + answer |
 | *"Debug this code"* + paste code | Explains bugs, suggests fixes |
-| *"Write an essay outline on climate change"* | Structured outline with key arguments |
 
 ---
 
@@ -99,14 +104,10 @@ Just type naturally — ARIA figures out what you need:
 - Pin and search past conversations
 - Memory of past chats (ChromaDB)
 
-### Study Tools
-- Quiz — Easy / Medium / Hard / Olympiad / Exam mode
-- Flashcards — Flip, shuffle, mark as known
-- Mind Maps — Interactive SVG, downloadable
-- Study Plan — Day-by-day with tick boxes
-- Notes — Structured, Cornell, outline styles
-- Essay Feedback — get detailed feedback on essays
-- Formula Reference — quick formula lookup
+### Study Tools (now in Chat brain — no separate tabs)
+- Quiz / Flashcards / Mind Maps — still in Create, also via chat
+- Notes — Structured, Cornell, outline styles (via chat)
+- Essay Feedback / Formula / Timeline / Exam Sim / Audio Overview / Worksheet / Handwriting / Study Intel — just ask in Chat (see table above). Handwriting: upload photo → “check my answer”. Brain handles all via `backend/services/orchestrator.py` intents (`essay_feedback`, `formula`, `timeline`, `exam_sim`, `audio_overview`, `study_intel`, `worksheet_generator`, `image_analysis`).
 
 ### Coding
 - Explain / Debug / Generate / Refactor code
@@ -125,6 +126,23 @@ Just type naturally — ARIA figures out what you need:
 - Tracks accuracy per subject
 - Identifies weak and strong areas
 - Study streak
+
+### File Organizer
+- **AI organization** — reads file *contents* (text, PDFs, Word, Excel, code, images via OCR/vision) not just filenames
+- **Deep rename + organize (Riffo-style)** — "AI Rename + Organize" deep-reads every file and proposes a descriptive new name *and* the right folder; review in a table, apply with one click — **no file limit** (Riffo caps at 20). Progress streams live, everything is undoable
+- **Y7 taxonomy** — subject + topic folders (Mathematics/Number & Algebra, Science/Cells & Living Things, …)
+- **Rules engine** — user-editable priority rules applied before AI
+- **Preview before changes** — dry-run plans every move with explanation + confidence
+- **Undo everything** — history log + one-click rollback; every move is backed up and verified
+- **Smart naming** — AI renames files with descriptive titles
+- **Duplicates** — exact (SHA-256) and near-duplicate (content overlap) detection
+- **Search** — scored full-text search across titles, content, tags, keywords + advanced filters
+- **Folder watching** — auto-index new files dropped into watched folders
+- **Tags & metadata** — auto-tagged with searchable subject/topic/people/companies/dates/keywords
+- **Profiles** — save and reload reusable rule sets
+- **Safety-first** — never deletes files automatically
+
+API reference: `backend/docs/organizer_api.md` · Example rules: `backend/data/example_rules.json` · Sample data: `python backend/scripts/make_sample_data.py`
 
 ---
 

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional
 from services.knowledge_base_service import KnowledgeBaseService, COLLECTIONS
 from services.ollama_service import OllamaService
-from models.database import get_config
+from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/kb", tags=["knowledge-base"])
 kb_svc = KnowledgeBaseService()
@@ -129,7 +129,7 @@ async def ask_kb(
     context = "\n\n".join(context_parts)
 
     config = get_config()
-    model = config.get("reasoning_model", "qwen3:8b")
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     system = (
         "You are ARIA, an AI study assistant. Answer the student's question using ONLY "
         "the document excerpts below. Quote the source document name for each fact "
@@ -139,7 +139,7 @@ async def ask_kb(
 
     async def generate():
         try:
-            async for token in ollama.stream(model, system, question, context_window=4096):
+            async for token in ollama.stream(model, system, question, context_window=8192):
                 yield f"data: {token}\n\n"
         except Exception as e:
             yield f"data: ⚠️ AI unavailable: {e}\n\n"

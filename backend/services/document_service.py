@@ -71,6 +71,9 @@ class DocumentService:
         if len(full_text) <= max_chars:
             return full_text
 
+        if not pages:
+            return full_text
+
         # Score pages by relevance to query keywords
         keywords = self._extract_keywords(query)
         scored = []
@@ -78,8 +81,12 @@ class DocumentService:
             score = self._keyword_score(page["text"], keywords)
             scored.append((score, page))
 
-        # Always include first and last pages (intro/conclusion)
-        must_include = {pages[0]["page"], pages[-1]["page"]}
+        # Always include first and last pages (intro/conclusion) if they exist
+        must_include = set()
+        if pages:
+            must_include.add(pages[0]["page"])
+            if len(pages) > 1:
+                must_include.add(pages[-1]["page"])
 
         # Sort by score, take top pages within budget
         top = sorted(scored, key=lambda x: x[0], reverse=True)

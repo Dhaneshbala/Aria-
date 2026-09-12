@@ -8,8 +8,13 @@ Extends the base StudyIntelligence with:
 """
 import json
 import logging
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from services.ollama_service import OllamaService
+try:
+    from models.database import MODELS
+except Exception:
+    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
 from services.memory_service import MemoryService
 from services.nsw_curriculum_service import NSWCurriculumService, NSW_KLAS, NSW_STAGES
 
@@ -20,23 +25,54 @@ memory_svc = MemoryService()
 curriculum = NSWCurriculumService()
 
 # Spaced Repetition file
-DATA_DIR = __import__('pathlib').Path.home() / ".aria_data"
+DATA_DIR = __import__('pathlib').Path(__import__('os').environ.get("ARIA_DATA_DIR", __import__('pathlib').Path.home() / ".aria_data"))
 SR_FILE = DATA_DIR / "spaced_repetition.json"
 LEARNING_STYLE_FILE = DATA_DIR / "learning_style.json"
 KNOWLEDGE_MAP_FILE = DATA_DIR / "knowledge_map.json"
 
 
+import threading
+import tempfile
+import os
+_JSON_LOCKS: dict[str, threading.RLock] = {}
+_JSON_LOCKS_LOCK = threading.Lock()
+
+def _lock_for(path) -> threading.RLock:
+    key = str(path)
+    with _JSON_LOCKS_LOCK:
+        if key not in _JSON_LOCKS:
+            _JSON_LOCKS[key] = threading.RLock()
+        return _JSON_LOCKS[key]
+
 def _load_json(path, default):
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except Exception:
-            pass
-    return default
+    with _lock_for(path):
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return default
 
 
 def _save_json(path, data):
-    path.write_text(json.dumps(data, indent=2))
+    lock = _lock_for(path)
+    with lock:
+        text = json.dumps(data, indent=2, ensure_ascii=False)
+        # atomic write
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp.")
+        try:
+            with open(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            Path(tmp_path).replace(path)
+        finally:
+            p = Path(tmp_path)
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
 
 
 class AdvancedStudyIntelligence:
@@ -97,12 +133,17 @@ class AdvancedStudyIntelligence:
             "detail": f"Last active {last_active[:10] if last_active else 'never'}",
         }
 
-        # 4. Curriculum coverage (15% weight)
-        covered_outcomes = len([o for o in outcomes if any(
-            subject.lower() in str(s).lower()
-            for s in subj_stats.values()
-        )])
-        coverage = covered_outcomes / max(len(outcomes), 1)
+        # 4. Curriculum coverage (15% weight) — heuristic: if student has practiced subject, count ~ half outcomes as touched
+        if total >= 3 and accuracy >= 0.5:
+            # estimate coverage by volume + accuracy: 3 quizzes ~20%, 15 quizzes ~50%, 30 ~75%
+            coverage = min(0.75, 0.2 + (total / 30) * 0.55 + accuracy * 0.15)
+            covered_outcomes = round(coverage * len(outcomes))
+        elif total > 0:
+            coverage = 0.15
+            covered_outcomes = max(1, round(coverage * len(outcomes))) if outcomes else 0
+        else:
+            coverage = 0.0
+            covered_outcomes = 0
         factors["curriculum_coverage"] = {
             "score": round(coverage * 100),
             "weight": 0.15,
@@ -434,51 +475,6 @@ class AdvancedStudyIntelligence:
             "coverage_percentage": round(len(covered) / max(len(content), 1) * 100),
             "recommendation": f"You've covered {len(covered)}/{len(content)} content areas. Focus on the gaps above." if gaps else "Great coverage! Keep practising to maintain mastery.",
         }
-
-    async def generate_gap_study_plan(self, subject: str, days: int = 7) -> dict:
-        """Generate a study plan focused on knowledge gaps."""
-        gaps_data = await self.find_knowledge_gaps(subject)
-        gaps = gaps_data.get("gaps", [])
-        if not gaps:
-            return {"message": "No significant gaps found! You're doing well.", "days": days}
-
-        # Use AI to generate a focused study plan
-        system = (
-            f"You are a NSW {subject} curriculum expert.\n"
-            f"Create a {days}-day study plan targeting these knowledge gaps.\n"
-            "Include specific NSW curriculum outcomes where relevant.\n"
-            "Return JSON array of day objects."
-        )
-        gap_text = "\n".join(f"- {g['topic']}" for g in gaps[:5])
-        prompt = f"Knowledge gaps in {subject}:\n{gap_text}\n\nCreate a focused study plan."
-
-        try:
-            result = await ollama.complete(
-                "qwen3:8b", prompt, system=system, max_tokens=1500
-            )
-            # Try to parse JSON
-            import re
-            m = re.search(r'\[.*?\{.*?"day".*?\}.*?\]', result, re.DOTALL)
-            if m:
-                plan = json.loads(m.group())
-                return {"gaps": gaps, "plan": plan, "days": days}
-        except Exception:
-            pass
-
-        # Fallback: simple plan
-        plan = []
-        for i, gap in enumerate(gaps[:days]):
-            plan.append({
-                "day": i + 1,
-                "topic": gap["topic"],
-                "tasks": [
-                    f"Read about {gap['topic']}",
-                    f"Make flashcards for key terms",
-                    f"Complete practice questions on {gap['topic']}",
-                ],
-                "time_minutes": 45,
-            })
-        return {"gaps": gaps, "plan": plan, "days": days}
 
     # ═══════════════════════════════════════════════════════════════════════════
     # NSW Curriculum Helpers

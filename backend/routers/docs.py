@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 from services.document_service import DocumentService
 from services.ollama_service import OllamaService
-from models.database import get_config
+from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 doc_svc = DocumentService()
@@ -42,7 +42,7 @@ async def summarise_document(
     focus: optional topic to focus the summary on
     """
     config = get_config()
-    model  = config.get("reasoning_model", "qwen3:8b")
+    model  = config.get("model", config.get("reasoning_model", MODELS["main"]))
     data   = await file.read()
     pages  = await doc_svc.extract_pages(data, file.filename or "file")
     total_pages = len(pages)
@@ -141,7 +141,7 @@ async def ask_document(
     Streams the answer back.
     """
     config   = get_config()
-    model    = config.get("reasoning_model", "qwen3:8b")
+    model    = config.get("model", config.get("reasoning_model", MODELS["main"]))
     data     = await file.read()
     filename = file.filename or "document"
 
@@ -168,7 +168,7 @@ async def ask_document(
 async def extract_key_points(file: UploadFile = File(...)):
     """Extract the top 10 key points from a document."""
     config = get_config()
-    model  = config.get("reasoning_model", "qwen3:8b")
+    model  = config.get("model", config.get("reasoning_model", MODELS["main"]))
     data   = await file.read()
     pages  = await doc_svc.extract_pages(data, file.filename or "file")
     full   = "\n\n".join(p["text"] for p in pages[:30])  # up to 30 pages

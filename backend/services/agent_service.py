@@ -15,13 +15,31 @@ class AgentService:
 
     def __init__(self):
         self._pending_confirmations = {}
+        # Jail: only allow file ops inside DATA_DIR or project root
+        try:
+            from models.database import DATA_DIR as _DD
+            self._allowed_roots = [Path(_DD).resolve(), Path.cwd().resolve()]
+        except Exception:
+            self._allowed_roots = [Path.cwd().resolve()]
+
+    def _is_jailed(self, path: str) -> bool:
+        try:
+            p = Path(path).resolve()
+            return any(str(p).startswith(str(root)) for root in self._allowed_roots)
+        except Exception:
+            return False
 
     async def execute_terminal(self, command: str, cwd: Optional[str] = None, timeout: int = 30) -> dict:
         """Execute a terminal command with safety timeout."""
-        # Safety: block dangerous commands
-        dangerous = ['rm -rf /', 'mkfs', 'dd if=', ':(){ :|:& };:', 'chmod -R 777 /']
-        if any(d in command for d in dangerous):
+        # Safety: block dangerous patterns
+        dangerous = ['rm -rf /', 'mkfs', 'dd if=', ':(){ :|:& };:', 'chmod -R 777 /',
+                     'curl', 'wget', '| sh', '| bash', 'nc -', 'nmap', 'ssh ', 'shutdown', 'reboot',
+                     'mv /', 'cp /etc', 'cat /etc/passwd', ':(){']
+        lower = command.lower()
+        if any(d in lower for d in dangerous):
             return {"error": "Command blocked for safety", "command": command}
+        if cwd and not self._is_jailed(cwd):
+            return {"error": f"Working directory not allowed: {cwd}"}
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -47,6 +65,8 @@ class AgentService:
         """Read a file's contents."""
         try:
             p = Path(path).resolve()
+            if not self._is_jailed(str(p)):
+                return {"error": f"Path not allowed: {path}"}
             if not p.exists():
                 return {"error": f"File not found: {path}"}
             if p.stat().st_size > max_chars * 4:
@@ -60,6 +80,8 @@ class AgentService:
         """Write content to a file."""
         try:
             p = Path(path).resolve()
+            if not self._is_jailed(str(p)):
+                return {"error": f"Path not allowed: {path}"}
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content)
             return {"path": str(p), "size": len(content), "success": True}
@@ -70,6 +92,8 @@ class AgentService:
         """List directory contents."""
         try:
             p = Path(path).resolve()
+            if not self._is_jailed(str(p)):
+                return {"error": f"Path not allowed: {path}"}
             if not p.is_dir():
                 return {"error": f"Not a directory: {path}"}
             items = []
@@ -89,8 +113,15 @@ class AgentService:
         """Search for files matching a pattern."""
         try:
             p = Path(path).resolve()
+            if not self._is_jailed(str(p)):
+                return {"error": f"Path not allowed: {path}"}
+            # Block glob patterns that could escape jail
+            if ".." in pattern or pattern.startswith("/"):
+                return {"error": "Pattern not allowed"}
             matches = []
             for item in p.rglob(pattern):
+                if not self._is_jailed(str(item)):
+                    continue
                 if len(matches) >= max_results:
                     break
                 matches.append({"path": str(item), "type": "dir" if item.is_dir() else "file"})

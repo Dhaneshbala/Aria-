@@ -17,7 +17,7 @@ class StudyIntelligence:
 
     # ── Difficulty Adjustment ─────────────────────────────────────────────────
 
-    async def get_difficulty(self, topic: str, model: str = "qwen3:8b") -> str:
+    async def get_difficulty(self, topic: str, model: str = "gemma4:e4b-mlx") -> str:
         """Determine appropriate difficulty level based on student profile."""
         profile = await memory_svc.get_profile()
         subjects = profile.get("subjects", {})
@@ -39,7 +39,7 @@ class StudyIntelligence:
         # Default to medium for unknown topics
         return "medium"
 
-    async def adjust_explanation(self, explanation: str, difficulty: str, model: str = "qwen3:8b") -> str:
+    async def adjust_explanation(self, explanation: str, difficulty: str, model: str = "gemma4:e4b-mlx") -> str:
         """Adjust explanation complexity based on difficulty level."""
         if difficulty == "medium":
             return explanation
@@ -140,7 +140,7 @@ class StudyIntelligence:
 
     # ── School Curriculum Mode ────────────────────────────────────────────────
 
-    async def get_curriculum_context(self, subject: str, model: str = "qwen3:8b") -> str:
+    async def get_curriculum_context(self, subject: str, model: str = "gemma4:e4b-mlx") -> str:
         """Generate context about what's typically covered in this subject."""
         system = (
             "You are an education expert who knows school curricula.\n"

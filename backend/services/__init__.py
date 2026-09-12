@@ -2,7 +2,6 @@ from services.orchestrator import orchestrate
 from services.ollama_service import OllamaService
 from services.memory_service import MemoryService
 from services.image_service import ImageService
-from services.imagegen_service import ImageGenService
 from services.research_service import ResearchService
 from services.study_service import StudyService
 from services.voice_service import VoiceService

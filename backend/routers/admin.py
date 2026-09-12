@@ -1,9 +1,8 @@
 """Admin router — config, health, model management, memory."""
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from models.database import get_config, save_config
+from models.database import get_config, save_config, MODELS
 from services.ollama_service import OllamaService
-from services.imagegen_service import ImageGenService
 from services.memory_service import MemoryService
 import datetime
 import logging
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 router  = APIRouter(prefix="/api/admin", tags=["admin"])
 ollama  = OllamaService()
-sd_svc  = ImageGenService()
 mem_svc = MemoryService()
 
 
@@ -37,23 +35,31 @@ async def list_models():
 
 async def health_check():
     h      = await ollama.health()
-    sd_ok  = await sd_svc.is_available()
     config = get_config()
     ok     = h if isinstance(h, bool) else h.get("ok", False)
     models = h.get("models", []) if isinstance(h, dict) else []
-    from services.ollama_service import _get_cloud
-    cloud  = _get_cloud()
+    # Check Pollinations (free FLUX diffusion backend)
+    pollinations_ok = True
+    try:
+        from services.imagegen_service import ImageGenService
+        import asyncio as _aio
+        # 4s timeout so health doesn't hang
+        status = await _aio.wait_for(ImageGenService().is_available(), timeout=4)
+        pollinations_ok = bool(status.get("pollinations", False))
+    except Exception:
+        pollinations_ok = False
     return {
-        "ollama":             ok,
-        "stable_diffusion":   sd_ok,
-        "installed_models":   models,
-        "reasoning_model":    config.get("reasoning_model"),
-        "vision_model":       config.get("vision_model"),
-        "fallback_model":     config.get("fallback_model"),
-        "cloud_provider":     config.get("cloud_provider", "auto"),
-        "cloud_active":       cloud is not None,
-        "cloud_model":        cloud.default_model if cloud else None,
-        "status":             "ok" if (ok or cloud is not None) else "degraded",
+        "ollama":           ok,
+        "installed_models": models,
+        "model":            config.get("model") or config.get("reasoning_model"),
+        "reasoning_model":  config.get("reasoning_model"),
+        "vision_model":     config.get("vision_model"),
+        "fallback_model":   config.get("fallback_model"),
+        "embedding_model":  config.get("embedding_model"),
+        "main_model":       config.get("model") or config.get("reasoning_model"),
+        "pollinations":     pollinations_ok,
+        "image_gen_enabled": config.get("image_gen_enabled", True),
+        "status":           "ok" if ok else "degraded",
     }
 
 
@@ -86,12 +92,18 @@ async def get_profile():
 
 @router.delete("/memory/all")
 async def clear_all_memory():
-    from pathlib import Path
-    import json
+    import shutil
+    import datetime
     from models.database import DATA_DIR
-    for fname in ["conversations.json", "study_profile.json"]:
+    for fname in ["conversations.json", "study_profile.json", "titles.json"]:
         p = DATA_DIR / fname
         if p.exists():
+            # Backup before wipe so old chats are recoverable
+            ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            try:
+                shutil.copy2(p, DATA_DIR / f"{fname}.bak-{ts}")
+            except Exception:
+                pass
             p.unlink()
     return {"cleared": True}
 
@@ -104,3 +116,27 @@ async def export_conversation(conversation_id: str):
         "turns": turns,
         "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
+
+
+# ── Telemetry (opt-in, local only) ───────────────────────────────────────────
+
+@router.get("/telemetry")
+async def get_telemetry():
+    """View the local telemetry summary + recent events."""
+    from services.telemetry_service import summary, get_events
+    return {**summary(), "recent": get_events(50)}
+
+
+@router.post("/telemetry/toggle")
+async def toggle_telemetry(data: dict):
+    """Turn anonymous usage counters on/off (config flag)."""
+    enabled = bool(data.get("enabled"))
+    return save_config({"telemetry_enabled": enabled})
+
+
+@router.delete("/telemetry")
+async def clear_telemetry():
+    """Wipe all recorded telemetry events."""
+    from services.telemetry_service import clear
+    clear()
+    return {"cleared": True}

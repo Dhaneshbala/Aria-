@@ -42,19 +42,21 @@ if ! command -v ollama &>/dev/null; then
   exit 1
 fi
 
-if ! curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
+OLLAMA_URL="${OLLAMA_URL%/}"
+if ! curl -sf "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
   echo "       Starting Ollama..."
   ollama serve >/dev/null 2>&1 &
   for i in {1..12}; do
     sleep 1
-    curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+    curl -sf "$OLLAMA_URL/api/tags" >/dev/null 2>&1 && break
   done
 fi
 echo -e "${GRN}  ✅ Ollama running${NC}"
 
-# ── 4. Pull models (M4 optimised) ─────────────────────────────
+# ── 4. Pull models (16 GB optimised — single model + embedding) ───────
 echo ""
-echo "  [2/4] Checking AI models (M4 MacBook Air optimised)..."
+echo "  [2/4] Checking AI models (16 GB optimised)..."
 
 INSTALLED=$(ollama list 2>/dev/null | awk 'NR>1{print $1}' | tr '\n' ' ')
 
@@ -69,32 +71,42 @@ pull_if_missing() {
   fi
 }
 
-# Reasoning model — best quality that fits in 16 GB
-pull_if_missing "qwen3:8b"      "main reasoning model" "5.2 GB"
+# Main model — handles chat, reasoning, coding, math, vision/multimodal (all Study Tools via brain)
+pull_if_missing "gemma4:e4b-mlx"   "main model (multimodal)" "5-6 GB"
 
-# Vision model — reads worksheets, images, diagrams
-pull_if_missing "qwen2.5vl:3b"  "vision / image reading" "2.2 GB"
-
-# Fast fallback
-pull_if_missing "llama3.2:3b"   "fast fallback model" "2.0 GB"
+# Embedding model — ONLY for memory/RAG retrieval (tiny, not for generation)
+pull_if_missing "nomic-embed-text" "embedding model" "274 MB"
 
 echo ""
-echo -e "  📊 Disk used by models: ~9.4 GB total"
-echo -e "  🖥  RAM: Ollama loads ONE model at a time (M4 Metal GPU active)"
+echo -e "  📊 Disk used by models: ~9.8 GB total (gemma4: 9.5 GB + nomic: 274 MB)"
+echo -e "  🖥  RAM: Ollama loads ONE generation model at a time (M4 Metal GPU active)"
+echo -e "  🧠 Main model handles vision + coding — no extra models needed"
 
 # ── 5. Python backend ─────────────────────────────────────────
 echo ""
 echo "  [3/4] Starting Python backend..."
 cd "$SCRIPT_DIR/backend"
 
-if [[ ! -d venv ]]; then
-  echo "       Creating virtual environment..."
-  python3 -m venv venv
+# Single canonical venv at repo root /.venv (migrates old locations)
+if [[ -d "../.venv" ]]; then
+  source "../.venv/bin/activate"
+  echo "       Using existing venv at ../.venv"
+elif [[ -d "../venv" ]]; then
+  echo "       Migrating ../venv → ../.venv"
+  mv "../venv" "../.venv" 2>/dev/null || true
+  source "../.venv/bin/activate"
+elif [[ -d venv ]]; then
+  echo "       Migrating backend/venv → ../.venv"
+  mv venv "../.venv" 2>/dev/null || true
+  source "../.venv/bin/activate"
+else
+  echo "       Creating virtual environment at ../.venv..."
+  python3 -m venv ../.venv
+  source ../.venv/bin/activate
 fi
-source venv/bin/activate
 
-# Install deps quietly, only show errors
-pip install -q -r requirements.txt 2>&1 | grep -iE "error|warning" || true
+# Install deps with pip-compile style check — fail fast if broken
+pip install -r requirements.txt || { echo -e "${RED}  ❌ pip install failed${NC}"; exit 1; }
 
 # Ensure pdfminer is installed for better PDF text extraction
 pip install -q pdfminer.six 2>/dev/null || true
@@ -118,7 +130,10 @@ cd "$SCRIPT_DIR/frontend"
 
 if [[ ! -d node_modules ]]; then
   echo "       Installing npm packages (first run only, ~30 seconds)..."
-  npm install --silent
+  npm ci --silent || npm install --silent
+else
+  # Verify lockfile integrity on subsequent runs
+  npm ci --silent 2>/dev/null || true
 fi
 
 npm run dev &
@@ -135,9 +150,9 @@ echo -e "${GRN}  ║                                     ║${NC}"
 echo -e "${GRN}  ║  Press Ctrl+C to stop               ║${NC}"
 echo -e "${GRN}  ╚════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Models loaded: qwen3:8b (reasoning) + qwen2.5vl:3b (vision)"
+echo -e "  Models loaded: gemma4:e4b-mlx (main, multimodal) + nomic-embed-text (embeddings)"
 echo -e "  Image gen:     Pollinations.ai (free, no GPU needed)"
-echo -e "  Memory:        ChromaDB saved to ~/.aria_data/"
+echo -e "  Memory/RAG:    ChromaDB + nomic-embed-text saved to ~/.aria_data/"
 echo ""
 
 # Open browser automatically

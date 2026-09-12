@@ -4,6 +4,10 @@ Automation — Auto flashcards from PDFs, quiz from notes, paper summariser pipe
 import logging
 
 from services.ollama_service import OllamaService
+try:
+    from models.database import MODELS
+except Exception:
+    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
 from services.document_service import DocumentService
 from services.study_service import StudyService
 from services.memory_service import MemoryService
@@ -33,7 +37,7 @@ class AutomationService:
                 "Make flashcards suitable for a 13-year-old student."
             )
             prompt = text[:4000]
-            result = await ollama.complete("qwen3:8b", prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
 
             # Parse flashcards
             cards = []
@@ -72,7 +76,7 @@ class AutomationService:
                 "Make questions test understanding, not just recall."
             )
             prompt = text[:4000]
-            result = await ollama.complete("qwen3:8b", prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
 
             # Parse quiz
             import re
@@ -121,31 +125,15 @@ class AutomationService:
                 "Format with clear headings."
             )
             prompt = text[:5000]
-            result = await ollama.complete("qwen3:8b", prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
 
-            # Auto-generate flashcards too
-            fc_system = (
-                "Generate 6 flashcards from this content.\n"
-                "Format: FRONT: [term/question] | BACK: [definition/answer]"
-            )
-            try:
-                fc_result = await ollama.complete("qwen3:8b", text[:3000], system=fc_system, max_tokens=1000)
-                cards = []
-                for line in fc_result.split("\n"):
-                    if "|" in line and "front:" in line.lower():
-                        parts = line.split("|", 1)
-                        if len(parts) == 2:
-                            front = parts[0].replace("FRONT:", "").replace("front:", "").strip()
-                            back = parts[1].replace("BACK:", "").replace("back:", "").strip()
-                            if front and back:
-                                cards.append({"front": front, "back": back})
-            except Exception:
-                cards = []
-
+            # NOTE: No auto flashcards here — cards are only made when the
+            # user explicitly asks (Flashcards page, chat flashcard intent,
+            # or POST /auto/flashcards-from-pdf). Previously this pipeline
+            # generated 6 random cards on every summary, which was unwanted.
             return {
                 "filename": filename,
                 "summary": result,
-                "auto_flashcards": cards,
                 "text_length": len(text),
             }
         except Exception as e:

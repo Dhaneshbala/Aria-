@@ -3,11 +3,10 @@ from routers.study import router as study_router
 from routers.docs import router as docs_router
 from routers.research import router as research_router
 from routers.voice import router as voice_router
-from routers.imagegen import router as imagegen_router
 from routers.admin import router as admin_router
 from routers.agent import router as agent_router
 from routers.intelligence import router as intelligence_router
 from routers.v2 import router as v2_router
-from routers.planner import router as planner_router
 from routers.kb import router as kb_router
-from routers.premium_planner import router as premium_planner_router
+from routers.imagegen import router as imagegen_router
+from routers.diagram import router as diagram_router

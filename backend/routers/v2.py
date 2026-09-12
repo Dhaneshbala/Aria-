@@ -181,11 +181,6 @@ async def knowledge_gaps(subject: str):
     return await _svc("advanced_study").find_knowledge_gaps(subject)
 
 
-@router.post("/study/gap-plan")
-async def gap_study_plan(subject: str, days: int = 7):
-    return await _svc("advanced_study").generate_gap_study_plan(subject, days)
-
-
 @router.get("/study/learning-style")
 async def learning_style():
     return await _svc("advanced_study").detect_learning_style()

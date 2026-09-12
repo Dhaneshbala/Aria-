@@ -3,13 +3,14 @@ Gamification — Streaks, Achievements, Challenge Mode, Leaderboard.
 """
 import json
 import logging
+import os
 import random
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / ".aria_data"
+DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
 GAMIFICATION_FILE = DATA_DIR / "gamification.json"
 PROFILE_FILE = DATA_DIR / "study_profile.json"

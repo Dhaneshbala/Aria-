@@ -3,13 +3,15 @@ Analytics Dashboard — Study activity analytics with heatmap, trends, predicted
 """
 import json
 import logging
+import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / ".aria_data"
+DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
 PROFILE_FILE = DATA_DIR / "study_profile.json"
 ANALYTICS_FILE = DATA_DIR / "analytics.json"
@@ -236,9 +238,9 @@ class AnalyticsService:
             "weak_areas": profile.get("weak_areas", []),
         }
 
-    def _calculate_streak(self, daily: dict) -> int:
+    def _calculate_streak(self, daily: dict, now: datetime | None = None) -> int:
         """Calculate current consecutive study days."""
-        now = datetime.now(timezone.utc)
+        now = now or datetime.now(timezone.utc)
         streak = 0
         current = now
         while True:

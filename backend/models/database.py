@@ -2,47 +2,87 @@
 Config store for ARIA.
 Defaults are tuned for MacBook Air M4 16GB / 100GB storage.
 
-Model choices explained:
-  qwen3:8b        → 5.2 GB disk, ~8 GB RAM — best reasoning quality that fits
-                    comfortably in 16 GB alongside macOS + browser.
-                    Runs on Metal GPU via Ollama on Apple Silicon.
+Model strategy (16 GB unified memory):
+  gemma4:e4b-mlx      → main generation model — chat, reasoning, coding,
+                       math, vision/multimodal, tool calling, planning.
+                       Single model handles all generation tasks to avoid
+                       loading multiple large models simultaneously.
+                       Runs on Metal GPU via Ollama/MLX on Apple Silicon.
+  nomic-embed-text    → embedding model — ONLY for memory/RAG retrieval.
+                       Tiny, fast, never used for generation.
 
-  qwen2.5vl:3b    → 2.2 GB disk, ~4 GB RAM — vision model for images/worksheets.
-                    Loaded only when an image is attached (not always in RAM).
-                    3b is sufficient for reading worksheets and diagrams.
-
-  llama3.2:3b     → 2.0 GB disk, ~3 GB RAM — fast fallback if qwen3:8b is slow.
-
-  Total disk:  ~9.4 GB  (well within 100 GB free)
-  RAM pattern: only ONE model loaded at a time by Ollama.
-               qwen3:8b alone = 8 GB. macOS takes ~5 GB. Leaves 3 GB buffer.
+  Total disk:  ~5-6 GB for gemma4 + 274 MB for nomic
+  RAM pattern: only ONE generation model (gemma) loaded at a time.
+               Leaves headroom for Chrome, Canva, Word, PDFs, VS Code.
 
 Image generation: Pollinations.ai (free, no install, uses internet not GPU).
 Stable Diffusion: NOT recommended — needs 4+ GB extra RAM and 10+ GB disk.
+
+Legacy Qwen/Llama keys are kept for migration but map to gemma4:e4b-mlx.
 """
+
 import json
+import os
+import threading
+import tempfile
 from pathlib import Path
 
-DATA_DIR = Path.home() / ".aria_data"
+# ── Clean model routing (task requirement) ──────────────────────────────────
+# Env overrides allow Docker/CI without code change
+def _env_model(primary: str, fallbacks: list[str], default: str) -> str:
+    for key in [primary] + fallbacks:
+        if os.environ.get(key):
+            return os.environ[key]
+    return default
+
+MODELS = {
+    "main": _env_model("ARIA_MAIN_MODEL", ["MODELS_MAIN", "REASONING_MODEL"], "gemma4:e4b-mlx"),
+    "embedding": _env_model("ARIA_EMBED_MODEL", ["MODELS_EMBEDDING", "EMBEDDING_MODEL"], "nomic-embed-text"),
+}
+_raw_ollama = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = _raw_ollama.rstrip("/")
+if OLLAMA_URL.endswith("/api/generate") or OLLAMA_URL.endswith("/api/chat"):
+    OLLAMA_URL = OLLAMA_URL.rsplit("/api", 1)[0]
+
+DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = DATA_DIR / "config.json"
+_CONFIG_LOCK = threading.RLock()
+try:
+    from filelock import FileLock as _FileLock
+    _CONFIG_FILE_LOCK = _FileLock(str(CONFIG_FILE) + ".lock", timeout=5)
+except Exception:
+    _CONFIG_FILE_LOCK = None  # fallback to threading lock only
 
 DEFAULT_CONFIG = {
-    # ── AI Models (M4 MacBook Air 16GB optimised) ──────────────────────────
-     "reasoning_model":   "qwen3:8b",        # 5.2 GB — best quality for this machine
-     "vision_model":      "qwen2.5vl:3b",    # 2.2 GB — reads images & worksheets
-     "fallback_model":    "llama3.2:3b",  
-     "coding_model":    "qwen2.5-coder:7b",
-     "pptx_model":      "qwen3:8b",   # 2.0 GB — fast fallback
+    # ── AI Models (16 GB optimised — single generation model + embedding) ──
+    # Primary routing — use MODELS["main"] for all generation:
+     "model":             MODELS["main"],      # alias used by new code
+     "reasoning_model":   MODELS["main"],      # legacy key → maps to main
+     "vision_model":      MODELS["main"],      # gemma4 is multimodal, handles vision
+     "fallback_model":    MODELS["main"],      # no separate fallback needed
+     "coding_model":      MODELS["main"],      # gemma handles coding too
+     "fast_model":        MODELS["main"],      # single model, no separate fast
+     "pptx_model":        MODELS["main"],
+     "organizer_model":   "",                  # "" = use main model
+     "embedding_model":   MODELS["embedding"], # nomic-embed-text ONLY for embeddings
 
     # ── Document processing ────────────────────────────────────────────────
     "doc_context_chars": 8000,              # chars of doc to pass to model per query
 
     # ── Features ───────────────────────────────────────────────────────────
     "web_search_enabled": True,
+    "google_first":       True,             # Google supplements local knowledge
+    "personal_info_ask_first": False,
+    "knowledge_base_enabled": True,         # RAG via nomic-embed-text
+    "memory_enabled":     True,             # ChromaDB memory via nomic-embed-text
     "voice_enabled":      True,
-    "memory_enabled":     True,
     "image_gen_enabled":  True,             # Uses Pollinations.ai (free, no GPU)
+
+    # ── Privacy ────────────────────────────────────────────────────────────
+    # Opt-in anonymous usage counters (chat counts, crash types). Never
+    # leaves the machine — view/clear in Admin → Privacy.
+    "telemetry_enabled": False,
 
     # ── Image generation ───────────────────────────────────────────────────
     "image_gen_backend":  "pollinations",   # "pollinations" (recommended) or "sd"
@@ -53,29 +93,77 @@ DEFAULT_CONFIG = {
     # ── Student ────────────────────────────────────────────────────────────
     "student_name": "Student",
     "student_age":  13,
-
-    # ── Cloud AI (optional — free tier available) ───────────────────────────
-    # Set cloud_api_key to route through a cloud provider instead of local Ollama.
-    #   gemini     → Google AI Studio key (free): https://aistudio.google.com/apikey
-    #   openrouter → https://openrouter.ai/keys
-    #   groq       → https://console.groq.com/keys
-    # provider "auto" uses cloud only when a key is set.
-    "cloud_provider": "auto",          # "auto" | "ollama" | "gemini" | "openrouter" | "groq"
-    "cloud_api_key": "",
 }
 
 
+_LEGACY_MODELS = {
+    "qwen3:8b", "qwen3:4b", "qwen2.5vl:3b", "qwen2.5:3b",
+    "qwen2.5-coder:7b", "llama3.2:3b", "llama3.2:1b",
+}
+
+def _migrate_legacy_models(cfg: dict) -> dict:
+    """Replace legacy Qwen/Llama defaults with gemma4:e4b-mlx if user never
+    customised them. Prevents old saved config from forcing unused models."""
+    for key in ("model", "reasoning_model", "vision_model", "fallback_model",
+                "coding_model", "fast_model", "pptx_model", "organizer_model"):
+        val = cfg.get(key, "")
+        if val in _LEGACY_MODELS:
+            # Only migrate empty organizer_model is "" already correct
+            if key == "organizer_model" and val == "":
+                continue
+            cfg[key] = MODELS["main"]
+    # Ensure embedding stays nomic
+    if cfg.get("embedding_model") in _LEGACY_MODELS or not cfg.get("embedding_model"):
+        cfg["embedding_model"] = MODELS["embedding"]
+    return cfg
+
+
+def _atomic_write(path: Path, data: str):
+    """Atomic write via tmp+rename to avoid torn files on crash."""
+    tmp = None
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp.")
+        tmp = Path(tmp_path)
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.replace(path)
+    finally:
+        if tmp and tmp.exists():
+            try:
+                tmp.unlink()
+            except Exception:
+                pass
+
+
 def get_config() -> dict:
-    if CONFIG_FILE.exists():
-        try:
-            saved = json.loads(CONFIG_FILE.read_text())
-            return {**DEFAULT_CONFIG, **saved}
-        except Exception:
-            pass
-    return DEFAULT_CONFIG.copy()
+    # Use FileLock for cross-process safety when available, fallback to thread lock
+    lock_ctx = _CONFIG_FILE_LOCK if _CONFIG_FILE_LOCK else _CONFIG_LOCK
+    # FileLock doesn't support nested with _CONFIG_LOCK, so use it exclusively when present
+    ctx = lock_ctx if _CONFIG_FILE_LOCK else _CONFIG_LOCK
+    with ctx:
+        if CONFIG_FILE.exists():
+            try:
+                saved = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                merged = {**DEFAULT_CONFIG, **saved}
+                merged = _migrate_legacy_models(merged)
+                # Auto-fix if file still has legacy values — persist migration
+                if any(saved.get(k) in _LEGACY_MODELS for k in saved if k in DEFAULT_CONFIG):
+                    try:
+                        _atomic_write(CONFIG_FILE, json.dumps(merged, indent=2))
+                    except Exception:
+                        pass
+                return merged
+            except Exception:
+                pass
+        return DEFAULT_CONFIG.copy()
 
 
 def save_config(updates: dict) -> dict:
-    merged = {**get_config(), **updates}
-    CONFIG_FILE.write_text(json.dumps(merged, indent=2))
-    return merged
+    lock_ctx = _CONFIG_FILE_LOCK if _CONFIG_FILE_LOCK else _CONFIG_LOCK
+    ctx = lock_ctx if _CONFIG_FILE_LOCK else _CONFIG_LOCK
+    with ctx:
+        merged = {**get_config(), **updates}
+        _atomic_write(CONFIG_FILE, json.dumps(merged, indent=2))
+        return merged

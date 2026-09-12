@@ -89,22 +89,79 @@ class KnowledgeGraphService:
         entities = []
         seen = set()
 
+        # Words that are almost never part of a person name (verbs, articles,
+        # demonstratives) — used to filter false-positive name matches.
+        _NON_NAME_WORDS = {
+            "the", "a", "an", "and", "of", "in", "on", "at", "to", "for",
+            "with", "from", "by", "as", "is", "was", "were", "be", "are",
+            "presented", "worked", "created", "built", "designed", "developed",
+            "said", "asked", "told", "explained", "showed", "went", "came",
+            "made", "gave", "took", "used", "has", "had", "have", "will",
+            "can", "could", "would", "should", "this", "that", "these",
+            "those", "how", "what", "when", "where", "why", "who", "which",
+            "you", "your", "my", "our", "their", "his", "her", "its",
+        }
+        _PROJECT_SUFFIX_WORDS = {
+            "project", "app", "website", "game", "system", "tool", "dashboard",
+            "tracker", "bot", "platform", "software", "site", "page",
+        }
+
         # People (capitalized names near contextual words)
         name_patterns = [
+            # Full titles with optional first name: "Dr. Sarah Chen", "Mr. Smith"
+            r"\b(Mr|Mrs|Ms|Dr|Prof)\.?\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?",
+            # Two capitalized words
             r"\b([A-Z][a-z]+ [A-Z][a-z]+)\b",
-            r"\b(Mr|Mrs|Ms|Dr|Prof)\.?\s+([A-Z][a-z]+)\b",
         ]
+        consumed_spans = []  # (start,end) positions already captured by titles
         for pat in name_patterns:
             for m in re.finditer(pat, text):
+                if " " not in m.group(0) and m.lastindex >= 2:
+                    continue
+                # Skip partial matches inside a longer title match
+                if any(m.start() >= s and m.end() <= e for s, e in consumed_spans):
+                    continue
                 name = m.group(0).strip()
+                if m.lastindex == 3 and m.group(3):
+                    # Title + first + last: keep punctuation ("Dr. Sarah Chen")
+                    parts = [m.group(1), m.group(2), m.group(3)]
+                    tail = (m.group(1).endswith(".") and " " or ". ")
+                    name = parts[0].rstrip(".") + tail + parts[1] + " " + parts[2]
+                    consumed_spans.append((m.start(), m.end()))
                 if len(name) > 3 and name not in seen:
                     # Filter common false positives
                     lower = name.lower()
+                    tokens = [t.strip(".") for t in re.split(r"\s+", lower)]
                     if lower not in {
                         "the the", "is a", "this is", "you are", "it is",
                         "we are", "they are", "can you", "how does", "what is",
                         "i am", "do you", "let me", "tell me", "give me",
-                    }:
+                    } and not any(t in _NON_NAME_WORDS for t in tokens):
+                        # Two-word names whose last word looks like a project
+                        # type ("Solar Tracker", "Weather App") are almost
+                        # certainly not people.
+                        if len(tokens) == 2 and tokens[-1] in _PROJECT_SUFFIX_WORDS:
+                            continue
+                        # "Chen presented" style: skip names with a verb tail
+                        if len(tokens) == 2 and tokens[1] in _NON_NAME_WORDS:
+                            continue
+                        # "School Portal website", "Science Fair project":
+                        # two words directly followed by a project keyword.
+                        after = text[m.end():].lstrip()
+                        nxt = after.split()[0].lower().rstrip(".") if after else ""
+                        if len(tokens) == 2 and nxt in _PROJECT_SUFFIX_WORDS:
+                            continue
+                        # Group-style names: "Photography Club", "Chess Team"
+                        if len(tokens) == 2 and tokens[-1] in {
+                                "club", "team", "committee", "society",
+                                "council", "union", "association"}:
+                            continue
+                        # "World War 2", "Chapter 5" style: two capitalized
+                        # words directly followed by a number are headings.
+                        after = text[m.end():].lstrip()
+                        nxt = after.split()[0] if after else ""
+                        if len(tokens) == 2 and re.match(r"^\d", nxt):
+                            continue
                         entities.append(("person", name))
                         seen.add(name)
 
@@ -121,18 +178,29 @@ class KnowledgeGraphService:
 
         # Dates and time periods
         date_patterns = [
-            r"\b(\d{4})\b",  # Years like 2024, 1945
+            # Long-form first so their spans suppress duplicate bare years
             r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4}\b",
             r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
             r"\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:January|February|March|April|May|June|July|August|September|October|November|December),?\s*\d{4})\b",
             r"\b(AD|BC|BCE|CE)\s*\d+\b",
+            r"\b(\d{4})\b",  # Years like 2024, 1945 (checked last)
         ]
+        # Long-form date ranges consume the trailing year, so a bare year
+        # matched inside one is a duplicate → remember their spans.
+        date_spans = []
         for pat in date_patterns:
             for m in re.finditer(pat, text, re.I):
+                year_only = pat.startswith(r"\b(\d{4})\b")
+                span = m.span()
+                if year_only and any(s <= span[0] and span[1] <= e
+                                     for s, e in date_spans):
+                    continue  # bare year already covered by a full date
                 date_str = m.group(0).strip()
                 if date_str not in seen:
                     entities.append(("date", date_str))
                     seen.add(date_str)
+                    if not year_only:
+                        date_spans.append(span)
 
         # Topics / concepts (detect from quoted or emphasized terms)
         concept_patterns = [
@@ -150,18 +218,36 @@ class KnowledgeGraphService:
         # Projects (detect from common project patterns)
         project_patterns = [
             r"\b([\w\-]+(?:\s+[\w\-]+){0,3})\s+(?:project|app|website|game|system|tool|dashboard)\b",
-            r"\b(?:project|app|website|game|system|tool|dashboard)\s+([\w\-]+(?:\s+[\w\-]+){0,3})\b",
+            r"\b(?:project|app|website|game|system|tool|dashboard)\s+([\w\-]+)\b",
         ]
+        _project_stop = {
+            "the", "a", "an", "and", "or", "this", "that", "on", "in", "at",
+            "to", "for", "of", "was", "is", "are", "were", "today",
+            "presented", "created", "worked", "built", "made", "as", "with",
+            "from", "by", "you", "your", "my", "our", "how", "what", "when",
+            "do", "does", "i've", "working", "building", "developing",
+            "designing", "creating", "making", "using", "started", "also",
+            "last", "next", "every", "each", "any", "many", "much", "some",
+            "such", "more", "most", "over", "under", "across", "through",
+        }
         for pat in project_patterns:
             for m in re.finditer(pat, text, re.I):
                 proj = m.group(1).strip()
-                if len(proj) > 2 and proj not in seen:
+                words = proj.lower().split()
+                # Trim leading stopwords so "worked on the weather app" -> "weather"
+                while words and words[0] in _project_stop:
+                    words.pop(0)
+                cleaned = proj.split()
+                skipped = len(proj.lower().split()) - len(words)
+                proj = " ".join(cleaned[skipped:])
+                if len(proj) > 2 and proj not in seen and not any(
+                        w in _project_stop for w in words):
                     entities.append(("project", proj))
                     seen.add(proj)
 
         # Notes / topics discussed
         topic_patterns = [
-            r"\b(about|regarding|concerning|on the topic of|subject of)\s+([^.,;!?]{3,60})",
+            r"\b(about|regarding|concerning|on the topic of|the topic of|topic of|subject of)\s+([^.,;!?]{3,60})",
         ]
         for pat in topic_patterns:
             for m in re.finditer(pat, text, re.I):
@@ -173,7 +259,7 @@ class KnowledgeGraphService:
         return entities
 
     def _make_id(self, etype: str, value: str) -> str:
-        return f"{etype}:{value.lower().strip()}"
+        return f"{etype.lower().strip()}:{value.lower().strip()}"
 
     # ── Query methods ─────────────────────────────────────────────────────────
 
