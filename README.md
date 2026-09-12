@@ -1,4 +1,4 @@
-# ARIA — AI Study Assistant v2.0
+# ARIA — AI Study Assistant v2.5
 ### Built for MacBook Air M4 · 16 GB RAM
 
 A fully local, private AI study workspace. All AI runs on your Mac.
@@ -75,7 +75,8 @@ Just type naturally — ARIA figures out what you need:
 |---|---|
 | *"Explain photosynthesis"* | Full explanation + auto-generates flashcards |
 | *"Quiz me on World War 2"* | Interactive multiple-choice quiz |
-| *"Make a mind map of the water cycle"* | SVG mind map rendered in chat |
+| *"Make a mind map of the water cycle"* | Editable visual (flow/mind map/cycle/…) rendered in chat |
+| *Any AI answer → ✨ Visualize* | Turn it into an editable visual (10 types, 5 styles, SVG/PNG/PDF export) |
 | *[attaches worksheet photo]* | Vision reads it, answers each question |
 | *[attaches handwriting photo] “check my answer”* | Transcribes + grades 0-10 with tips |
 | *"Essay feedback on …"* | Detailed feedback (thesis/evidence/grammar) |
@@ -96,7 +97,8 @@ Just type naturally — ARIA figures out what you need:
 ## Features
 
 ### Chat
-- Streaming responses
+- Streaming responses — leave the page mid-answer, it keeps working (task pill follows you)
+- ✨ Visualize any answer as an editable diagram (flowchart, mind map, cycle, timeline, Venn, pie, bars…)
 - Attach images — worksheets, handwritten notes, diagrams, photos
 - Attach PDFs, Word, PowerPoint, Excel — ask questions about them
 - Voice input
@@ -105,7 +107,9 @@ Just type naturally — ARIA figures out what you need:
 - Memory of past chats (ChromaDB)
 
 ### Study Tools (now in Chat brain — no separate tabs)
-- Quiz / Flashcards / Mind Maps — still in Create, also via chat
+- Quiz / Flashcards / Exam Plan — still in Create, also via chat
+- Mind maps and diagrams — via chat visuals (pick a style, edit text, export)
+- Background-safe — quiz/flashcard/mind-map/exam-plan generation continues if you navigate away; results land where they belong
 - Notes — Structured, Cornell, outline styles (via chat)
 - Essay Feedback / Formula / Timeline / Exam Sim / Audio Overview / Worksheet / Handwriting / Study Intel — just ask in Chat (see table above). Handwriting: upload photo → “check my answer”. Brain handles all via `backend/services/orchestrator.py` intents (`essay_feedback`, `formula`, `timeline`, `exam_sim`, `audio_overview`, `study_intel`, `worksheet_generator`, `image_analysis`).
 
@@ -158,7 +162,8 @@ aria-2/
 │   ├── services/
 │   │   ├── orchestrator.py   ← The brain — coordinates all models
 │   │   ├── ollama_service.py ← M4 Metal GPU optimised
-│   │   ├── study_service.py  ← Quiz/flashcards/mindmap/notes
+│   │   ├── study_service.py  ← Quiz/flashcards/notes
+│   │   ├── diagram_service.py ← Napkin-style visual specs (10 types)
 │   │   ├── image_service.py  ← Vision + OCR
 │   │   ├── document_service.py← PDF/Word/PPT reading
 │   │   ├── memory_service.py ← ChromaDB RAG
@@ -181,7 +186,9 @@ aria-2/
 │   │   ├── store.js          ← Global state (Zustand)
 │   │   ├── services/api.js   ← All API calls
 │   │   ├── hooks/useChat.js  ← Streaming + orchestrator logic
-│   │   ├── pages/            ← Chat, Quiz, Flashcards, Coding, etc.
+│   │   ├── services/tasks.js ← Background tasks survive navigation
+│   │   ├── components/NapkinDiagram.jsx ← Editable visuals (SVG/PNG/PDF)
+│   │   ├── pages/            ← Chat, Dashboard, Quiz, Flashcards, Coding, etc.
 │   │   └── components/       ← Message, Sidebar, ChatInput, etc.
 │   └── package.json
 ```
@@ -218,7 +225,7 @@ Allow microphone access in Safari/Chrome when prompted.
 ### Backend won't start
 ```bash
 cd ~/Downloads/aria-2/backend
-source venv/bin/activate
+source ../.venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
