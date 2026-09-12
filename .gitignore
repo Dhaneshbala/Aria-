@@ -48,3 +48,7 @@ backend/storage/cache.json
 backend/storage/embed_cache.json
 knowledge_base/
 chroma/
+
+# Training datasets — large binaries, reproducible via
+# download_highschool_ai_data.py (GitHub caps files at 100 MB)
+HighSchool_Study_AI_Datasets/
