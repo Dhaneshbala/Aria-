@@ -62,9 +62,10 @@ def _load_cache():
     try:
         if _CACHE_FILE.exists():
             data = _json.loads(_CACHE_FILE.read_text())
-            # only load non-expired entries
+            # only load non-expired entries — and never blank ones (a cold
+            # model can return "" which must not poison future calls)
             now = _time.time()
-            _CACHE = {k: tuple(v) for k,v in data.items() if now - v[1] < CACHE_TTL_SEC}
+            _CACHE = {k: tuple(v) for k,v in data.items() if now - v[1] < CACHE_TTL_SEC and str(v[0]).strip()}
     except Exception:
         pass
     try:
@@ -231,7 +232,7 @@ class OllamaService:
         _key_raw = f"{system}\n{prompt}\n{max_tokens}\n{think}\n{json_mode}\n{context_window}"
         cache_key = f"complete:{model}:{_hashlib.sha256(_key_raw.encode()).hexdigest()[:16]}"
         cached = _CACHE.get(cache_key)
-        if cached and (_time.time() - cached[1] < CACHE_TTL_SEC):
+        if cached and (_time.time() - cached[1] < CACHE_TTL_SEC) and str(cached[0]).strip():
             logger.info("Cache hit for %s", model)
             return cached[0]
 
@@ -260,12 +261,17 @@ class OllamaService:
                 r = await client.post("/api/chat", json=payload)
                 r.raise_for_status()
                 resp = r.json().get("message", {}).get("content", "")
-                _CACHE[cache_key] = (resp, _time.time())
-                # LRU prune if too large
-                if len(_CACHE) > 200:
-                    oldest = min(_CACHE, key=lambda k: _CACHE[k][1])
-                    del _CACHE[oldest]
-                _save_cache()
+                # Never cache blank replies (cold-model "" etc.) — caching
+                # them poisons the key for the full TTL (GH: flashcards 0-card bug)
+                if str(resp).strip():
+                    _CACHE[cache_key] = (resp, _time.time())
+                    # LRU prune if too large
+                    if len(_CACHE) > 200:
+                        oldest = min(_CACHE, key=lambda k: _CACHE[k][1])
+                        del _CACHE[oldest]
+                    _save_cache()
+                else:
+                    logger.warning("Blank reply from %s — not caching", model)
                 return resp
         except httpx.HTTPStatusError as e:
             logger.error("Ollama complete error for model %s: %s", model, e)
