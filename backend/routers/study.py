@@ -1,4 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Form
+import asyncio
+import json as _json
+
+from fastapi import APIRouter, UploadFile, File, Form, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from services.study_service import StudyService
 from models.database import get_config, MODELS
@@ -59,6 +63,46 @@ async def generate_quiz(req: StudyRequest):
     return {"questions": questions}
 
 
+@router.post("/quiz/stream")
+async def stream_quiz(req: StudyRequest, request: Request):
+    """SSE quiz stream — each verified question arrives as it's done.
+
+    Events: {"type":"total","total":n}, {"type":"question","question":{...}},
+    {"type":"progress","done":d,"total":n}, {"type":"error",...},
+    {"type":"done","questions":[...]}. Same verification as POST /quiz.
+    """
+    config = get_config()
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
+
+    def _sse(obj: dict) -> str:
+        return f"data: {_json.dumps(obj, ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        questions: list = []
+        try:
+            async for kind, *payload in study_svc.generate_quiz_stream(
+                req.topic, req.level, req.count, model
+            ):
+                if await request.is_disconnected():
+                    break
+                if kind == "total":
+                    yield _sse({"type": "total", "total": payload[0]})
+                elif kind == "question":
+                    questions.append(payload[0])
+                    yield _sse({"type": "question", "question": payload[0]})
+                elif kind == "progress":
+                    yield _sse({"type": "progress", "done": payload[0], "total": payload[1]})
+                elif kind == "error":
+                    yield _sse({"type": "error", "content": str(payload[0])[:300]})
+            yield _sse({"type": "done", "questions": questions})
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            yield _sse({"type": "error", "content": str(e)[:200]})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/flashcards")
 async def generate_flashcards(req: StudyRequest):
     config = get_config()
@@ -73,7 +117,6 @@ async def generate_summary(req: StudyRequest):
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     summary = await study_svc.generate_summary(req.topic, model)
     return {"summary": summary}
-
 
 @router.post("/quiz/check")
 async def check_answer(data: dict):

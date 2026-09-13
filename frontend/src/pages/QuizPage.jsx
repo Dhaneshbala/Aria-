@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { generateQuiz, checkAnswer, bulkAddSrCards } from '../services/api'
+import { checkAnswer, bulkAddSrCards, streamQuiz } from '../services/api'
 import { startTask, cancelTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { BookOpen, Trophy, RotateCcw, Sparkles } from 'lucide-react'
@@ -31,6 +31,8 @@ export default function QuizPage() {
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
   const timerRef = useRef(null)
+  // Live verification progress from the quiz stream (verified X of Y)
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
 
   // Adopt a background run: returning to this page while it works (or after
   // it finished into the store while we were away) — never lose the task.
@@ -38,6 +40,7 @@ export default function QuizPage() {
     if (bg?.status === 'running') {
       setLoading(true)
       if (bg.topic && !topic) setTopic(bg.topic)
+      if (bg.verified != null) setProgress({ done: bg.verified, total: bg.total || count })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -81,19 +84,31 @@ export default function QuizPage() {
     setLoading(true)
     setError('')
     setQuestions([])
+    setProgress({ done: 0, total: c })
     setCurrent(0)
     setSelected(null)
     setScore(0)
     setDone(false)
     setAnswers([])
     try {
-      // Manager-owned request: keeps running if you navigate away; the
-      // result lands in the store via onDone even when this page is gone.
+      // Streamed verification: each question appears the moment it's
+      // verified (no 8-12s blank wait). Manager-owned so navigating away
+      // keeps it running; the result lands in the store via onDone.
       const data = await startTask('quiz', {
         label: `Quiz: ${t}`,
         page: '/create',
         topic: t,
-        run: (signal) => generateQuiz(t, l, c, true, signal),
+        run: (signal) => streamQuiz({
+          topic: t, level: l, count: c, signal,
+          onTotal: (total) => { if (mountedRef.current) setProgress(p => ({ ...p, total })) },
+          onQuestion: (q) => { if (mountedRef.current) setQuestions(qs => [...qs, q]) },
+          onProgress: (done, total) => {
+            if (mountedRef.current) setProgress({ done, total })
+            useStore.getState().setBgTask('quiz', {
+              label: `Quiz: ${t} (${done}/${total})`, verified: done, total,
+            })
+          },
+        }),
         onDone: (d) => {
           const qs = d.questions || []
           setStudyTool('quiz', {
@@ -105,6 +120,7 @@ export default function QuizPage() {
       if (!mountedRef.current) return
       const qs = data.questions || []
       setQuestions(qs)
+      setProgress({ done: qs.length, total: qs.length || c })
       if (qs.length === 0) setError('No questions generated — try a different topic.')
     } catch (e) {
       if (!mountedRef.current) return
@@ -234,12 +250,26 @@ export default function QuizPage() {
       )}
 
       {loading && (
-        <div className="flex flex-col items-center py-16 gap-3">
+        <div className="flex flex-col items-center py-16 gap-3 px-6">
           <div className="w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin" />
-          <p className="text-[#888] text-sm">Generating verified quiz on "{topic}"... {elapsed}s</p>
-          <p className="text-[#555] text-xs">Verified mode • ~8-12 seconds for {count} questions</p>
-          <p className="text-[#555] text-xs">Keeps working if you leave this page — find it in the task pill</p>
-          {elapsed > 12 && <p className="text-[#f59e0b] text-xs">Still verifying — checking answers</p>}
+          <p className="text-[#888] text-sm">
+            {progress.total > 0 && progress.done < progress.total
+              ? `Verified ${progress.done} of ${progress.total} — questions appear as they're checked…`
+              : `Generating verified quiz on "${topic}"... ${elapsed}s`}
+          </p>
+          {progress.total > 0 && (
+            <div className="w-full max-w-xs">
+              <div className="w-full bg-[#2a2a2a] rounded-full h-1.5 overflow-hidden">
+                <div className="bg-[#7c6af7] h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%` }} />
+              </div>
+              <p className="text-center text-[11px] text-[#666] mt-1.5">
+                {questions.length > 0 ? `${questions.length} ready — rest verifying…` : 'Checking answers…'}
+              </p>
+            </div>
+          )}
+          <p className="text-[#555] text-xs">Verified mode • keeps working if you leave this page</p>
+          {elapsed > 12 && progress.done === 0 && <p className="text-[#f59e0b] text-xs">Still verifying — checking answers</p>}
           <button onClick={cancel} className="mt-2 px-4 py-1.5 rounded-full bg-[#2a2a2a] text-xs text-[#888] hover:text-[#e8e8e8]">Cancel</button>
         </div>
       )}

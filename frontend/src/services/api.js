@@ -118,6 +118,43 @@ export const generateNotes = (topic, style = 'structured') =>
     body: JSON.stringify({ topic, level: style }),
   }).then(r => r.json())
 
+// ── Quiz streaming (each verified question arrives as it's done) ───────────
+
+export async function streamQuiz({ topic, level = 'medium', count = 5, signal, onTotal, onQuestion, onProgress }) {
+  const resp = await fetch(`${BASE}/study/quiz/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, level, count, verify: true }),
+    signal,
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => resp.statusText)
+    throw new Error(`API error ${resp.status}: ${text}`)
+  }
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const questions = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      let data
+      try { data = JSON.parse(line.slice(6)) } catch { continue }
+      if (data.type === 'total') onTotal?.(data.total)
+      else if (data.type === 'question') { questions.push(data.question); onQuestion?.(data.question, questions.length) }
+      else if (data.type === 'progress') onProgress?.(data.done, data.total)
+      else if (data.type === 'error') throw new Error(data.content || 'Quiz stream failed')
+      else if (data.type === 'done') return { questions: data.questions?.length ? data.questions : questions }
+    }
+  }
+  return { questions }
+}
+
 // ── Exam countdown plans ────────────────────────────────────────────────────
 
 export const createExamPlan = (exam_name, exam_date, subjects, mins_per_day = 45, signalOrExtra, maybeExtra) => {

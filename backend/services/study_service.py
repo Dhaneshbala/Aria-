@@ -100,6 +100,111 @@ QUIZ_LEVELS = {
 
 class StudyService:
 
+    @staticmethod
+    def _build_quiz_prompt(topic: str, level: str, num_questions: int) -> str:
+        """Shared prompt builder so generate_quiz and generate_quiz_stream
+        ask for byte-identical formats (same parser downstream)."""
+        # Typo correction for common biology terms (e.g. organelles)
+        topic = re.sub(r"orangell", "organell", topic, flags=re.I)
+        topic = re.sub(r"mitocondria", "mitochondria", topic, flags=re.I)
+        topic = re.sub(r"ribosom", "ribosome", topic, flags=re.I)
+
+        level_desc = QUIZ_LEVELS.get(level, QUIZ_LEVELS["medium"])
+        return (
+            f"Generate {num_questions} multiple-choice quiz questions SPECIFICALLY about: {topic}\n"
+            f"CRITICAL: Every question MUST be directly about {topic}. Do NOT generate unrelated math if topic is biology, or vice versa.\n"
+            f"Difficulty: {level_desc}\n"
+            f"For each question:\n"
+            f"Q[N]: [question text]\n"
+            f"A) [option]\nB) [option]\nC) [option]\nD) [option]\n"
+            f"Correct: [letter]\n"
+            f"Explanation: [brief explanation showing the calculation or reasoning that proves the correct answer]\n\n"
+            f"STRICT RULES:\n"
+            f"- Double-check: the letter in 'Correct:' MUST point to the option that actually contains the correct answer\n"
+            f"- For math, verify the arithmetic before marking: e.g. 45+23=68, so Correct must be the letter with 68\n"
+            f"- Explanation must match the correct answer's value\n"
+            f"- Do NOT invent citations, URLs, page numbers or sources — no [1], no http — quiz is closed-book\n"
+            f"- If you include a number in Explanation, it MUST equal the number in the Correct option\n"
+            f"- Make questions appropriate for a 13-year-old student."
+        )
+
+    async def generate_quiz_stream(
+        self,
+        topic: str,
+        level: str = "medium",
+        num_questions: int = 5,
+        model: str = "gemma4:e4b-mlx",
+        timeout: float = 120,
+    ):
+        """Streaming quiz: yields ('total', n), then ('question', q) +
+        ('progress', done, total) as EACH question finishes verification
+        (asyncio.as_completed — no waiting for the slowest one).
+
+        Timed-out leftovers are yielded unverified so the stream always
+        terminates with a full set. Powers POST /study/quiz/stream.
+        """
+        prompt = self._build_quiz_prompt(topic, level, num_questions)
+        try:
+            response = await ollama.complete(model, prompt, think=False, context_window=2048)
+        except Exception as e:
+            yield ("error", f"Generation failed: {e}")
+            return
+        raw_questions = self._parse_quiz(response)
+        if not raw_questions:
+            yield ("error", "No questions generated — try a different topic.")
+            return
+
+        total = len(raw_questions)
+        yield ("total", total)
+        verify_model = _default_model()
+        owners = {
+            asyncio.ensure_future(self._verify_single_question(q, topic, verify_model)): q
+            for q in raw_questions
+        }
+        pending = set(owners)
+        done_n = 0
+        deadline = asyncio.get_running_loop().time() + timeout
+        def _unverified(raw):
+            q = dict(raw) if isinstance(raw, dict) else {}
+            q.setdefault("question", "")
+            q.setdefault("options", [])
+            q.setdefault("correct", "")
+            q.setdefault("explanation", "")
+            q.setdefault("verified", "unverified")
+            return q
+        try:
+            while pending:
+                wait_for = max(0.1, deadline - asyncio.get_running_loop().time())
+                done_set, pending = await asyncio.wait(
+                    pending, timeout=wait_for,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not done_set:
+                    break  # overall budget spent — fall through to leftovers
+                for task in done_set:
+                    raw = owners.pop(task, None)
+                    done_n += 1
+                    try:
+                        q = task.result()
+                    except Exception as e:
+                        logger.warning("Stream verify failed, using raw: %s", e)
+                        q = None
+                    if not isinstance(q, dict) or not q.get("options"):
+                        q = _unverified(raw)
+                    yield ("question", q)
+                    yield ("progress", done_n, total)
+            # Leftovers (timed out): yield raw so the set is complete
+            for task in list(pending):
+                task.cancel()
+                raw = owners.pop(task, None)
+                done_n += 1
+                yield ("question", _unverified(raw))
+                yield ("progress", done_n, total)
+        except asyncio.CancelledError:
+            for task in pending:
+                task.cancel()
+            raise
+
     async def generate_quiz(
         self,
         topic: str,
@@ -122,25 +227,8 @@ class StudyService:
         topic = re.sub(r"orangell", "organell", topic, flags=re.I)
         topic = re.sub(r"mitocondria", "mitochondria", topic, flags=re.I)
         topic = re.sub(r"ribosom", "ribosome", topic, flags=re.I)
+        prompt = self._build_quiz_prompt(topic, level, num_questions)
 
-        level_desc = QUIZ_LEVELS.get(level, QUIZ_LEVELS["medium"])
-        prompt = (
-            f"Generate {num_questions} multiple-choice quiz questions SPECIFICALLY about: {topic}\n"
-            f"CRITICAL: Every question MUST be directly about {topic}. Do NOT generate unrelated math if topic is biology, or vice versa.\n"
-            f"Difficulty: {level_desc}\n"
-            f"For each question:\n"
-            f"Q[N]: [question text]\n"
-            f"A) [option]\nB) [option]\nC) [option]\nD) [option]\n"
-            f"Correct: [letter]\n"
-            f"Explanation: [brief explanation showing the calculation or reasoning that proves the correct answer]\n\n"
-            f"STRICT RULES:\n"
-            f"- Double-check: the letter in 'Correct:' MUST point to the option that actually contains the correct answer\n"
-            f"- For math, verify the arithmetic before marking: e.g. 45+23=68, so Correct must be the letter with 68\n"
-            f"- Explanation must match the correct answer's value\n"
-            f"- Do NOT invent citations, URLs, page numbers or sources — no [1], no http — quiz is closed-book\n"
-            f"- If you include a number in Explanation, it MUST equal the number in the Correct option\n"
-            f"- Make questions appropriate for a 13-year-old student."
-        )
         response = await ollama.complete(model, prompt, think=False, context_window=2048)
         raw_questions = self._parse_quiz(response)
 
