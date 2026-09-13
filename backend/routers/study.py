@@ -1,5 +1,4 @@
 from fastapi import APIRouter, UploadFile, File, Form
-from fastapi.responses import Response
 from pydantic import BaseModel
 from services.study_service import StudyService
 from models.database import get_config, MODELS
@@ -27,14 +26,13 @@ class QuizQuestion(BaseModel):
 
 
 class QuizResponse(BaseModel):
-    """Response of POST /quiz and POST /exam.
+    """Response of POST /quiz — timed exam simulations run through the
+    chat brain (exam_sim) instead of a separate endpoint.
 
-    Both endpoints return the SAME question schema; the only difference is
-    that /exam adds "mode": "exam". Each question has exactly 4 options and
-    a correct letter. The frontend must render questions by this shape only.
+    The frontend must render questions by this shape only.
     """
     questions: list[QuizQuestion]
-    mode: str | None = None  # present ("exam") only on the /exam endpoint
+    mode: str | None = None
 
 
 class FlashcardsResponse(BaseModel):
@@ -149,14 +147,6 @@ async def generate_notes(req: StudyRequest):
     return {"notes": notes}
 
 
-@router.post("/exam", response_model=QuizResponse)
-async def generate_exam(req: StudyRequest):
-    config = get_config()
-    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
-    questions = await study_svc.generate_exam_questions(req.topic, req.count, model)
-    return {"questions": questions, "mode": "exam"}
-
-
 # ── Exam countdown plans ────────────────────────────────────────────────────
 
 class ExamPlanRequest(BaseModel):
@@ -234,18 +224,3 @@ async def remove_exam_plan(plan_id: str):
     if not delete_plan(plan_id):
         raise HTTPException(404, "Plan not found")
     return {"deleted": True}
-
-
-@router.post("/pptx")
-async def generate_pptx(req: StudyRequest):
-    config = get_config()
-    model  = config.get("model", config.get("pptx_model", MODELS["main"]))
-    pptx_bytes = await study_svc.generate_pptx(req.topic, req.count or 10, model)
-    return Response(
-        content=pptx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={
-            "Content-Disposition": f'attachment; filename="ARIA-{req.topic}.pptx"',
-            "Content-Length": str(len(pptx_bytes)),
-        }
-    )

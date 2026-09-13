@@ -110,14 +110,6 @@ def check_assessment_plan(plan, days):
     return {"ok": not issues, "detail": "; ".join(issues) or "ok"}
 
 
-def check_exam_questions(qs, n):
-    if not qs:
-        return {"ok": False, "detail": "no questions"}
-    if len(qs) != n:
-        return {"ok": False, "detail": f"expected {n}, got {len(qs)}"}
-    return check_quiz(qs)
-
-
 async def run_task(name, coro, validator):
     try:
         out = await coro
@@ -145,8 +137,6 @@ async def main():
         ("QUIZ", ss.generate_quiz("the water cycle", "easy", 4, model=MODEL), check_quiz),
         ("FLASHCARDS", ss.generate_flashcards("World War 2", 6, model=MODEL), check_flashcards),
         ("MINDMAP", _gen_mindmap_spec(), check_diagram_mindmap),
-        ("EXAM_QUESTIONS", ss.generate_exam_questions("photosynthesis", 3, model=MODEL),
-         lambda q: check_exam_questions(q, 3)),
     ]
     # Study plan / assessment moved to brain (chat) — verify via orchestrator intents
     try:
