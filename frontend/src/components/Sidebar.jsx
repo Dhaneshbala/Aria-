@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { deleteConversation, searchConversations } from '../services/api'
 import {
   MessageSquare, Settings, Plus, Search, Pin,
-  Trash2, Zap, LayoutDashboard, Wand2, Library, X, Repeat, PanelLeft, Mic,
+  Trash2, Zap, LayoutDashboard, Wand2, Library, X, Repeat, PanelLeft, Mic, Youtube,
 } from 'lucide-react'
 
 const NAV = [
@@ -14,6 +14,7 @@ const NAV = [
   { icon: Wand2, label: 'Create', path: '/create' },
   { icon: Repeat, label: 'Review', path: '/spaced' },
   { icon: Library, label: 'Library', path: '/library' },
+  { icon: Youtube, label: 'YouTube', path: '/youtube' },
 ]
 
 const BOTTOM_NAV = [

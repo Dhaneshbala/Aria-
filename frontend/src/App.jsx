@@ -14,6 +14,7 @@ import CreatePage from './pages/CreatePage'
 import LibraryPage from './pages/LibraryPage'
 import AdminPage from './pages/AdminPage'
 import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
+import YouTubePage from './pages/YouTubePage'
 import { Menu, ChevronDown, Sparkles, Search, Maximize, Minimize } from 'lucide-react'
 
 function NotFound() {
@@ -128,6 +129,7 @@ export default function App() {
                 <Route path="/voice" element={<VoiceTutorPage />} />
                 <Route path="/create" element={<CreatePage />} />
                 <Route path="/library" element={<LibraryPage />} />
+                <Route path="/youtube" element={<YouTubePage />} />
                 <Route path="/spaced" element={<SpacedRepetitionPage />} />
                 <Route path="/review" element={<SpacedRepetitionPage />} />
                 <Route path="/flashcards" element={<SpacedRepetitionPage />} />
