@@ -1,14 +1,16 @@
 import { useState, lazy, Suspense } from 'react'
-import { BookOpen, Layers, CalendarClock } from 'lucide-react'
+import { BookOpen, Layers, CalendarClock, Calculator } from 'lucide-react'
 
 const QuizPage = lazy(() => import('./QuizPage'))
 const FlashcardsPage = lazy(() => import('./FlashcardsPage'))
 const ExamPlanPage = lazy(() => import('./ExamPlanPage'))
+const GradeCalculatorPage = lazy(() => import('./GradeCalculatorPage'))
 
 const TABS = [
   { id: 'quiz', label: 'Quiz', icon: BookOpen, comp: QuizPage },
   { id: 'flashcards', label: 'Flashcards', icon: Layers, comp: FlashcardsPage },
   { id: 'examplan', label: 'Exam Plan', icon: CalendarClock, comp: ExamPlanPage },
+  { id: 'grades', label: 'Am I Cooked?', icon: Calculator, comp: GradeCalculatorPage },
 ]
 
 export default function CreatePage() {

@@ -690,6 +690,37 @@ class StudyService:
         )
         return await ollama.complete(model, prompt, system="You are a history expert creating a clear, educational timeline.", think=False, context_window=2048)
 
+    async def generate_cheatsheet(
+        self, topic: str, subject: str = "", model: str = "gemma4:e4b-mlx"
+    ) -> str:
+        """One printable page per topic: formulas, definitions, gotchas.
+        Made for the morning bus ride — dense but scannable, fits ~1 page."""
+        subj = f"Subject: {subject}\n" if subject else ""
+        prompt = (
+            "Create a ONE-PAGE cheat sheet a student can revise on the bus.\n"
+            f"{subj}Topic: {topic}\n\n"
+            "STRICT FORMAT (markdown, keep it tight — max ~450 words total):\n"
+            "## <topic> — Cheat Sheet\n"
+            "### 🔑 Key definitions (5-7 max)\n"
+            "- **Term** — one-line definition\n"
+            "### 📐 Must-know formulas\n"
+            "- **Name**: `formula` — what each symbol means, when to use it\n"
+            "### ⚠️ Gotchas (3-5 exam traps)\n"
+            "- Trap → correct approach\n"
+            "### ⚡ 60-second recall\n"
+            "- 5 rapid-fire check questions (no answers — student self-tests)\n\n"
+            "RULES:\n"
+            "- Dense, no fluff, no intro paragraph.\n"
+            "- Use LaTeX $...$ for math.\n"
+            "- Australian curriculum examples where relevant.\n"
+            "- Suitable for a 13-year-old but exam-sharp."
+        )
+        return await ollama.complete(
+            model, prompt,
+            system="You are ARIA, creating ultra-concise one-page exam cheat sheets.",
+            think=False, context_window=2048,
+        )
+
     async def generate_worksheet(
         self, topic: str, grade: str = "Year 10",
         question_count: int = 10, include_answers: bool = True,

@@ -118,6 +118,16 @@ export const generateNotes = (topic, style = 'structured') =>
     body: JSON.stringify({ topic, level: style }),
   }).then(r => r.json())
 
+export const generateCheatsheet = (topic, subject = '', signal) => {
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, subject }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/study/cheatsheet`, opts).then(r => r.json())
+}
+
 // ── Quiz streaming (each verified question arrives as it's done) ───────────
 
 export async function streamQuiz({ topic, level = 'medium', count = 5, signal, onTotal, onQuestion, onProgress }) {

@@ -47,7 +47,7 @@ async def chat(
     message = "".join(c for c in message if c == "\n" or c == "\t" or ord(c) >= 32)
     if not message.strip():
         raise HTTPException(400, "Message cannot be empty")
-    if mode not in ("normal", "think", "fast", "socratic"):
+    if mode not in ("normal", "think", "fast", "socratic", "hype"):
         mode = "normal"
     # Simple conversation_id sanitization (uuid or hex)
     if conversation_id and len(conversation_id) > 64:

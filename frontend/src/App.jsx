@@ -11,7 +11,7 @@ import ChatPage from './pages/ChatPage'
 import VoiceTutorPage from './pages/VoiceTutorPage'
 import DashboardPage from './pages/DashboardPage'
 import CreatePage from './pages/CreatePage'
-import LibraryPage from './pages/LibraryPage'
+import CheatSheetPage from './pages/CheatSheetPage'
 import AdminPage from './pages/AdminPage'
 import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
 import YouTubePage from './pages/YouTubePage'
@@ -128,7 +128,8 @@ export default function App() {
                 <Route path="/chat/:id" element={<ChatPage />} />
                 <Route path="/voice" element={<VoiceTutorPage />} />
                 <Route path="/create" element={<CreatePage />} />
-                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/cheatsheets" element={<CheatSheetPage />} />
+                <Route path="/library" element={<Navigate to="/cheatsheets" replace />} />
                 <Route path="/youtube" element={<YouTubePage />} />
                 <Route path="/spaced" element={<SpacedRepetitionPage />} />
                 <Route path="/review" element={<SpacedRepetitionPage />} />

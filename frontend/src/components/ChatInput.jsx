@@ -183,9 +183,9 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
               className="hidden" onChange={e => { handleDocFiles(e.target.files); e.target.value = '' }} />
 
             {/* Tools — collapses mode toggles like Gemini “Tools” */}
-            <div className="hidden sm:flex items-center gap-1 ml-1 pl-2 border-l border-[#3c4043]">
+            <div className="flex items-center gap-1 ml-1 pl-2 border-l border-[#3c4043]">
               <button
-                onClick={() => setMode('think')}
+                onClick={() => setMode(mode === 'think' ? 'normal' : 'think')}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${mode === 'think' ? 'bg-[#8ab4f8] text-[#062e6f]' : 'bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3]'}`}
                 title="Thinking — deeper reasoning"
               >
@@ -197,6 +197,13 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
                 title="Socratic"
               >
                 <MessageCircleQuestion size={14} />
+              </button>
+              <button
+                onClick={() => setMode(mode === 'hype' ? 'normal' : 'hype')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${mode === 'hype' ? 'bg-orange-500 text-white' : 'bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3]'}`}
+                title="Hype tutor — maximum energy explanations"
+              >
+                <span className="flex items-center gap-1">🔥 Hype</span>
               </button>
             </div>
           </div>

@@ -126,6 +126,20 @@ export default function ChatPage() {
       )}
 
       {/* Active mode indicator — pill */}
+      {mode === 'think' && (
+        <div className="flex justify-center pt-2">
+          <span className="px-3 py-1 rounded-full bg-[#8ab4f8]/15 border border-[#8ab4f8]/20 text-[11px] text-[#8ab4f8] flex items-center gap-1.5">
+            <Zap size={13} /> Think mode — deeper reasoning
+          </span>
+        </div>
+      )}
+      {mode === 'hype' && (
+        <div className="flex justify-center pt-2">
+          <span className="px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-[11px] text-orange-300 flex items-center gap-1.5">
+            🔥 Hype tutor — LET'S GOOO, free marks incoming
+          </span>
+        </div>
+      )}
       {mode === 'socratic' && (
         <div className="flex justify-center pt-2">
           <span className="px-3 py-1 rounded-full bg-[#f59e0b]/15 border border-[#f59e0b]/20 text-[11px] text-[#fbbf24] flex items-center gap-1.5">

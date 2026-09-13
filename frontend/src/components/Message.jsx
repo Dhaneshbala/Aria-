@@ -371,6 +371,7 @@ function ToolResult({ tool }) {
     todo:            { icon: <CheckCircle size={12} />, label: 'Todo Added', color: 'text-green-400' },
     todos:           { icon: <BookOpen size={12} />, label: 'Your Todos', color: 'text-amber-400' },
     worksheet:       { icon: <BookOpen size={12} />, label: 'Worksheet', color: 'text-purple-400' },
+    cheatsheet:      { icon: <BookOpen size={12} />, label: 'Cheat Sheet', color: 'text-amber-400' },
   }
   const meta = META[tool.tool] || { icon: '🔧', label: tool.tool, color: 'text-[#888]' }
 
@@ -444,6 +445,7 @@ function ExtrasPanel({ extras, onSuggest }) {
       {extras.mindmap                      && <InlineMindMap data={extras.mindmap} />}
       {extras.methods?.length > 0         && <InlineMethods methods={extras.methods} />}
       {extras.worksheet                    && <InlineWorksheet markdown={extras.worksheet} />}
+      {extras.cheatsheet                   && <InlineWorksheet markdown={extras.cheatsheet} title="⚡ Cheat Sheet — print me for the bus" fileName="cheatsheet.md" />}
       {extras.audio_script                 && <InlineAudioScript script={extras.audio_script} />}
       {(extras.quiz || extras.exam_sim || extras.practice_quiz) && <InlineMistakeBank onDrill={drill} />}
     </div>
@@ -681,7 +683,7 @@ function InlineMindMap({ data }) {
 
 // ── Inline Worksheet ──────────────────────────────────────────────────────────
 
-function InlineWorksheet({ markdown }) {
+function InlineWorksheet({ markdown, title = '📄 Worksheet', fileName = 'worksheet.md' }) {
   const [expanded, setExpanded] = useState(true)
   const handlePrint = () => {
     const w = window.open('', '_blank')
@@ -693,7 +695,7 @@ function InlineWorksheet({ markdown }) {
   const handleDownload = () => {
     const blob = new Blob([markdown], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'worksheet.md'; a.click()
+    const a = document.createElement('a'); a.href = url; a.download = fileName; a.click()
     URL.revokeObjectURL(url)
   }
   const handlePDF = async () => {
@@ -743,7 +745,7 @@ function InlineWorksheet({ markdown }) {
   return (
     <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-[#141414] border-b border-[#2a2a2a]">
-        <span className="text-xs font-semibold text-[#7c6af7]">📄 Worksheet</span>
+        <span className="text-xs font-semibold text-[#7c6af7]">{title}</span>
         <div className="flex items-center gap-1.5">
           <button onClick={handleCopy} className="text-[11px] px-2.5 py-1 rounded-full bg-[#2a2a2a] text-[#888] hover:text-white transition-colors">Copy</button>
           <button onClick={handleDownload} className="text-[11px] px-2.5 py-1 rounded-full bg-[#2a2a2a] text-[#888] hover:text-white transition-colors">MD</button>

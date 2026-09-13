@@ -190,6 +190,25 @@ async def generate_notes(req: StudyRequest):
     return {"notes": notes}
 
 
+class CheatsheetRequest(BaseModel):
+    topic: str
+    subject: str = ""
+
+
+@router.post("/cheatsheet")
+async def generate_cheatsheet(req: CheatsheetRequest):
+    from fastapi import HTTPException
+    topic = (req.topic or "").strip()
+    if not topic:
+        raise HTTPException(400, "Topic cannot be empty")
+    if len(topic) > 300:
+        raise HTTPException(400, "Topic too long (max 300 chars)")
+    config = get_config()
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
+    sheet = await study_svc.generate_cheatsheet(topic[:300], (req.subject or "")[:80], model)
+    return {"topic": topic, "subject": req.subject or "", "cheatsheet": sheet}
+
+
 # ── Exam countdown plans ────────────────────────────────────────────────────
 
 class ExamPlanRequest(BaseModel):

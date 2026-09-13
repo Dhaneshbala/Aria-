@@ -30,6 +30,7 @@ const MODE_LABELS = {
   normal: null,
   think:  '🧠 Think',
   fast:   '⚡ Fast',
+  hype:   '🔥 Hype',
 }
 
 export default function StatusBar() {

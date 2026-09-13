@@ -89,6 +89,11 @@ INTENT_PATTERNS = {
         r"\bworksheet generator\b",
         r"\bcreate\b.*\bworksheet\b",
     ],
+    "cheatsheet": [
+        r"\b(cheat.?sheet|cheat sheet|cheatsheet)\b",
+        r"\b(one.?page|one page).{0,20}(summary|revision|notes)\b",
+        r"\b(bus ride|quick revision|revision sheet)\b",
+    ],
     "todo": [
         r"\b(add|create|new)\s+.*\b(todo|task|assignment|homework)\b",
         r"\b(todo|assignment|homework)\s+(due|for|on)\b",
@@ -290,7 +295,7 @@ def choose_models(intents: list[str], config: dict) -> dict:
     # Everything else → main model
     reasoning_intents = {
         "quiz", "exam_mode", "flashcard", "notes",
-        "worksheet_solver", "worksheet_generator", "quote_extraction", "pdf_summarise",
+        "worksheet_solver", "worksheet_generator", "cheatsheet", "quote_extraction", "pdf_summarise",
         "math", "explain", "chat", "summary", "doc_chat",
         "web_search", "youtube", "video_summarise", "code", "coding",
         "essay_feedback", "formula", "timeline", "translate",
@@ -541,6 +546,17 @@ async def orchestrate(
             "6. Celebrate their reasoning process, not just correct answers.\n"
             "Example: Instead of 'The answer is 42', ask 'What do you think the first step should be?'\n"
         )
+    elif mode == "hype":
+        system_prompt += (
+            "\n\nIMPORTANT: You are in HYPE TUTOR MODE — maximum energy, zero boredom.\n"
+            "Explain like a hype-man who genuinely wants the student to WIN:\n"
+            "1. Bring the energy: punchy lines, caps for key moments, a fire emoji here and there — but never more hype than substance.\n"
+            "2. Every fact earns its place: intuition first, then ONE killer worked example with every step shown.\n"
+            "3. Translate everything into MARKS: 'here's why this exact step is free marks on the exam'.\n"
+            "4. Call out the trap: one common mistake, framed as 'don't you dare lose marks here'.\n"
+            "5. End with a 1-line dare: one check question for the student to attempt right now.\n"
+            "NEVER sacrifice correctness for vibes: every formula, date and calculation stays exact. No made-up facts, no skipping algebra.\n"
+        )
 
     # ── Step 5: Worksheet generation (handled directly via study service) ─────
     # Smart+Fast: adaptive context — 8K for quick chat (fast), 12K for hard, 16K for think/docs
@@ -550,7 +566,7 @@ async def orchestrate(
     is_hard = any(i in intents for i in {"math","formula","coding","geography","history","science","worksheet_solver","explain"})
     if mode == "think":
         context_window = 16384
-    elif any(i in intents for i in {"quiz","flashcard","worksheet_generator","exam_sim","audio_overview","study_intel"}):
+    elif any(i in intents for i in {"quiz","flashcard","worksheet_generator","cheatsheet","exam_sim","audio_overview","study_intel"}):
         context_window = 8192
     elif is_hard:
         context_window = 12288  # hard topics: bigger context for power
@@ -559,6 +575,26 @@ async def orchestrate(
     if doc_text and len(doc_text) > 4000:
         context_window = 16384
     worksheet_handled = False
+
+    if "cheatsheet" in intents and "worksheet_generator" not in intents:
+        try:
+            m = re.search(r"cheat[\s\-]?sheet\s*(?:on|for|about)?\s*[:\-]?\s*(.+)", message, re.I)
+            cs_topic = (m.group(1).strip() if m else message.strip())[:150]
+            cs_topic = re.sub(r"^(a|an|the)\s+", "", cs_topic, flags=re.I)
+            cs_topic = re.sub(r"\b(generate|create|make|build|give me|please)\b", "", cs_topic, flags=re.I).strip(" -:") or message.strip()[:80]
+            yield _sse({"type": "status", "content": f"Building one-page cheat sheet on {cs_topic}..."})
+            cs_model = models.get("reasoning", _main_model(config))
+            sheet_md = await study_svc.generate_cheatsheet(cs_topic, "", cs_model)
+            chunk_size = 60
+            for i in range(0, len(sheet_md), chunk_size):
+                yield _sse({"type": "text", "content": sheet_md[i:i+chunk_size]})
+                await asyncio.sleep(0.01)
+            yield _sse({"type": "extras", "content": {"cheatsheet": sheet_md}})
+            yield _sse({"type": "tool", "tool": "cheatsheet", "content": {"topic": cs_topic}})
+            full_response = sheet_md
+            worksheet_handled = True
+        except Exception as e:
+            logger.warning(f"Cheatsheet generation failed, falling back to chat: {e}")
 
     if "worksheet_generator" in intents:
         try:
