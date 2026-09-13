@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { showToast } from '../components/Toast'
 import { getDueCards, getSrStats, reviewSrCard, addSrCard, deleteSrCard } from '../services/api'
 import { Trash2 } from 'lucide-react'
 
 export default function SpacedRepetitionPage() {
+  const navigate = useNavigate()
   const [dueCards, setDueCards] = useState([])
   const [stats, setStats] = useState(null)
   const [currentCard, setCurrentCard] = useState(null)
@@ -97,13 +99,29 @@ export default function SpacedRepetitionPage() {
         <div className="col-span-2 flex flex-col gap-3">
           {loading ? (
             <div className="flex-1 flex items-center justify-center text-[#666]">Loading...</div>
+          ) : (stats?.total_cards || 0) === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-[#666] gap-2 px-6 text-center">
+              <p className="text-3xl">🃏</p>
+              <p className="text-[#e8e8e8] font-medium">No flashcards yet</p>
+              <p className="text-xs text-[#555]">Create your first set — ARIA will schedule reviews for you</p>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => navigate('/create')}
+                  className="px-4 py-2 rounded-xl bg-[#7c6af7] text-white text-xs font-medium hover:bg-[#6a59e0] transition-colors">
+                  Create flashcards
+                </button>
+                <button onClick={() => navigate('/chat')}
+                  className="px-4 py-2 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-xs text-[#888] hover:text-[#e8e8e8] transition-colors">
+                  Ask in chat
+                </button>
+              </div>
+            </div>
           ) : !currentCard ? (
             <div className="flex-1 flex flex-col items-center justify-center text-[#666] gap-2">
               <p className="text-3xl">🎉</p>
               <p>No cards due for review!</p>
               <p className="text-xs text-[#555]">Add cards below or check back later</p>
             </div>
-          ) : (
+          ) : currentCard ? (
             <>
               <div className="text-xs text-[#666]">{dueCards.length} cards remaining</div>
               <div
@@ -147,7 +165,8 @@ export default function SpacedRepetitionPage() {
                 </div>
               )}
             </>
-          )}
+            ) : null
+          }
         </div>
 
         {/* Add card form */}
