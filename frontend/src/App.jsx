@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useStore } from './store'
 import { getHealth, getConversations, getConfig } from './services/api'
@@ -7,15 +7,29 @@ import StatusBar from './components/StatusBar'
 import { ToastContainer } from './components/Toast'
 import BgTasks from './components/BgTasks'
 import ErrorBoundary from './components/ErrorBoundary'
-import ChatPage from './pages/ChatPage'
-import VoiceTutorPage from './pages/VoiceTutorPage'
-import DashboardPage from './pages/DashboardPage'
-import CreatePage from './pages/CreatePage'
-import CheatSheetPage from './pages/CheatSheetPage'
-import AdminPage from './pages/AdminPage'
-import SpacedRepetitionPage from './pages/SpacedRepetitionPage'
-import YouTubePage from './pages/YouTubePage'
+import Onboarding from './components/Onboarding'
+
+const ChatPage = lazy(() => import('./pages/ChatPage'))
+const VoiceTutorPage = lazy(() => import('./pages/VoiceTutorPage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const CreatePage = lazy(() => import('./pages/CreatePage'))
+const CheatSheetPage = lazy(() => import('./pages/CheatSheetPage'))
+const MathsAcceleratorPage = lazy(() => import('./pages/MathsAcceleratorPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const SpacedRepetitionPage = lazy(() => import('./pages/SpacedRepetitionPage'))
+const YouTubePage = lazy(() => import('./pages/YouTubePage'))
+const MemoryPage = lazy(() => import('./pages/MemoryPage'))
+
 import { Menu, ChevronDown, Sparkles, Search, Maximize, Minimize } from 'lucide-react'
+
+function PageLoader() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full w-full bg-[#131314]">
+      <div className="w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin mb-3" />
+      <p className="text-sm text-[#666]">Loading...</p>
+    </div>
+  )
+}
 
 function NotFound() {
   return (
@@ -77,7 +91,6 @@ export default function App() {
     if (typeof window === 'undefined') return true
     return window.innerWidth >= 768
   })
-  // Keep sidebar responsive on resize — collapse on mobile
   useEffect(() => {
     const onResize = () => {
       if (window.innerWidth < 768) setSidebarOpen(false)
@@ -87,7 +100,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // Check health
     const checkHealth = async () => {
       try {
         const h = await getHealth()
@@ -103,10 +115,7 @@ export default function App() {
     const onVis = () => document.visibilityState === 'visible' && checkHealth()
     document.addEventListener('visibilitychange', onVis)
 
-    // Load conversations
     getConversations().then(setConversations).catch(() => {})
-
-    // Load config
     getConfig().then(setConfig).catch(() => {})
 
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
@@ -122,27 +131,32 @@ export default function App() {
           <StatusBar />
           <main className="flex-1 w-full overflow-y-auto bg-[#131314] flex flex-col">
             <ErrorBoundary>
-              <Routes>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/chat/:id" element={<ChatPage />} />
-                <Route path="/voice" element={<VoiceTutorPage />} />
-                <Route path="/create" element={<CreatePage />} />
-                <Route path="/cheatsheets" element={<CheatSheetPage />} />
-                <Route path="/library" element={<Navigate to="/cheatsheets" replace />} />
-                <Route path="/youtube" element={<YouTubePage />} />
-                <Route path="/spaced" element={<SpacedRepetitionPage />} />
-                <Route path="/review" element={<SpacedRepetitionPage />} />
-                <Route path="/flashcards" element={<SpacedRepetitionPage />} />
-                <Route path="/admin" element={<AdminPage />} />
-                <Route path="/profile" element={<Navigate to="/admin" replace />} />
-                <Route path="*" element={<Navigate to="/chat" replace />} />
-              </Routes>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/chat/:id" element={<ChatPage />} />
+                  <Route path="/voice" element={<VoiceTutorPage />} />
+                  <Route path="/create" element={<CreatePage />} />
+                  <Route path="/maths" element={<MathsAcceleratorPage />} />
+                  <Route path="/cheatsheets" element={<CheatSheetPage />} />
+                  <Route path="/library" element={<Navigate to="/cheatsheets" replace />} />
+                  <Route path="/youtube" element={<YouTubePage />} />
+                  <Route path="/spaced" element={<SpacedRepetitionPage />} />
+                  <Route path="/review" element={<SpacedRepetitionPage />} />
+                  <Route path="/flashcards" element={<SpacedRepetitionPage />} />
+                  <Route path="/memory" element={<MemoryPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/profile" element={<Navigate to="/admin" replace />} />
+                  <Route path="*" element={<Navigate to="/chat" replace />} />
+                </Routes>
+              </Suspense>
             </ErrorBoundary>
           </main>
         </div>
         <ToastContainer />
         <BgTasks />
+        <Onboarding />
       </div>
     </BrowserRouter>
   )

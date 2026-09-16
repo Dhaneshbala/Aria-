@@ -169,7 +169,7 @@ export async function streamQuiz({ topic, level = 'medium', count = 5, signal, o
 
 export const createExamPlan = (exam_name, exam_date, subjects, mins_per_day = 45, signalOrExtra, maybeExtra) => {
   // Backward compat: createExamPlan(name, date, subs, mins, signal)
-  // New: createExamPlan(name, date, subs, mins, {assessment_text, assessment_topics, assessment_summary}, signal)
+  // New: createExamPlan(name, date, subs, mins, {assessment_text, assessment_topics, assessment_summary, weighting, task_type}, signal)
   let signal = signalOrExtra
   let extra = maybeExtra
   if (signalOrExtra && typeof signalOrExtra === 'object' && !(signalOrExtra instanceof AbortSignal)) {
@@ -184,6 +184,41 @@ export const createExamPlan = (exam_name, exam_date, subjects, mins_per_day = 45
   if (signal) opts.signal = signal
   return apiFetch(`${BASE}/study/exam-plan`, opts).then(r => r.json())
 }
+
+export const getPlanReadiness = (planId) =>
+  apiFetch(`${BASE}/study/exam-plans/${planId}/readiness`).then(r => r.json())
+
+export const getPlanPracticeSet = (planId, count = 5, level = 'hard') =>
+  apiFetch(`${BASE}/study/exam-plans/${planId}/practice-set`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count, level }),
+  }).then(r => r.json())
+
+// ── Maths Accelerator (selective 5.3 + Ext bridge) ──────────────────────────
+
+export const getMathsTopics = () =>
+  apiFetch(`${BASE}/maths/topics`).then(r => r.json())
+
+export const generateMathsSet = (topic_id, tier = 'selective', count = 5, signal) => {
+  const opts = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic_id, tier, count }),
+  }
+  if (signal) opts.signal = signal
+  return apiFetch(`${BASE}/maths/generate`, opts).then(r => r.json())
+}
+
+export const submitMathsSet = (topic_id, tier, correct, total, mistakes = []) =>
+  apiFetch(`${BASE}/maths/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic_id, tier, correct, total, mistakes }),
+  }).then(r => r.json())
+
+export const getMathsMastery = () =>
+  apiFetch(`${BASE}/maths/mastery`).then(r => r.json())
 
 export const parseAssessmentNotification = (file) => {
   const form = new FormData()
@@ -521,6 +556,25 @@ export const getKBCollections = () =>
 
 export const rebuildKBIndex = () =>
   apiFetch(`${KB}/rebuild`, { method: 'POST' }).then(r => r.json())
+
+// ── Memory / Conversation History ─────────────────────────────────────────────
+
+const CHAT = `${BASE}/chat`
+
+export const getMemoryConversations = () =>
+  apiFetch(`${CHAT}/conversations`).then(r => r.json())
+
+export const searchMemoryConversations = (q) =>
+  apiFetch(`${CHAT}/search?q=${encodeURIComponent(q)}`).then(r => r.json())
+
+export const getMemoryConversation = (id) =>
+  apiFetch(`${CHAT}/conversations/${id}`).then(r => r.json())
+
+export const deleteMemoryConversation = (id) =>
+  apiFetch(`${CHAT}/conversations/${id}`, { method: 'DELETE' }).then(r => r.json())
+
+export const getMemoryProfile = () =>
+  apiFetch(`${BASE}/admin/profile`).then(r => r.json())
 
 // ── Todos / Assignment Inbox (solo) ───────────────────────────────────────────
 
