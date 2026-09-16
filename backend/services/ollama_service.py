@@ -142,6 +142,7 @@ class OllamaService:
             ],
             "stream": True,
             "options": options,
+            "keep_alive": "5m",
         }
         if think is not None:
             payload["think"] = think
@@ -185,6 +186,7 @@ class OllamaService:
             "messages": messages,
             "stream": True,
             "options": options,
+            "keep_alive": "5m",
         }
         if think is not None:
             payload["think"] = think
@@ -245,6 +247,7 @@ class OllamaService:
             ],
             "stream": False,
             "options": options,
+            "keep_alive": "5m",
         }
         if think is not None:
             payload["think"] = think
@@ -310,6 +313,7 @@ class OllamaService:
             ],
             "stream": False,
             "options": options,
+            "keep_alive": "5m",
         }
         acquired = False
         try:

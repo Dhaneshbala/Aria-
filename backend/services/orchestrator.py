@@ -357,7 +357,49 @@ async def orchestrate(
     except Exception:
         pass
 
-    # ── Step 1: Parallel lightweight tasks — Google is primary source ─────────
+    # ── Step 1: Memory & KB retrieval (fast) — used to skip search ──
+    # If memory or KB already has relevant results, skip Google search.
+    memory_context = ""
+    kb_context = ""
+    kb_results = []
+    search_results = None
+    youtube_results = None
+    cross_check = None
+
+    if config.get("memory_enabled") and memory_svc is not None:
+        try:
+            mem_k = 5 if is_hard else 3
+            memories = await asyncio.wait_for(
+                memory_svc.retrieve(conversation_id, message, k=mem_k), timeout=12
+            )
+            if memories:
+                memory_context = "\n".join(memories[:6 if is_hard else 4])
+        except Exception:
+            pass
+    if config.get("knowledge_base_enabled") and kb_svc is not None:
+        try:
+            kb_n = 6 if is_hard else 4
+            if any(i in intents for i in {"math","formula","worksheet_solver","explain"}):
+                kb_cols = ["math","education_au","general","science"]
+            elif "geography" in intents:
+                kb_cols = ["geography","education_au","general"]
+            elif "history" in intents:
+                kb_cols = ["history","education_au","general"]
+            elif "coding" in intents or "code" in intents:
+                kb_cols = ["coding","general"]
+            else:
+                kb_cols = None
+            kb_results = await asyncio.wait_for(
+                kb_svc.search(message, collections=kb_cols, n_results=kb_n), timeout=12
+            )
+            if kb_results:
+                kb_context = "\n".join(r["text"][:500] for r in kb_results[:5 if is_hard else 3])
+        except Exception:
+            pass
+
+    has_kb_or_memory = bool(memory_context) or bool(kb_context)
+
+    # ── Step 2: Parallel lightweight tasks — Google only if needed ──
     parallel = {}
     cross_check_intents = {"explain", "math", "formula", "timeline", "summary", "worksheet_solver", "notes", "geography", "coding", "history", "science", "study_intel"}
     needs_cross_check = bool(cross_check_intents & set(intents))
@@ -365,15 +407,20 @@ async def orchestrate(
     web_enabled = config.get("web_search_enabled", True)
     google_first = config.get("google_first", True)
 
-    # Google-first — smart+fast: search only when it helps, bigger for hard
+    # Skip search if memory/KB already has what we need (unless explicitly asking to search)
+    needs_search = web_enabled and ("web_search" in intents or not has_kb_or_memory)
+
+    # Google-first — only search when KB/memory doesn't cover it
     google_intents = {"explain", "chat", "summary", "math", "geography", "formula", "timeline", "notes", "coding", "history", "science", "worksheet_solver", "doc_chat", "study_intel", "translate", "socratic", "roleplay"}
-    if web_enabled:
+    if needs_search:
         if "web_search" in intents:
             parallel["search"] = research_svc.search(message, max_results=6 if is_hard else 5)
         elif google_first and any(i in intents for i in google_intents):
             parallel["search"] = research_svc.search(message, max_results=6 if is_hard else 5)
         if needs_cross_check and "search" not in parallel:
             parallel["cross_check"] = research_svc.search(message, max_results=5)
+    elif needs_cross_check and not has_kb_or_memory:
+        parallel["cross_check"] = research_svc.search(message, max_results=5)
     if "youtube" in intents:
         urls = re.findall(r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)\S+", message)
         if urls:
@@ -427,57 +474,6 @@ async def orchestrate(
             vision_text = f"[Vision model unavailable — using OCR: {e}]"
             yield _sse({"type": "progress", "step": "vision", "status": "error", "pct": 60, "label": "Vision fallback to OCR"})
             yield _sse({"type": "status", "content": "Vision unavailable, falling back to OCR..."})
-
-    # ── Step 3: Memory & Knowledge Base (optional, via nomic-embed-text) ─────
-    # Memory optimisation: only use if enabled; embeddings use nomic, not gemma.
-    memory_context = ""
-    kb_context = ""
-    kb_results = []
-    kb_offer = None
-    if config.get("memory_enabled") and memory_svc is not None:
-        yield _sse({"type": "progress", "step": "memory", "status": "running", "pct": 45, "label": "Checking memory"})
-        try:
-            # Retrieve memories — 5 for hard (power), 3 for simple (speed), same quality via nomic warmup
-            mem_k = 5 if is_hard else 3
-            memories = await asyncio.wait_for(
-                memory_svc.retrieve(conversation_id, message, k=mem_k), timeout=12
-            )
-            if memories:
-                memory_context = "\n".join(memories[:6 if is_hard else 4])
-            yield _sse({"type": "progress", "step": "memory", "status": "done", "pct": 55, "label": f"Memory {len(memories) if memories else 0} hits"})
-        except asyncio.TimeoutError:
-            logger.debug("Memory retrieve timed out (nomic slow/missing) — skipping")
-            yield _sse({"type": "progress", "step": "memory", "status": "error", "pct": 50, "label": "Memory skip (timeout)"})
-        except Exception as e:
-            logger.debug("Memory retrieve failed: %s", e)
-            yield _sse({"type": "progress", "step": "memory", "status": "error", "pct": 50, "label": "Memory skip"})
-    if config.get("knowledge_base_enabled") and kb_svc is not None:
-        yield _sse({"type": "progress", "step": "kb", "status": "running", "pct": 55, "label": "Searching knowledge base"})
-        try:
-            kb_n = 6 if is_hard else 4
-            # Intent-aware collection filtering — so nomic-embed-text searches the right shards
-            if any(i in intents for i in {"math","formula","worksheet_solver","explain"}):
-                kb_cols = ["math","education_au","general","science"]
-            elif "geography" in intents:
-                kb_cols = ["geography","education_au","general"]
-            elif "history" in intents:
-                kb_cols = ["history","education_au","general"]
-            elif "coding" in intents or "code" in intents:
-                kb_cols = ["coding","general"]
-            else:
-                kb_cols = None  # all collections
-            kb_results = await asyncio.wait_for(
-                kb_svc.search(message, collections=kb_cols, n_results=kb_n), timeout=12
-            )
-            if kb_results:
-                kb_context = "\n".join(r["text"][:500] for r in kb_results[:5 if is_hard else 3])
-            yield _sse({"type": "progress", "step": "kb", "status": "done", "pct": 65, "label": f"KB {len(kb_results)} hits" if kb_results else "KB no hits"})
-        except asyncio.TimeoutError:
-            logger.debug("KB search timed out (nomic slow/missing) — skipping")
-            yield _sse({"type": "progress", "step": "kb", "status": "error", "pct": 60, "label": "KB skip (timeout)"})
-        except Exception as e:
-            logger.debug("KB search failed: %s", e)
-            yield _sse({"type": "progress", "step": "kb", "status": "error", "pct": 60, "label": "KB skip"})
 
     # ── Step 3b: Study Intel enrichment (profile-based) ─────────────────────
     if "study_intel" in intents and memory_svc is not None:
