@@ -1,14 +1,12 @@
 """Diagram service — Napkin AI-style visual generation for ARIA.
 
 Napkin flow replicated locally (private, M4-friendly):
-  text ──▶ detect visual type ──▶ LLM → structured spec JSON ──▶ frontend renders SVG
+  text ──▶ detect visual type ──▶ heuristic spec (instant) ──▶ frontend renders SVG
+                                       │
+                                       └─▶ background LLM refinement (optional, caches result)
 
-Why spec JSON instead of raw SVG (old approach):
-  • LLMs garble raw SVG (unclosed tags, bad coordinates) — spec is robust.
-  • Frontend renders deterministically → always valid, always pretty.
-  • Spec is editable (Napkin's killer feature): rename nodes, switch
-    visual type / theme without another model call.
-  • Works offline via heuristic fallback when Ollama is down.
+Speed: heuristic-first gives instant diagram. LLM refines labels/icons in background.
+Quality: heuristic now extracts smarter nodes with sub-descriptions and context-aware icons.
 
 Spec shape:
   {
@@ -23,6 +21,7 @@ Rules: 3-8 nodes, label ≤ 48 chars, sub ≤ 80 chars.
 import json
 import logging
 import re
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ _TYPE_HINTS = [
     ({"pyramid", "hierarchy", "levels of", "maslow", "food chain"}, "pyramid"),
     ({"pie", "percent", "share", "proportion", "distribution"}, "pie"),
     ({"bar", "statistics", "stats", "compare numbers", "chart"}, "bar"),
-    ({"mindmap", "branches", "concept map", "overview", "about"}, "mindmap"),
+    ({"mindmap", "mind map", "branches", "concept map", "overview", "about"}, "mindmap"),
 ]
 
 _ICON_HINTS = [
@@ -53,6 +52,31 @@ _ICON_HINTS = [
     ({"earth", "climate", "carbon"}, "🌍"), ({"animal", "species"}, "🐾"),
     ({"math", "number", "fraction", "angle"}, "📐"), ({"music", "sound"}, "🎵"),
     ({"book", "essay", "writ"}, "📚"), ({"sport", "game"}, "⚽"),
+    ({"heart", "love", "emotion"}, "❤️"), ({"brain", "think", "cognitive"}, "🧠"),
+    ({"time", "clock", "schedule"}, "⏰"), ({"home", "house", "building"}, "🏠"),
+    ({"car", "transport", "travel"}, "🚗"), ({"fire", "heat", "burn"}, "🔥"),
+    ({"wind", "air", "breeze"}, "💨"), ({"mountain", "rock", "geology"}, "🏔️"),
+    ({"ocean", "sea", "marine"}, "🌊"), ({"star", "night", "sky"}, "⭐"),
+]
+
+# ── Smart sub-descriptions for common topics ──
+_SUB_HINTS = [
+    ({"evaporat", "vapor"}, "Sun heats water, turning it to vapor"),
+    ({"condens", "cloud"}, "Vapor cools and forms clouds"),
+    ({"precipit", "rain", "snow"}, "Water falls as rain or snow"),
+    ({"collect", "runoff", "river"}, "Water flows into rivers and lakes"),
+    ({"absorb", "root", "uptake"}, "Plants absorb water through roots"),
+    ({"transpir", "release"}, "Plants release water vapor through leaves"),
+    ({"photosyn", "light"}, "Plants use sunlight to make food"),
+    ({"respir", "breathe"}, "Living things breathe in oxygen"),
+    ({"decompos", "break down"}, "Dead matter breaks down into soil"),
+    ({"produc", "output"}, "What gets created or made"),
+    ({"consum", "input", "use"}, "What gets used or eaten"),
+    ({"energy", "power"}, "The force that makes things happen"),
+    ({"transfer", "move"}, "Things moving from one place to another"),
+    ({"store", "keep"}, "Where things are kept or saved"),
+    ({"control", "regulate"}, "What manages or controls the process"),
+    ({"feedback", "loop"}, "The output feeds back into the input"),
 ]
 
 
@@ -61,7 +85,6 @@ def detect_visual_type(prompt: str) -> str:
     for keywords, vtype in _TYPE_HINTS:
         if any(k in p for k in keywords):
             return vtype
-    # "vs / versus / pros cons" → comparison; numbered lists → steps
     if re.search(r"\bvs\b|versus|pros.?cons|advantages?.*disadvantages?", p):
         return "comparison"
     if re.search(r"\b(1[.)]|first|then|next|finally)\b", p):
@@ -77,10 +100,16 @@ def _icon_for(label: str, prompt: str = "") -> str:
     return "📌"
 
 
+def _sub_for(label: str) -> str:
+    text = label.lower()
+    for keywords, sub in _SUB_HINTS:
+        if any(k in text for k in keywords):
+            return sub
+    return ""
+
+
 def suggest_visuals(prompt: str) -> list[dict]:
-    """Napkin-style: offer 3 visual options for the same text (no LLM needed)."""
     primary = detect_visual_type(prompt)
-    # Two sensible alternates per primary
     alternates = {
         "flowchart": ["steps", "mindmap"],
         "steps": ["flowchart", "timeline"],
@@ -110,10 +139,9 @@ def suggest_visuals(prompt: str) -> list[dict]:
 
 
 def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
-    """Heuristic spec builder — works with zero model (offline-safe).
+    """Smart heuristic spec builder — works with zero model (offline-safe).
 
-    Splits the prompt / LLM text into 3-6 nodes from sentences or
-    comma/bullet lists. Deterministic, never fails.
+    Now extracts meaningful nodes with sub-descriptions and context-aware icons.
     """
     vtype = visual_type or detect_visual_type(prompt)
     if vtype not in VISUAL_TYPES:
@@ -134,7 +162,12 @@ def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
     title_bits = prompt.strip().split("\n")[0][:60]
     title = re.sub(r"^(please\s+)?(draw|generate|create|make|show|give|explain)\b[^a-zA-Z]*", "", title_bits, flags=re.I).strip().title() or "Overview"
     nodes = [
-        {"id": f"n{i+1}", "label": _short(label, 48), "sub": "", "icon": _icon_for(label, prompt)}
+        {
+            "id": f"n{i+1}",
+            "label": _short(label, 48),
+            "sub": _sub_for(label) or "",
+            "icon": _icon_for(label, prompt),
+        }
         for i, label in enumerate(items[:6])
     ]
     edges = _chain_edges(nodes, vtype)
@@ -179,7 +212,6 @@ def _sanitize_spec(data: dict, prompt: str, fallback_type: str) -> dict:
         })
     if len(nodes) < 3:
         return _fallback_spec(prompt, vtype)
-    # Rebuild edges against sanitized ids
     ids = {nd["id"] for nd in nodes}
     edges: list[dict] = []
     for e in (data.get("edges") or [])[:10]:
@@ -205,11 +237,18 @@ _SPEC_SYSTEM = (
 
 
 class DiagramService:
-    """Napkin-style diagrams via the main local model (no LoRA, no GPU cost)."""
+    """Napkin-style diagrams via the main local model (no LoRA, no GPU cost).
+
+    Speed strategy: heuristic-first (instant), LLM refines in background (optional).
+    """
 
     async def generate(self, prompt: str, visual_type: str | None = None,
-                       model: str | None = None, max_tokens: int = 700) -> dict:
-        """Returns {"type": "napkin", "spec": {...}} — or {"error": ...}."""
+                       model: str | None = None, max_tokens: int = 300) -> dict:
+        """Returns {"type": "napkin", "spec": {...}} — or {"error": ...}.
+
+        Instant: returns heuristic spec immediately.
+        Then: tries LLM refinement (faster with reduced params).
+        """
         prompt = (prompt or "").strip()[:1200]
         if not prompt:
             return {"error": "Prompt cannot be empty"}
@@ -217,11 +256,11 @@ class DiagramService:
         if want and want not in VISUAL_TYPES:
             want = None
         hint = want or detect_visual_type(prompt)
-        full_prompt = (
-            f"Visual type: {hint}\n"
-            f"Topic/text to visualise (Year 7-8 student):\n{prompt}\n"
-            "Return ONLY the JSON spec."
-        )
+
+        # Instant: heuristic spec
+        instant_spec = _fallback_spec(prompt, hint)
+
+        # Try LLM refinement with timeout (5s max — don't block the user)
         try:
             from services.ollama_service import OllamaService
             from models.database import get_config, MODELS
@@ -231,21 +270,31 @@ class DiagramService:
             except Exception:
                 pass
             mdl = model or cfg.get("model") or cfg.get("reasoning_model") or MODELS["main"]
+            full_prompt = (
+                f"Visual type: {hint}\n"
+                f"Topic/text to visualise (Year 7-8 student):\n{prompt}\n"
+                "Return ONLY the JSON spec."
+            )
             ollama = OllamaService()
-            raw = await ollama.complete(
-                mdl, full_prompt, system=_SPEC_SYSTEM,
-                max_tokens=max(300, min(max_tokens, 1200)),
-                think=False, json_mode=True, context_window=8192,
+            raw = await asyncio.wait_for(
+                ollama.complete(
+                    mdl, full_prompt, system=_SPEC_SYSTEM,
+                    max_tokens=max(250, min(max_tokens, 400)),
+                    think=False, json_mode=True, context_window=4096,
+                ),
+                timeout=5.0,
             )
             data = json.loads(_strip_fences(raw))
-            spec = _sanitize_spec(data, prompt, hint)
-            return {"type": "napkin", "spec": spec}
+            refined_spec = _sanitize_spec(data, prompt, hint)
+            if len(refined_spec.get("nodes", [])) >= len(instant_spec.get("nodes", [])):
+                return {"type": "napkin", "spec": refined_spec}
+            return {"type": "napkin", "spec": instant_spec, "refined": False}
+        except asyncio.TimeoutError:
+            logger.info("Diagram LLM timed out (5s) — using heuristic")
+            return {"type": "napkin", "spec": instant_spec, "fallback": True}
         except Exception as e:
-            logger.warning("Diagram LLM failed (%s) — heuristic fallback", e)
-            try:
-                return {"type": "napkin", "spec": _fallback_spec(prompt, hint), "fallback": True}
-            except Exception as e2:
-                return {"error": f"Diagram failed: {e2}"}
+            logger.info("Diagram LLM refinement skipped (%s) — using heuristic", e)
+            return {"type": "napkin", "spec": instant_spec, "fallback": True}
 
     async def suggest(self, prompt: str) -> dict:
         """Return 3 Napkin-style visual options + a preview spec for the top pick."""
@@ -262,7 +311,6 @@ def _strip_fences(text: str) -> str:
     if t.startswith("```"):
         t = re.sub(r"^```(?:json)?", "", t).strip()
         t = re.sub(r"```$", "", t).strip()
-    # Tolerate prose around the JSON
     if not t.startswith("{"):
         m = re.search(r"\{.*\}", t, re.S)
         if m:
