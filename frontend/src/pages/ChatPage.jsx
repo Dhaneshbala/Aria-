@@ -18,10 +18,10 @@ const SUGGESTIONS = [
 ]
 
 const GEMINI_CHIPS = [
-  { icon: '🎨', label: 'Create image', prompt: 'Draw the solar system in detail, labelled' },
-  { icon: '📝', label: 'Make a quiz', prompt: 'Make a quiz on the solar system, medium difficulty, 5 questions' },
-  { icon: '🧠', label: 'Explain', prompt: 'Explain solving quadratic equations step by step' },
-  { icon: '🗺️', label: 'Mind map', prompt: 'How does photosynthesis work? Draw me a mind map' },
+  { icon: '📝', label: 'Make a quiz', prompt: 'Make a quiz on my weakest topic — medium, 5 questions' },
+  { icon: '🧠', label: 'Explain', prompt: 'Explain photosynthesis step by step' },
+  { icon: '🗺️', label: 'Mind map', prompt: 'Draw me a mind map of the water cycle' },
+  { icon: '📊', label: 'Timeline', prompt: 'Make a timeline for World War 2' },
 ]
 
 function ProgressBar() {
