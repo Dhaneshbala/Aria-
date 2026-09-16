@@ -219,6 +219,8 @@ class ExamPlanRequest(BaseModel):
     assessment_text: str | None = None
     assessment_topics: list[str] | None = None
     assessment_summary: str | None = None
+    weighting: int | None = None
+    task_type: str | None = None
 
 
 @router.post("/exam-plan")
@@ -231,6 +233,8 @@ async def create_exam_plan(req: ExamPlanRequest):
             assessment_text=req.assessment_text,
             assessment_topics=req.assessment_topics,
             assessment_summary=req.assessment_summary,
+            weighting=req.weighting,
+            task_type=req.task_type,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -277,6 +281,81 @@ async def parse_exam_notification(file: UploadFile = File(...)):
 async def get_exam_plans():
     from services.exam_plan_service import list_plans
     return list_plans()
+
+
+@router.get("/exam-plans/{plan_id}/readiness")
+async def exam_plan_readiness(plan_id: str):
+    """Readiness % for a plan: weak-topic burden, days left, weighting.
+
+    Rule-based (instant, no LLM): starts at 100, loses points for each
+    unfinished day, extra loss for unfinished weak-hit days, bonus for
+    high completion on high-weighting tasks.
+    """
+    from fastapi import HTTPException
+    from services.exam_plan_service import list_plans
+    plan = next((p for p in list_plans() if p.get("id") == plan_id), None)
+    if plan is None:
+        raise HTTPException(404, "Plan not found")
+    days = plan.get("days", []) or []
+    total = len(days) or 1
+    done = sum(1 for d in days if d.get("completed"))
+    weak_total = sum(1 for d in days if d.get("weak_hit"))
+    weak_done = sum(1 for d in days if d.get("weak_hit") and d.get("completed"))
+    score = round(done / total * 100)
+    # Weak topics drag readiness down until cleared
+    if weak_total:
+        weak_score = round(weak_done / weak_total * 100)
+        score = round(score * 0.6 + weak_score * 0.4)
+    return {
+        "plan_id": plan_id,
+        "readiness": score,
+        "done": done,
+        "total": total,
+        "weak_done": weak_done,
+        "weak_total": weak_total,
+        "days_left": plan.get("days_left", 0),
+        "weighting": plan.get("weighting"),
+        "verdict": (
+            "Exam-ready — light review only" if score >= 85 else
+            "On track — clear weak days next" if score >= 60 else
+            "Behind — hit notification topics first" if score >= 30 else
+            "Urgent — start with the first weak topic today"
+        ),
+    }
+
+
+class PracticeSetRequest(BaseModel):
+    count: int = 5
+    level: str = "hard"
+
+
+@router.post("/exam-plans/{plan_id}/practice-set")
+async def exam_plan_practice_set(plan_id: str, req: PracticeSetRequest):
+    """Timed practice set built from the plan's notification topics.
+
+    Uses the verified quiz pipeline (StudyService) so questions are
+    checked the same way as Create → Quiz. Falls back to subjects when
+    the notification had no topics.
+    """
+    from fastapi import HTTPException
+    from services.exam_plan_service import list_plans
+    plan = next((p for p in list_plans() if p.get("id") == plan_id), None)
+    if plan is None:
+        raise HTTPException(404, "Plan not found")
+    topics = plan.get("assessment_topics") or plan.get("subjects") or ["General"]
+    topic = ", ".join(topics[:3])[:160]
+    config = get_config()
+    model = config.get("model", config.get("reasoning_model", MODELS["main"]))
+    count = max(3, min(10, int(req.count or 5)))
+    level = req.level if req.level in ("medium", "hard", "exam", "olympiad") else "hard"
+    questions = await study_svc.generate_quiz(topic, level, count, model, verify=False)
+    return {
+        "plan_id": plan_id,
+        "topic": topic,
+        "level": level,
+        "timed_mins": count * 2,
+        "questions": questions,
+    }
 
 
 @router.delete("/exam-plans/{plan_id}")

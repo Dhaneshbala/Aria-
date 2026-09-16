@@ -54,15 +54,17 @@ async def _weak_topics(limit: int = 5) -> list[str]:
 
 
 def build_schedule(exam_date: date, subjects: list[str], weak: list[str],
-                   assessment_topics: list[str] | None = None) -> list[dict]:
+                   assessment_topics: list[str] | None = None,
+                   weighting: int | None = None) -> list[dict]:
     """Pure function: dates + focus topics. Easy to unit test.
 
     Returns [{date: ISO, focus: str, weak_hit: bool}] for each study day
     from today up to (not including) the exam day, plus a light-review
     final entry for the day before the exam.
 
-    Priority queue: assessment-notification topics first (×2), then each
-    weak topic twice, then subjects round-robin.
+    Priority queue: assessment-notification topics first (×2, ×3 when the
+    task is high-stakes ≥30%), then each weak topic twice, then subjects
+    round-robin.
     """
     today = date.today()
     days_left = max(0, (exam_date - today).days)
@@ -76,8 +78,10 @@ def build_schedule(exam_date: date, subjects: list[str], weak: list[str],
 
     # Study days exclude the exam day itself
     study_dates = [today + timedelta(days=i) for i in range(days_left)]
-    # Priority queue: assessment topics (×2) → weak topics (×2) → subjects round-robin
-    queue = assessment_topics * 2 + weak * 2 + subjects
+    # High-stakes assessments repeat notification topics 3× so every topic
+    # is hit even in a short countdown.
+    repeat = 3 if (weighting or 0) >= 30 else 2
+    queue = assessment_topics * repeat + weak * 2 + subjects
     schedule: list[dict] = []
     for i, day in enumerate(study_dates):
         # Final study day = light review of the first subject
@@ -96,7 +100,9 @@ async def create_plan(exam_name: str, exam_date_str: str,
                       subjects: list[str], mins_per_day: int = 45,
                       assessment_text: str | None = None,
                       assessment_topics: list[str] | None = None,
-                      assessment_summary: str | None = None) -> dict:
+                      assessment_summary: str | None = None,
+                      weighting: int | None = None,
+                      task_type: str | None = None) -> dict:
     """Create a plan + todos. Raises ValueError on bad input.
 
     assessment_text: raw text extracted from an assessment notification
@@ -104,6 +110,9 @@ async def create_plan(exam_name: str, exam_date_str: str,
     assessment_topics: specific topics parsed from the notification — these
       go first in the schedule, ahead of weak topics.
     assessment_summary: short human-readable summary of the notification.
+    weighting: task weighting in % (e.g. 25). High-stakes (≥30%) repeats
+      notification topics 3× in the schedule.
+    task_type: e.g. 'in-class test', 'assignment', 'practical', 'depth study'.
     """
     from services.todo_service import add_todo
 
@@ -121,9 +130,14 @@ async def create_plan(exam_name: str, exam_date_str: str,
     assessment_topics = [t.strip() for t in (assessment_topics or []) if t.strip()][:12]
     assessment_text = (assessment_text or "").strip()[:4000]
     assessment_summary = (assessment_summary or "").strip()[:1000]
+    try:
+        weighting = max(0, min(100, int(weighting))) if weighting not in (None, "") else None
+    except Exception:
+        weighting = None
+    task_type = (task_type or "").strip()[:60] or None
 
     weak = await _weak_topics()
-    schedule = build_schedule(exam_date, subjects, weak, assessment_topics)
+    schedule = build_schedule(exam_date, subjects, weak, assessment_topics, weighting)
 
     days = []
     for entry in schedule:
@@ -150,6 +164,8 @@ async def create_plan(exam_name: str, exam_date_str: str,
         "assessment_topics": assessment_topics,
         "assessment_summary": assessment_summary,
         "assessment_text": assessment_text,
+        "weighting": weighting,
+        "task_type": task_type,
         "has_notification": bool(assessment_text or assessment_summary or assessment_topics),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -208,6 +224,35 @@ def _heuristic_parse(text: str) -> dict:
             break
     if not exam_name and lines:
         exam_name = lines[0][:60]
+    # Weighting: "Weighting: 25%", "worth 20%", "25 marks", "Weight 30%"
+    weighting = None
+    m = re.search(r"(?:weight(?:ing|age)?|worth|value)\s*[:\-]?\s*(\d{1,3})\s*%", t, re.I)
+    if m:
+        try:
+            weighting = max(0, min(100, int(m.group(1))))
+        except Exception:
+            weighting = None
+    if weighting is None:
+        m = re.search(r"\b(\d{1,3})\s*%\s*(?:of\s*final|weight|total)?", t, re.I)
+        if m:
+            try:
+                v = int(m.group(1))
+                if 5 <= v <= 100:
+                    weighting = v
+            except Exception:
+                pass
+    # Task type: in-class test, assignment, practical, depth study, essay, presentation
+    task_type = None
+    for cand in ("in-class test", "in class test", "depth study", "practical task",
+                 "assignment", "take-home", "presentation", "essay task", "examination",
+                 "half-yearly", "yearly examination", "topic test"):
+        if re.search(rf"\b{re.escape(cand)}\b", t, re.I):
+            task_type = cand.title() if len(cand) < 30 else cand
+            break
+    if task_type is None:
+        m = re.search(r"\btask\s*(?:type\s*[:\-]?\s*)?([A-Za-z][A-Za-z \-]{2,28})", t, re.I)
+        if m and re.search(r"(test|assign|practic|exam|essay|study|task)", m.group(1), re.I):
+            task_type = m.group(1).strip()[:40]
     summary = " ".join(t.split())[:600]
     return {
         "exam_name": exam_name or "",
@@ -215,6 +260,8 @@ def _heuristic_parse(text: str) -> dict:
         "subjects": subjects[:4],
         "topics": topics[:12],
         "summary": summary,
+        "weighting": weighting,
+        "task_type": task_type or "",
     }
 
 
@@ -223,11 +270,13 @@ async def parse_notification(text: str) -> dict:
 
     Tries the local LLM for a clean extraction, falls back to the
     heuristic parser so it never crashes and works offline-ish.
-    Always returns {exam_name, exam_date, subjects, topics, summary}.
+    Always returns {exam_name, exam_date, subjects, topics, summary,
+    weighting, task_type}.
     """
     text = (text or "").strip()
     if not text:
-        return {"exam_name": "", "exam_date": "", "subjects": [], "topics": [], "summary": ""}
+        return {"exam_name": "", "exam_date": "", "subjects": [], "topics": [],
+                "summary": "", "weighting": None, "task_type": ""}
     fallback = _heuristic_parse(text)
     try:
         from services.ollama_service import OllamaService
@@ -240,7 +289,9 @@ async def parse_notification(text: str) -> dict:
             "Return ONLY valid JSON: "
             '{"exam_name": "...", "exam_date": "YYYY-MM-DD or empty", '
             '"subjects": ["..."], "topics": ["topic1", ...up to 10], '
-            '"summary": "2-3 sentence summary of what the assessment is about"}\n\n'
+            '"summary": "2-3 sentence summary of what the assessment is about", '
+            '"weighting": 25 (integer % or null), '
+            '"task_type": "e.g. In-class test / Assignment / Depth study or empty"}\n\n'
             f"NOTIFICATION:\n{text[:3000]}"
         )
         raw = await OllamaService().complete(
@@ -251,12 +302,19 @@ async def parse_notification(text: str) -> dict:
         m = __import__("re").search(r"\{.*\}", raw, __import__("re").S)
         if m:
             data = _json.loads(m.group(0))
+            try:
+                w = data.get("weighting", fallback.get("weighting"))
+                w = max(0, min(100, int(w))) if w not in (None, "") else fallback.get("weighting")
+            except Exception:
+                w = fallback.get("weighting")
             out = {
                 "exam_name": str(data.get("exam_name") or fallback["exam_name"])[:60],
                 "exam_date": str(data.get("exam_date") or fallback["exam_date"])[:10],
                 "subjects": [str(s)[:30] for s in (data.get("subjects") or fallback["subjects"])][:4],
                 "topics": [str(s)[:80] for s in (data.get("topics") or fallback["topics"])][:12],
                 "summary": str(data.get("summary") or fallback["summary"])[:1000],
+                "weighting": w,
+                "task_type": str(data.get("task_type") or fallback.get("task_type") or "")[:40],
             }
             if out["topics"] or out["subjects"] or out["exam_name"]:
                 return out

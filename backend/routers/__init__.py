@@ -10,3 +10,4 @@ from routers.v2 import router as v2_router
 from routers.kb import router as kb_router
 from routers.imagegen import router as imagegen_router
 from routers.diagram import router as diagram_router
+from routers.maths import router as maths_router

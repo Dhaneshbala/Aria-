@@ -19,7 +19,7 @@ from routers import (
     chat_router, study_router, docs_router,
     research_router, voice_router, admin_router, agent_router,
     v2_router, kb_router, intelligence_router,
-    imagegen_router, diagram_router,
+    imagegen_router, diagram_router, maths_router,
 )
 from routers.notebooks import router as notebooks_router
 from routers.backup import router as backup_router
@@ -153,7 +153,7 @@ for router in [
     v2_router, kb_router, intelligence_router,
     notebooks_router,
     backup_router, system_router, todos_router,
-    imagegen_router, diagram_router,
+    imagegen_router, diagram_router, maths_router,
 ]:
     app.include_router(router)
 
