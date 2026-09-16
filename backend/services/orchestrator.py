@@ -878,6 +878,25 @@ async def orchestrate(
         except Exception as e:
             logger.debug("Memory save failed: %s", e)
 
+    # ── Step 8: Check gamification achievements — emit celebration events ──
+    try:
+        from services.gamification_service import GamificationService
+        from services.memory_service import MemoryService as _MS
+        game_svc = GamificationService()
+        mem_tmp = _MS()
+        profile = await mem_tmp.get_profile()
+        convs = await mem_tmp.get_conversations()
+        new_achievements = game_svc.check_and_award_achievements(profile, convs)
+        if new_achievements:
+            progress = game_svc.get_progress()
+            yield _sse({"type": "achievement", "content": {
+                "new": new_achievements,
+                "xp": progress.get("xp", 0),
+                "level": progress.get("level", 1),
+            }})
+    except Exception as e:
+        logger.debug("Gamification check failed: %s", e)
+
     yield _sse({"type": "progress", "step": "done", "status": "done", "pct": 100, "label": "Done"})
     yield _sse({"type": "done"})
 

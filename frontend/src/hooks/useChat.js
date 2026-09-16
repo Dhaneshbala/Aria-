@@ -8,6 +8,7 @@ import { useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store'
 import { streamChat, getConversations } from '../services/api'
+import { showToast } from '../components/Toast'
 
 // Module-level — survives ChatPage unmount
 let activeAbort = null
@@ -244,6 +245,20 @@ export function useChat() {
               break
 
             case 'status':
+              break
+
+            case 'achievement':
+              // Gamification: new achievements earned during this chat
+              if (data.content?.new?.length) {
+                for (const a of data.content.new) {
+                  showToast(`${a.icon} Achievement unlocked: ${a.name}!`, 'success', 4000)
+                }
+                // Update game progress in store
+                useStore.getState().setGameProgress?.({
+                  xp: data.content.xp,
+                  level: data.content.level,
+                })
+              }
               break
 
             case 'progress':

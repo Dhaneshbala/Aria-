@@ -19,6 +19,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage'))
 const SpacedRepetitionPage = lazy(() => import('./pages/SpacedRepetitionPage'))
 const YouTubePage = lazy(() => import('./pages/YouTubePage'))
 const MemoryPage = lazy(() => import('./pages/MemoryPage'))
+const KBPage = lazy(() => import('./pages/KBPage'))
 
 import { Menu, ChevronDown, Sparkles, Search, Maximize, Minimize } from 'lucide-react'
 
@@ -146,6 +147,7 @@ export default function App() {
                   <Route path="/review" element={<SpacedRepetitionPage />} />
                   <Route path="/flashcards" element={<SpacedRepetitionPage />} />
                   <Route path="/memory" element={<MemoryPage />} />
+                  <Route path="/kb" element={<KBPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/profile" element={<Navigate to="/admin" replace />} />
                   <Route path="*" element={<Navigate to="/chat" replace />} />

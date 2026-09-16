@@ -4,7 +4,8 @@ import { useStore } from '../store'
 import {
   getSrStats, getWeakTopics, getDueCards, getTodos, getTodoCushion,
   createTodo, updateTodo, deleteTodo, getGameProgress, getFocusScore,
-  getWeeklySummary, getHeatmap, getChallenge, getConfig, saveConfig
+  getWeeklySummary, getHeatmap, getChallenge, getConfig, saveConfig,
+  getLeaderboard, getTrends
 } from '../services/api'
 import { showToast } from '../components/Toast'
 import {
@@ -65,6 +66,8 @@ function DashboardWelcome({ onAction }) {
   const [focus, setFocus] = useState(null)
   const [weekly, setWeekly] = useState(null)
   const [challenge, setChallenge] = useState(null)
+  const [heatmap, setHeatmap] = useState(null)
+  const [leaderboard, setLeaderboard] = useState(null)
   const [pomRunning, setPomRunning] = useState(false)
   const [pomSecs, setPomSecs] = useState(25 * 60)
   const [pomMode, setPomMode] = useState('work')
@@ -76,6 +79,8 @@ function DashboardWelcome({ onAction }) {
     getFocusScore().then(setFocus).catch(() => {})
     getWeeklySummary().then(setWeekly).catch(() => {})
     getChallenge().then(setChallenge).catch(() => {})
+    getHeatmap(1).then(setHeatmap).catch(() => {})
+    getLeaderboard().then(setLeaderboard).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -259,6 +264,45 @@ function DashboardWelcome({ onAction }) {
                   <p className="text-xs font-medium text-[#e3e3e3]">{a.name}</p>
                   <p className="text-[10px] text-[#5f6368]">{a.category}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Heatmap Grid ── */}
+      {heatmap?.heatmap?.length > 0 && (
+        <div className="w-full max-w-xl mb-6">
+          <p className="text-[10px] text-[#5f6368] uppercase tracking-wider mb-2 px-1">Study Activity</p>
+          <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-3">
+            <div className="flex gap-0.5 flex-wrap">
+              {heatmap.heatmap.map((day, i) => {
+                const colors = ['bg-[#1e1f20]', 'bg-[#0e4429]', 'bg-[#006d32]', 'bg-[#26a641]', 'bg-[#39d353]']
+                return (
+                  <div key={i} className={`w-3 h-3 rounded-sm ${colors[day.level] || colors[0]}`}
+                    title={`${day.date}: ${day.count} interactions`} />
+                )
+              })}
+            </div>
+            <div className="flex items-center justify-between mt-2 text-[10px] text-[#5f6368]">
+              <span>{heatmap.total_days_active} active days · {heatmap.current_streak} day streak</span>
+              <span>{heatmap.total_interactions} total</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leaderboard ── */}
+      {leaderboard?.entries?.length > 0 && (
+        <div className="w-full max-w-xl mb-6">
+          <p className="text-[10px] text-[#5f6368] uppercase tracking-wider mb-2 px-1">Subject Leaderboard</p>
+          <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-3 space-y-2">
+            {leaderboard.entries.slice(0, 5).map((e, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <span className="text-sm w-5 text-center">{e.rank === 'gold' ? '🥇' : e.rank === 'silver' ? '🥈' : e.rank === 'bronze' ? '🥉' : `${i + 1}`}</span>
+                <span className="text-xs text-[#e3e3e3] flex-1 capitalize">{e.subject}</span>
+                <span className="text-xs text-[#8ab4f8]">{e.accuracy}%</span>
+                <span className="text-[10px] text-[#5f6368]">{e.questions}q</span>
               </div>
             ))}
           </div>

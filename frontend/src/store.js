@@ -25,6 +25,9 @@ export const useStore = create((set, get) => ({
   progressSteps: [], // array of {step, label, status}
   ollamaStatus: 'checking', // 'ok' | 'error' | 'checking'
   mode: 'normal', // 'normal' | 'think' | 'fast' | 'socratic' | 'roleplay' | 'hype'
+  gameProgress: null, // {xp, level} — live updated from achievement events
+
+  setGameProgress: (data) => set({ gameProgress: data }),
 
   // Config — single main model (gemma) + nomic for embeddings
   config: {
