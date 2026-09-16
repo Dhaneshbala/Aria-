@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Square, Loader } from 'lucide-react'
-import { streamChat, transcribeAudio, synthesizeSpeech } from '../services/api'
+import { Mic, Square, Loader, History, X, MessageSquare, Trash2 } from 'lucide-react'
+import { streamChat, transcribeAudio, synthesizeSpeech, getMemoryConversations, getMemoryConversation, deleteMemoryConversation } from '../services/api'
 import { showToast } from '../components/Toast'
 
 const MAX_RECORD_SECS = 45
 
-// Strip markdown/code so TTS speaks natural sentences, not symbols
 function forSpeech(text) {
   return (text || '')
     .replace(/```[\s\S]*?```/g, ' [diagram shown on screen]. ')
@@ -22,9 +21,14 @@ function forSpeech(text) {
 }
 
 export default function VoiceTutorPage() {
-  const [phase, setPhase] = useState('idle') // idle|listening|transcribing|thinking|speaking
+  const [phase, setPhase] = useState('idle')
   const [turns, setTurns] = useState([])
   const [loop, setLoop] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState([])
+  const [historyTurns, setHistoryTurns] = useState([])
+  const [selectedHistory, setSelectedHistory] = useState(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const loopRef = useRef(false)
   const convRef = useRef(null)
   const recRef = useRef(null)
@@ -37,7 +41,6 @@ export default function VoiceTutorPage() {
 
   const busy = phase !== 'idle'
 
-  // Full cleanup on unmount
   useEffect(() => () => stopEverything(false), [])
 
   function stopTracks() {
@@ -75,7 +78,6 @@ export default function VoiceTutorPage() {
         clearTimeout(timerRef.current)
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
         if (blob.size < 500) {
-          // Too short — listen again
           if (loopRef.current) listen()
           else setPhase('idle')
           return
@@ -83,7 +85,6 @@ export default function VoiceTutorPage() {
         handleAudio(blob)
       }
       rec.start()
-      // Auto-stop long recordings
       timerRef.current = setTimeout(() => {
         try { if (recRef.current?.state === 'recording') recRef.current.stop() } catch {}
       }, MAX_RECORD_SECS * 1000)
@@ -175,8 +176,37 @@ export default function VoiceTutorPage() {
   }
 
   const stopTalking = () => {
-    // End current recording early and send it
     try { if (recRef.current?.state === 'recording') recRef.current.stop() } catch {}
+  }
+
+  const loadHistory = async () => {
+    setShowHistory(true)
+    setLoadingHistory(true)
+    try {
+      const convs = await getMemoryConversations()
+      // Filter to voice-like conversations (shorter, or mark as voice)
+      setHistory(Array.isArray(convs) ? convs.slice(0, 30) : [])
+    } catch {} finally { setLoadingHistory(false) }
+  }
+
+  const openHistory = async (conv) => {
+    setSelectedHistory(conv)
+    setLoadingHistory(true)
+    try {
+      const turns = await getMemoryConversation(conv.id || conv.conversation_id)
+      setHistoryTurns(Array.isArray(turns) ? turns : [])
+    } catch { setHistoryTurns([]) }
+    setLoadingHistory(false)
+  }
+
+  const deleteHistory = async (id) => {
+    if (!window.confirm('Delete this session?')) return
+    try {
+      await deleteMemoryConversation(id)
+      setHistory(prev => prev.filter(c => (c.id || c.conversation_id) !== id))
+      if (selectedHistory?.id === id) { setSelectedHistory(null); setHistoryTurns([]) }
+      showToast('Session deleted', 'success', 2500)
+    } catch { showToast('Delete failed', 'error') }
   }
 
   const PHASE_LABEL = {
@@ -187,12 +217,103 @@ export default function VoiceTutorPage() {
     speaking: 'ARIA is answering…',
   }
 
+  // History panel
+  if (showHistory) {
+    return (
+      <div className="flex flex-col h-full w-full max-w-2xl mx-auto px-6 py-6">
+        <div className="flex items-center gap-2 mb-4">
+          <button onClick={() => { setShowHistory(false); setSelectedHistory(null); setHistoryTurns([]) }}
+            className="p-1.5 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6]">
+            <X size={16} />
+          </button>
+          <History size={16} className="text-[#8ab4f8]" />
+          <h1 className="text-lg font-semibold text-[#e3e3e3]">Voice Sessions</h1>
+        </div>
+
+        {selectedHistory ? (
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex items-center gap-2 mb-3">
+              <button onClick={() => { setSelectedHistory(null); setHistoryTurns([]) }}
+                className="text-xs text-[#8ab4f8] hover:underline">← Back</button>
+              <span className="text-xs text-[#5f6368]">{selectedHistory.title || 'Voice session'}</span>
+            </div>
+            {loadingHistory ? (
+              <div className="flex justify-center py-8"><Loader size={16} className="text-[#5f6368] animate-spin" /></div>
+            ) : (
+              <div className="space-y-3">
+                {historyTurns.map((turn, i) => (
+                  <div key={i} className="space-y-2">
+                    {turn.user && (
+                      <div className="flex justify-end">
+                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-[#7c6af7]/10 border border-[#7c6af7]/20 text-sm text-[#e3e3e3]">
+                          🎤 {turn.user}
+                        </div>
+                      </div>
+                    )}
+                    {turn.ai && (
+                      <div className="flex justify-start">
+                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-[#ccc] whitespace-pre-wrap">
+                          🔊 {turn.ai.slice(0, 300)}{turn.ai.length > 300 ? '…' : ''}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            {loadingHistory ? (
+              <div className="flex justify-center py-8"><Loader size={16} className="text-[#5f6368] animate-spin" /></div>
+            ) : history.length === 0 ? (
+              <div className="text-center py-12">
+                <History size={32} className="text-[#2d2e30] mx-auto mb-2" />
+                <p className="text-sm text-[#5f6368]">No voice sessions yet</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {history.map(conv => {
+                  const id = conv.id || conv.conversation_id
+                  return (
+                    <div key={id}
+                      onClick={() => openHistory(conv)}
+                      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#1e1f20] cursor-pointer transition-colors">
+                      <MessageSquare size={14} className="text-[#5f6368] shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#e3e3e3] truncate">{conv.title || 'Voice session'}</p>
+                        <p className="text-[10px] text-[#5f6368]">{conv.turns || conv.turn_count || '?'} turns</p>
+                      </div>
+                      <button onClick={e => { e.stopPropagation(); deleteHistory(id) }}
+                        className="p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-[#5f6368] hover:text-red-400 transition-all">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Main voice interface
   return (
     <div className="flex flex-col h-full w-full max-w-2xl mx-auto px-6 py-6">
-      <h1 className="text-2xl font-bold text-[#e8e8e8] mb-1 text-center">Voice Tutor</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-2xl font-bold text-[#e8e8e8] text-center flex-1">Voice Tutor</h1>
+        <button onClick={loadHistory}
+          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors"
+          title="Session history">
+          <History size={18} />
+        </button>
+      </div>
       <p className="text-xs text-[#666] mb-4 text-center flex items-center justify-center gap-1.5">
         {busy && phase !== 'idle' && <Loader size={11} className="animate-spin" />}
         {PHASE_LABEL[phase]}
+        {convRef.current && <span className="ml-1 text-[#5f6368]">(saved)</span>}
       </p>
 
       {/* Turns */}
