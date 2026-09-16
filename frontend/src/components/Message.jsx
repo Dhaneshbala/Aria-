@@ -5,7 +5,8 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import MindMapWidget from './MindMapWidget'
 import NapkinDiagram, { NAPKIN_TYPES } from './NapkinDiagram'
-import { checkAnswer, getWeakTopics, transcribeAudio, suggestVisuals, generateDiagram } from '../services/api'
+import { checkAnswer, getWeakTopics, transcribeAudio, suggestVisuals, generateDiagram, bulkAddSrCards } from '../services/api'
+import { showToast } from './Toast'
 import { startTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { Copy, Check, ChevronDown, ChevronUp, Zap, Globe, Eye, Youtube, CheckCircle, Circle, Volume2, Loader, ShieldCheck, ShieldAlert, Sparkles, BookOpen, ExternalLink, Mic, MicOff } from 'lucide-react'
@@ -17,6 +18,27 @@ function isSafeUrl(url) {
   } catch {
     return false
   }
+}
+
+const FOLLOW_UPS = {
+  explain:  ['Quiz me on this', 'Show me a mind map', 'Give me a practice question'],
+  math:     ['Show me another method', 'Make it harder', 'Quiz me on this'],
+  science:  ['Draw a diagram', 'Quiz me on this', 'Give me a real-world example'],
+  history:  ['Make a timeline', 'Quiz me on this', 'Compare with another event'],
+  coding:   ['Debug this code', 'Show me another example', 'Make a quiz on this'],
+  quiz:     ['Make it harder', 'Try another topic', 'Review my mistakes'],
+  default:  ['Quiz me on this', 'Make a mind map', 'Explain differently'],
+}
+
+function getFollowUps(content) {
+  const lower = (content || '').toLowerCase()
+  if (lower.includes('quiz') || lower.includes('question')) return FOLLOW_UPS.quiz
+  if (lower.includes('explain') || lower.includes('what is') || lower.includes('how does')) return FOLLOW_UPS.explain
+  if (lower.includes('math') || lower.includes('equation') || lower.includes('calculate') || lower.includes('algebra')) return FOLLOW_UPS.math
+  if (lower.includes('science') || lower.includes('biology') || lower.includes('chemistry') || lower.includes('physics')) return FOLLOW_UPS.science
+  if (lower.includes('history') || lower.includes('war') || lower.includes('revolution')) return FOLLOW_UPS.history
+  if (lower.includes('code') || lower.includes('function') || lower.includes('python') || lower.includes('javascript')) return FOLLOW_UPS.coding
+  return FOLLOW_UPS.default
 }
 
 // ── Root message component ────────────────────────────────────────────────────
@@ -154,22 +176,37 @@ function Message({ msg, onSuggest }) {
         {!isUser && msg.extras && <ExtrasPanel extras={msg.extras} onSuggest={onSuggest} />}
 
         {/* Follow-up suggestions (NotebookLM-style) */}
-        {!isUser && msg.suggestions?.length > 0 && !msg.streaming && onSuggest && (
+        {!isUser && !msg.streaming && onSuggest && (
           <div className="w-full mt-2">
-            <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Sparkles size={10} /> Keep exploring
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {msg.suggestions.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => onSuggest(q)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-[#141414] border border-[#2a2a2a] text-[#888] hover:border-[#7c6af7]/50 hover:text-[#bbb] hover:bg-[#7c6af7]/5 transition-all text-left"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+            {(msg.suggestions?.length > 0) ? (
+              <>
+                <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <Sparkles size={10} /> Keep exploring
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {msg.suggestions.map((q, i) => (
+                    <button key={i} onClick={() => onSuggest(q)}
+                      className="text-xs px-3 py-1.5 rounded-full bg-[#141414] border border-[#2a2a2a] text-[#888] hover:border-[#7c6af7]/50 hover:text-[#bbb] hover:bg-[#7c6af7]/5 transition-all text-left">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : msg.content && msg.content.length > 50 ? (
+              <>
+                <p className="text-[10px] text-[#555] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <Sparkles size={10} /> What next?
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {getFollowUps(msg.content).map((q, i) => (
+                    <button key={i} onClick={() => onSuggest(q)}
+                      className="text-xs px-3 py-1.5 rounded-full bg-[#141414] border border-[#2a2a2a] text-[#888] hover:border-[#7c6af7]/50 hover:text-[#bbb] hover:bg-[#7c6af7]/5 transition-all text-left">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -538,6 +575,7 @@ function InlineQuiz({ questions, label }) {
   const [score, setScore] = useState(0)
   const [done, setDone] = useState(false)
   const [answers, setAnswers] = useState([])
+  const [savedWrong, setSavedWrong] = useState(false)
   const LETTERS = ['A', 'B', 'C', 'D']
   const q = questions[idx]
 
@@ -546,10 +584,8 @@ function InlineQuiz({ questions, label }) {
     setSelected(i)
     const correct = LETTERS[i] === q.correct
     if (correct) setScore(s => s + 1)
-    setAnswers(a => [...a, correct])
-    // Mistake bank: auto-log to profile (advanced_study_service find_knowledge_gaps uses profile weak_areas)
+    setAnswers(a => [...a, { correct, question: q.question, options: q.options, correctIdx: q.correct, explanation: q.explanation }])
     try {
-      // fire-and-forget, subject inferred from label or general
       const subj = (label || 'general').toLowerCase().replace(/[^a-z]/g, '') || 'general'
       checkAnswer(subj, correct).catch(() => {})
       checkAnswer('general', correct).catch(() => {})
@@ -561,6 +597,22 @@ function InlineQuiz({ questions, label }) {
     else setDone(true)
   }
 
+  const saveWrongAsFlashcards = async () => {
+    const wrong = answers.filter(a => !a.correct)
+    if (!wrong.length) return
+    try {
+      const cards = wrong.map(a => ({
+        front: a.question,
+        back: `${a.options[LETTERS.indexOf(a.correctIdx)]}\n\n${a.explanation || ''}`,
+      }))
+      await bulkAddSrCards(cards, (label || 'general').toLowerCase().replace(/[^a-z]/g, '') || 'general')
+      setSavedWrong(true)
+      showToast(`Saved ${cards.length} flashcard${cards.length > 1 ? 's' : ''} for review`, 'success', 2500)
+    } catch (e) {
+      showToast('Failed to save flashcards', 'error')
+    }
+  }
+
   if (done) return (
     <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 text-center">
       <div className="text-2xl mb-1">{score === questions.length ? '🏆' : score >= questions.length / 2 ? '👏' : '📚'}</div>
@@ -569,10 +621,21 @@ function InlineQuiz({ questions, label }) {
         {score === questions.length ? 'Perfect! Brilliant work!' :
          score >= questions.length * 0.7 ? 'Great job!' : 'Keep practising — you\'ll get there!'}
       </p>
-      <button onClick={() => { setIdx(0); setSelected(null); setScore(0); setDone(false); setAnswers([]) }}
-        className="mt-3 text-xs px-4 py-1.5 rounded-full bg-[#7c6af7]/20 text-[#a89bf8] hover:bg-[#7c6af7]/30 transition-colors">
-        Try Again
-      </button>
+      <div className="flex gap-2 mt-3 justify-center">
+        <button onClick={() => { setIdx(0); setSelected(null); setScore(0); setDone(false); setAnswers([]); setSavedWrong(false) }}
+          className="text-xs px-4 py-1.5 rounded-full bg-[#7c6af7]/20 text-[#a89bf8] hover:bg-[#7c6af7]/30 transition-colors">
+          Try Again
+        </button>
+        {score < questions.length && !savedWrong && (
+          <button onClick={saveWrongAsFlashcards}
+            className="text-xs px-4 py-1.5 rounded-full bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors">
+            Save wrong answers as flashcards
+          </button>
+        )}
+        {savedWrong && (
+          <span className="text-xs px-4 py-1.5 rounded-full bg-green-500/10 text-green-400">✓ Saved to flashcards</span>
+        )}
+      </div>
     </div>
   )
 
@@ -625,12 +688,24 @@ function InlineFlashcards({ cards, label }) {
   const [idx, setIdx] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [known, setKnown] = useState(new Set())
+  const [saved, setSaved] = useState(false)
   const card = cards[idx]
 
   const markKnown = () => {
     setKnown(k => new Set([...k, idx]))
     setFlipped(false)
     setIdx(i => (i + 1) % cards.length)
+  }
+
+  const saveAllToSR = async () => {
+    try {
+      const cardsToSave = cards.map(c => ({ front: c.front, back: c.back }))
+      await bulkAddSrCards(cardsToSave, (label || 'general').toLowerCase().replace(/[^a-z]/g, '') || 'general')
+      setSaved(true)
+      showToast(`${cards.length} flashcard${cards.length > 1 ? 's' : ''} saved for review`, 'success', 2500)
+    } catch (e) {
+      showToast('Failed to save flashcards', 'error')
+    }
   }
 
   return (
@@ -664,6 +739,16 @@ function InlineFlashcards({ cards, label }) {
         )}
         <button onClick={() => { setIdx(i => (i + 1) % cards.length); setFlipped(false) }}
           className="flex-1 text-xs py-2 rounded-xl bg-[#2a2a2a] text-[#777] hover:text-[#e8e8e8] transition-colors">Next →</button>
+      </div>
+      <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
+        {saved ? (
+          <span className="text-xs text-green-400">✓ Saved to spaced repetition</span>
+        ) : (
+          <button onClick={saveAllToSR}
+            className="text-xs px-3 py-1.5 rounded-full bg-[#7c6af7]/15 text-[#a89bf8] hover:bg-[#7c6af7]/25 transition-colors">
+            Save all {cards.length} cards to flashcard deck
+          </button>
+        )}
       </div>
     </div>
   )
