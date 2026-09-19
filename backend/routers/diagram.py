@@ -1,6 +1,6 @@
 """Diagram router — Napkin AI-style visuals (inline in chat, no separate page)."""
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.diagram_service import DiagramService
 
 router = APIRouter(prefix="/api/diagram", tags=["diagram"])
@@ -8,13 +8,13 @@ svc = DiagramService()
 
 
 class DiagramRequest(BaseModel):
-    prompt: str
-    visual_type: str | None = None
-    max_tokens: int = 700
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    visual_type: str | None = Field(default=None, max_length=50)
+    max_tokens: int = Field(default=700, ge=100, le=2000)
 
 
 class SuggestRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(..., min_length=1, max_length=2000)
 
 
 @router.post("/generate")

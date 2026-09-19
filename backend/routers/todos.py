@@ -1,25 +1,28 @@
 """Todos / Assignment Inbox — solo student organization."""
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from services.todo_service import list_todos, add_todo, update_todo, delete_todo, cushion, parse_due_date, parse_estimate, parse_priority
 
 router = APIRouter(prefix="/api/todos", tags=["todos"])
 
 class TodoCreate(BaseModel):
-    subject: str = "General"
-    task: str
-    due_date: Optional[str] = None
-    estimated_mins: int = 30
-    priority: str = "medium"
+    subject: str = Field(default="General", max_length=100)
+    task: str = Field(..., min_length=1, max_length=1000)
+    due_date: Optional[str] = Field(default=None, max_length=50)
+    estimated_mins: int = Field(default=30, ge=1, le=1440)
+    priority: str = Field(default="medium", pattern="^(low|medium|high|urgent)$")
 
 class TodoUpdate(BaseModel):
-    subject: Optional[str] = None
-    task: Optional[str] = None
-    due_date: Optional[str] = None
-    estimated_mins: Optional[int] = None
-    priority: Optional[str] = None
+    subject: Optional[str] = Field(default=None, max_length=100)
+    task: Optional[str] = Field(default=None, max_length=1000)
+    due_date: Optional[str] = Field(default=None, max_length=50)
+    estimated_mins: Optional[int] = Field(default=None, ge=1, le=1440)
+    priority: Optional[str] = Field(default=None, pattern="^(low|medium|high|urgent)$")
     completed: Optional[bool] = None
+
+class TodoFromChatRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
 
 @router.get("")
 async def get_todos():
@@ -63,9 +66,9 @@ async def get_cushion():
     return cushion()
 
 @router.post("/from-chat")
-async def create_from_chat(data: dict):
+async def create_from_chat(data: TodoFromChatRequest):
     """Create todo from chat-parsed text: {text: "add maths HW due Fri 45m"}"""
-    text = data.get("text", "") or data.get("message", "")
+    text = data.text
     if not text.strip():
         raise HTTPException(400, "text required")
     # Simple parsing: subject is first word before task, or "General"

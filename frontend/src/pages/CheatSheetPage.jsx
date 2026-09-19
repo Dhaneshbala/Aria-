@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { Zap, Printer, Copy, Check, Download } from 'lucide-react'
 import { generateCheatsheet } from '../services/api'
+import { startTask, cancelTask, useBgTask } from '../services/tasks'
+import { useStore } from '../store'
 import { showToast } from '../components/Toast'
 
 const EXAMPLES = [
@@ -18,34 +20,77 @@ const EXAMPLES = [
 const SUBJECTS = ['Maths', 'Science', 'Biology', 'Chemistry', 'Physics', 'History', 'Geography', 'English']
 
 export default function CheatSheetPage() {
-  const [topic, setTopic] = useState('')
-  const [subject, setSubject] = useState('')
-  const [sheet, setSheet] = useState('')
-  const [busy, setBusy] = useState(false)
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.cheatsheet || {}
+  const [topic, setTopic] = useState(saved.topic || '')
+  const [subject, setSubject] = useState(saved.subject || '')
+  const [sheet, setSheet] = useState(saved.sheet || '')
+  const [busy, setBusy] = useState(
+    () => useStore.getState().bgTasks?.cheatsheet?.status === 'running'
+  )
   const [copied, setCopied] = useState(false)
-  const abortRef = useRef(null)
+  const bg = useBgTask('cheatsheet')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
   const printRef = useRef(null)
+
+  // Adopt background run: returning to page while cheatsheet generates
+  useEffect(() => {
+    if (bg?.status === 'running') setBusy(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (bg?.status === 'done' && !sheet && saved.sheet) {
+      setSheet(saved.sheet)
+      setTopic(saved.topic || topic)
+      setSubject(saved.subject || subject)
+      setBusy(false)
+    } else if ((bg?.status === 'error' || bg?.status === 'cancelled') && busy) {
+      setBusy(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bg?.status])
+
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('cheatsheet', { topic, subject, sheet })
+  }, [topic, subject, sheet])
 
   const generate = async (t = topic) => {
     const clean = (t || '').trim()
     if (!clean) { showToast('Type a topic first', 'error'); return }
-    abortRef.current?.abort()
-    abortRef.current = new AbortController()
+    cancelTask('cheatsheet', { silent: true })
     setBusy(true)
     setSheet('')
     try {
-      const res = await generateCheatsheet(clean.slice(0, 150), subject, abortRef.current.signal)
-      setSheet(res.cheatsheet || '')
-      try {
-        const key = 'aria_cheatsheets'
-        const prev = JSON.parse(localStorage.getItem(key) || '[]')
-        prev.unshift({ topic: clean, subject, sheet: res.cheatsheet || '', ts: Date.now() })
-        localStorage.setItem(key, JSON.stringify(prev.slice(0, 20)))
-      } catch {}
+      await startTask('cheatsheet', {
+        label: `Cheat sheet: ${clean.slice(0, 40)}`,
+        page: '/cheatsheets',
+        topic: clean,
+        run: (signal) => generateCheatsheet(clean.slice(0, 150), subject, signal),
+        onDone: (res) => {
+          const md = res.cheatsheet || ''
+          setStudyTool('cheatsheet', { topic: clean, subject, sheet: md })
+          // Also save to localStorage history
+          try {
+            const key = 'aria_cheatsheets'
+            const prev = JSON.parse(localStorage.getItem(key) || '[]')
+            prev.unshift({ topic: clean, subject, sheet: md, ts: Date.now() })
+            localStorage.setItem(key, JSON.stringify(prev.slice(0, 20)))
+          } catch {}
+        },
+      })
+      // If still mounted, update local state
+      if (mountedRef.current) {
+        const latest = useStore.getState().studyTools.cheatsheet
+        setSheet(latest.sheet || '')
+        setBusy(false)
+      }
     } catch (e) {
-      if (e?.name !== 'AbortError') showToast('Could not generate: ' + e.message, 'error')
-    } finally {
-      setBusy(false)
+      if (mountedRef.current && e?.name !== 'AbortError') {
+        showToast('Could not generate: ' + e.message, 'error')
+        setBusy(false)
+      }
     }
   }
 

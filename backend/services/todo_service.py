@@ -50,7 +50,7 @@ def list_todos() -> list[dict]:
     todos = _load()
     # sort: incomplete first, then due date, then priority — handle None due_date
     def sort_key(t):
-        prio = {"high": 0, "medium": 1, "low": 2}.get(t.get("priority", "medium"), 1)
+        prio = {"urgent": -1, "high": 0, "medium": 1, "low": 2}.get(t.get("priority", "medium"), 1)
         due = t.get("due_date") or "9999-12-31"
         # ensure due is str for comparison
         if not isinstance(due, str):
@@ -59,15 +59,27 @@ def list_todos() -> list[dict]:
         return (completed, due, prio)
     return sorted(todos, key=sort_key)
 
+def _normalize_due(due_date: str | None) -> str | None:
+    """Accept None or YYYY-MM-DD; anything else normalizes to None instead of
+    polluting sort order (lexicographic compare on garbage dates)."""
+    if not due_date:
+        return None
+    try:
+        datetime.strptime(str(due_date), "%Y-%m-%d")
+        return str(due_date)
+    except Exception:
+        return None
+
+
 def add_todo(subject: str, task: str, due_date: str | None = None, estimated_mins: int = 30, priority: str = "medium") -> dict:
     todos = _load()
     todo = {
         "id": str(uuid.uuid4())[:8],
         "subject": subject.strip() or "General",
         "task": task.strip() or "Untitled",
-        "due_date": due_date,
+        "due_date": _normalize_due(due_date),
         "estimated_mins": max(5, min(240, int(estimated_mins))),
-        "priority": priority if priority in ("low", "medium", "high") else "medium",
+        "priority": priority if priority in ("low", "medium", "high", "urgent") else "medium",
         "completed": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -84,6 +96,10 @@ def update_todo(todo_id: str, updates: dict) -> dict | None:
                 if k in updates:
                     if k == "estimated_mins":
                         t[k] = max(5, min(240, int(updates[k])))
+                    elif k == "due_date":
+                        t[k] = _normalize_due(updates[k])
+                    elif k == "priority":
+                        t[k] = updates[k] if updates[k] in ("low", "medium", "high", "urgent") else "medium"
                     else:
                         t[k] = updates[k]
             _save(todos)

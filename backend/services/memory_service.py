@@ -67,7 +67,7 @@ def _save_json(path: Path, data):
 
 
 def _rerank_local(query: str, docs: list[str], top_k: int | None = None) -> list[str]:
-    """Local reranker — cross-encoder quantized if available, else nomic similarity fallback.
+    """Local reranker — cross-encoder quantized if available, else keyword similarity fallback.
     Runs on CPU, no API, no RAM spike. Used for Phase 3 free polish."""
     if not docs:
         return docs
@@ -82,7 +82,7 @@ def _rerank_local(query: str, docs: list[str], top_k: int | None = None) -> list
         return out[:top_k] if top_k else out
     except Exception:
         pass
-    # Fallback: simple keyword overlap + nomic cosine via difflib (free, no model)
+    # Fallback: simple keyword overlap + cosine via difflib (free, no model)
     try:
         q_words = set(query.lower().split())
         def score(d):
@@ -178,9 +178,9 @@ async def _llm_title_for_turns(turns: list[dict], model: str | None = None) -> s
         return _heuristic_title(turns)
 
 
-class _NomicEmbeddingFunction:
-    """Embedding function that calls nomic-embed-text via Ollama.
-    Keeps memory vectors consistent with KB vectors (both use nomic).
+class _MxbaiEmbeddingFunction:
+    """Embedding function that calls mxbai-embed-large via Ollama.
+    Keeps memory vectors consistent with KB vectors (both use mxbai).
     Respects OLLAMA_URL env and MODELS config, handles both /api/embed
     and legacy /api/embeddings, and avoids poisoning DB with zero vectors."""
 
@@ -190,10 +190,10 @@ class _NomicEmbeddingFunction:
         try:
             from models.database import OLLAMA_URL as _OLLAMA_URL, MODELS as _MODELS
             ollama_url = _OLLAMA_URL
-            embed_model = _MODELS.get("embedding", "nomic-embed-text")
+            embed_model = _MODELS.get("embedding", "mxbai-embed-large")
         except Exception:
             ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/").split("/api")[0]
-            embed_model = os.environ.get("ARIA_EMBED_MODEL", "nomic-embed-text")
+            embed_model = os.environ.get("ARIA_EMBED_MODEL", "mxbai-embed-large")
 
         # Normalize model variants — Ollama may have :latest suffix
         candidates = [embed_model]
@@ -234,7 +234,7 @@ class _NomicEmbeddingFunction:
                         if emb:
                             embeddings.append(emb)
                         else:
-                            embeddings.append([0.0] * 768)
+                            embeddings.append([0.0] * 1024)
                 if len(embeddings) == len(input):
                     return embeddings
             except Exception as e:
@@ -242,7 +242,7 @@ class _NomicEmbeddingFunction:
                 continue
 
         logger.warning("Memory embedding failed for all candidates %s — returning zero vectors", candidates)
-        return [[0.0] * 768 for _ in input]
+        return [[0.0] * 1024 for _ in input]
 
 
 class MemoryService:
@@ -259,8 +259,8 @@ class MemoryService:
             from chromadb.config import Settings
             db_path = str(DATA_DIR / "chromadb")
             client = chromadb.PersistentClient(path=db_path)
-            # Use nomic-embed-text via Ollama for consistent embeddings with KB
-            embedding_fn = _NomicEmbeddingFunction()
+            # Use mxbai-embed-large via Ollama for consistent embeddings with KB
+            embedding_fn = _MxbaiEmbeddingFunction()
             self._collection = client.get_or_create_collection(
                 name="aria_memory",
                 metadata={"hnsw:space": "cosine"},

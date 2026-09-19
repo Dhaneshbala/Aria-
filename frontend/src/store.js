@@ -7,9 +7,29 @@ function loadMsgCache() {
 }
 function saveMsgCache(convId, msgs) {
   if (!convId || !msgs.length) return
-  const cache = loadMsgCache()
-  cache[convId] = msgs.slice(-100) // keep last 100 messages
-  sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache))
+  try {
+    const cache = loadMsgCache()
+    cache[convId] = msgs.slice(-100) // keep last 100 messages
+    try {
+      sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache))
+    } catch (e) {
+      if (e?.name === 'QuotaExceededError' || e?.code === 22) {
+        // Prune oldest conversations until it fits (keep max 10 recent)
+        const ids = Object.keys(cache)
+        while (ids.length > 10) {
+          delete cache[ids.shift()]
+          try {
+            sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify(cache))
+            return
+          } catch {}
+        }
+        // Last resort: keep only current conversation
+        try {
+          sessionStorage.setItem(MSG_CACHE_KEY, JSON.stringify({ [convId]: msgs.slice(-100) }))
+        } catch {}
+      }
+    }
+  } catch {}
 }
 function getCachedMsgs(convId) {
   return loadMsgCache()[convId] || []
@@ -29,22 +49,27 @@ export const useStore = create((set, get) => ({
 
   setGameProgress: (data) => set({ gameProgress: data }),
 
-  // Config — single main model (gemma) + nomic for embeddings
+  // Config — single main model (gemma) + mxbai-embed-large for embeddings
   config: {
     model: 'gemma4:e4b-mlx',
     reasoning_model: 'gemma4:e4b-mlx',
     vision_model: 'gemma4:e4b-mlx',
     fallback_model: 'gemma4:e4b-mlx',
     coding_model: 'gemma4:e4b-mlx',
-    embedding_model: 'nomic-embed-text',
+    embedding_model: 'mxbai-embed-large',
     student_name: 'Student',
     student_age: 13,
   },
 
   // UI preferences (persisted)
   uiPrefs: (() => {
+    const fallback = { fontSize: 'md', contrast: false }
     try {
-      return JSON.parse(localStorage.getItem('aria_ui_prefs') || '{"fontSize":"md","contrast":false}')
+      const raw = JSON.parse(localStorage.getItem('aria_ui_prefs') || '{"fontSize":"md","contrast":false}')
+      // Schema guard + version-tolerant merge (ignore unknown shapes)
+      if (!raw || typeof raw !== 'object') return fallback
+      const fontSize = ['sm', 'md', 'lg'].includes(raw.fontSize) ? raw.fontSize : 'md'
+      return { fontSize, contrast: !!raw.contrast }
     } catch { return { fontSize: 'md', contrast: false } }
   })(),
   setUiPrefs: (patch) => set(s => {
@@ -63,6 +88,8 @@ export const useStore = create((set, get) => ({
     quiz: { questions: [], current: 0, selected: null, score: 0, done: false, answers: [], topic: '', level: 'medium', count: 5 },
     flashcards: { cards: [], order: [], idx: 0, flipped: false, known: [], topic: '', count: 10 },
     youtube: { result: null, quiz: null, flashcards: null, url: '' },
+    cheatsheet: { topic: '', subject: '', sheet: '' },
+    maths: { topicId: 'quadratics', tier: 'selective', count: 5, questions: [], revealed: {}, marks: {}, submitted: false },
   },
   setStudyTool: (tool, data) => set(s => ({
     studyTools: { ...s.studyTools, [tool]: { ...s.studyTools[tool], ...data } },
@@ -126,7 +153,8 @@ export const useStore = create((set, get) => ({
   }),
   clearProgress: () => set({ progress: null, progressSteps: [] }),
   setOllamaStatus: (v) => set({ ollamaStatus: v }),
-  setConfig: (c) => set({ config: c }),
+  // Merge config (don't blind-replace — backend shape changes shouldn't wipe defaults)
+  setConfig: (c) => set(s => ({ config: { ...s.config, ...(c || {}) } })),
   setConversations: (c) => set({ conversations: c }),
   setMode: (m) => set({ mode: m }),
   newConversation: () => set({ conversationId: null, messages: [], currentIntents: [], progress: null, progressSteps: [] }),

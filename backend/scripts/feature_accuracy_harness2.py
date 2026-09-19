@@ -13,8 +13,11 @@ Usage: python backend/scripts/feature_accuracy_harness2.py
 import asyncio
 import io
 import json
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,7 +38,7 @@ REPORT = []
 
 def record(feature, ok, detail):
     REPORT.append({"feature": feature, "ok": ok, "detail": str(detail)[:200]})
-    print(f"[{'PASS' if ok else 'FAIL'}] {feature:14} {str(detail)[:140]}")
+    logger.info(f"[{'PASS' if ok else 'FAIL'}] {feature:14} {str(detail)[:140]}")
 
 
 def make_test_pdf() -> bytes:
@@ -195,7 +198,7 @@ async def main():
     await check_code()
 
     ok_n = sum(1 for r in REPORT if r["ok"])
-    print(f"\n=== OVERALL {ok_n}/{len(REPORT)} ===")
+    logger.info(f"\n=== OVERALL {ok_n}/{len(REPORT)} ===")
     with open("/tmp/feature_accuracy2.json", "w") as f:
         json.dump(REPORT, f, indent=1)
     return 0 if ok_n == len(REPORT) else 1

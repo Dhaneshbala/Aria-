@@ -21,7 +21,12 @@ async def upload_to_kb(
     collection: Optional[str] = Form(default=None),
 ):
     """Upload a document to the knowledge base. Auto-detects collection if not specified."""
+    from fastapi import HTTPException
     data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(413, "File too large (max 20 MB)")
     suffix = os.path.splitext(file.filename or "file")[1] or ".txt"
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -41,9 +46,18 @@ async def upload_multiple(
     collection: Optional[str] = Form(default=None),
 ):
     """Upload multiple documents at once."""
+    from fastapi import HTTPException
+    if len(files) > 10:
+        raise HTTPException(400, "Too many files (max 10)")
     results = []
     for file in files:
         data = await file.read()
+        if not data:
+            results.append({"status": "error", "error": "Empty file", "document": file.filename})
+            continue
+        if len(data) > 20 * 1024 * 1024:
+            results.append({"status": "error", "error": "File too large (max 20 MB)", "document": file.filename})
+            continue
         suffix = os.path.splitext(file.filename or "file")[1] or ".txt"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(data)
@@ -107,9 +121,9 @@ async def rebuild_index():
 
 @router.post("/ask")
 async def ask_kb(
-    question: str = Form(...),
+    question: str = Form(..., min_length=1, max_length=8000),
     collections: Optional[str] = Form(default=None),
-    n: int = Form(default=6),
+    n: int = Form(default=6, ge=1, le=20),
 ):
     """Multi-document RAG chat — search the whole library and stream an answer."""
     col_list = [c.strip() for c in collections.split(",")] if collections else None

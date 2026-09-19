@@ -1,6 +1,8 @@
 """Study service — generates quizzes, flashcards, mind maps."""
 
+import ast
 import json
+import operator
 import os
 import re
 import logging
@@ -10,6 +12,39 @@ from difflib import SequenceMatcher
 from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_eval_arith(expr: str) -> float:
+    """Safely evaluate a simple arithmetic expression (+ - * / parens).
+
+    Replaces bare eval() — only allows numeric literals and basic operators.
+    Raises ValueError on anything else.
+    """
+    allowed_ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg,
+        ast.UAdd: operator.pos,
+    }
+
+    def _eval(node):
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        # py<3.8 compat: ast.Num
+        if hasattr(ast, "Num") and isinstance(node, ast.Num):
+            return node.n
+        if isinstance(node, ast.BinOp) and type(node.op) in allowed_ops:
+            return allowed_ops[type(node.op)](_eval(node.left), _eval(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in allowed_ops:
+            return allowed_ops[type(node.op)](_eval(node.operand))
+        raise ValueError(f"Disallowed expression: {expr!r}")
+
+    tree = ast.parse(expr, mode="eval")
+    return _eval(tree)
 
 
 def _fuzz_ratio(a: str, b: str) -> float:
@@ -31,7 +66,7 @@ def _solve_simple_math(question: str, options: list[str]) -> str:
     if re.search(r"\d+\s*[\+\-\*/]\s*\d+", question):
         try:
             expr = re.findall(r"\d+\s*[\+\-\*/]\s*\d+(?:\s*[\+\-\*/]\s*\d+)*", question)[0]
-            expected = eval(expr, {"__builtins__": {}}, {})
+            expected = _safe_eval_arith(expr)
             expected = int(expected) if float(expected).is_integer() else float(expected)
         except Exception:
             pass
@@ -79,7 +114,7 @@ try:
 except Exception:
     MODELS = {
         "main": "gemma4:e4b-mlx",
-        "embedding": "nomic-embed-text",
+        "embedding": "mxbai-embed-large",
     }
 
 def _default_model() -> str:

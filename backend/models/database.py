@@ -8,10 +8,10 @@ Model strategy (16 GB unified memory):
                        Single model handles all generation tasks to avoid
                        loading multiple large models simultaneously.
                        Runs on Metal GPU via Ollama/MLX on Apple Silicon.
-  nomic-embed-text    → embedding model — ONLY for memory/RAG retrieval.
-                       Tiny, fast, never used for generation.
+  mxbai-embed-large   → embedding model — ONLY for memory/RAG retrieval.
+                       Fast, 1024-dim vectors, never used for generation.
 
-  Total disk:  ~5-6 GB for gemma4 + 274 MB for nomic
+  Total disk:  ~5-6 GB for gemma4 + 670 MB for mxbai
   RAM pattern: only ONE generation model (gemma) loaded at a time.
                Leaves headroom for Chrome, Canva, Word, PDFs, VS Code.
 
@@ -27,24 +27,36 @@ import threading
 import tempfile
 from pathlib import Path
 
-# ── Clean model routing (task requirement) ──────────────────────────────────
-# Env overrides allow Docker/CI without code change
-def _env_model(primary: str, fallbacks: list[str], default: str) -> str:
-    for key in [primary] + fallbacks:
-        if os.environ.get(key):
-            return os.environ[key]
-    return default
+try:
+    # Canonical typed config — single source of truth for paths/URLs/limits.
+    # Falls back to env parsing if config package is unavailable (tests/zip).
+    from config.settings import get_settings as _get_settings
 
-MODELS = {
-    "main": _env_model("ARIA_MAIN_MODEL", ["MODELS_MAIN", "REASONING_MODEL"], "gemma4:e4b-mlx"),
-    "embedding": _env_model("ARIA_EMBED_MODEL", ["MODELS_EMBEDDING", "EMBEDDING_MODEL"], "nomic-embed-text"),
-}
-_raw_ollama = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_URL = _raw_ollama.rstrip("/")
-if OLLAMA_URL.endswith("/api/generate") or OLLAMA_URL.endswith("/api/chat"):
-    OLLAMA_URL = OLLAMA_URL.rsplit("/api", 1)[0]
+    _SETTINGS = _get_settings()
+    DATA_DIR = Path(_SETTINGS.data_dir)
+    OLLAMA_URL = str(_SETTINGS.ollama_url).rstrip("/")
+    _MAIN_DEFAULT = os.environ.get("ARIA_MAIN_MODEL") or os.environ.get("MODELS_MAIN") or "gemma4:e4b-mlx"
+    _EMBED_DEFAULT = os.environ.get("ARIA_EMBED_MODEL") or os.environ.get("MODELS_EMBEDDING") or "mxbai-embed-large"
+    MODELS = {"main": _MAIN_DEFAULT, "embedding": _EMBED_DEFAULT}
+except Exception:
+    # ── Fallback: env-only routing (no pydantic available) ──────────────
+    def _env_model(primary: str, fallbacks: list[str], default: str) -> str:
+        for key in [primary] + fallbacks:
+            if os.environ.get(key):
+                return os.environ[key]  # type: ignore[return-value]
+        return default
 
-DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+    MODELS = {
+        "main": _env_model("ARIA_MAIN_MODEL", ["MODELS_MAIN", "REASONING_MODEL"], "gemma4:e4b-mlx"),
+        "embedding": _env_model("ARIA_EMBED_MODEL", ["MODELS_EMBEDDING", "EMBEDDING_MODEL"], "mxbai-embed-large"),
+    }
+    _raw_ollama = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    OLLAMA_URL = _raw_ollama.rstrip("/")
+    if OLLAMA_URL.endswith("/api/generate") or OLLAMA_URL.endswith("/api/chat"):
+        OLLAMA_URL = OLLAMA_URL.rsplit("/api", 1)[0]
+
+    DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = DATA_DIR / "config.json"
 _CONFIG_LOCK = threading.RLock()
@@ -65,17 +77,18 @@ DEFAULT_CONFIG = {
      "fast_model":        MODELS["main"],      # single model, no separate fast
      "pptx_model":        MODELS["main"],
      "organizer_model":   "",                  # "" = use main model
-     "embedding_model":   MODELS["embedding"], # nomic-embed-text ONLY for embeddings
+     "embedding_model":   MODELS["embedding"], # mxbai-embed-large ONLY for embeddings
 
     # ── Document processing ────────────────────────────────────────────────
     "doc_context_chars": 8000,              # chars of doc to pass to model per query
+    "max_prompt_chars": 20000,             # absolute max system-prompt chars (base + contexts)
 
     # ── Features ───────────────────────────────────────────────────────────
     "web_search_enabled": True,
     "google_first":       True,             # Google supplements local knowledge
     "personal_info_ask_first": False,
-    "knowledge_base_enabled": True,         # RAG via nomic-embed-text
-    "memory_enabled":     True,             # ChromaDB memory via nomic-embed-text
+    "knowledge_base_enabled": True,         # RAG via mxbai-embed-large
+    "memory_enabled":     True,             # ChromaDB memory via mxbai-embed-large
     "voice_enabled":      True,
     "image_gen_enabled":  True,             # Uses Pollinations.ai (free, no GPU)
 
@@ -112,7 +125,7 @@ def _migrate_legacy_models(cfg: dict) -> dict:
             if key == "organizer_model" and val == "":
                 continue
             cfg[key] = MODELS["main"]
-    # Ensure embedding stays nomic
+    # Ensure embedding stays mxbai
     if cfg.get("embedding_model") in _LEGACY_MODELS or not cfg.get("embedding_model"):
         cfg["embedding_model"] = MODELS["embedding"]
     return cfg

@@ -7,7 +7,7 @@ from services.ollama_service import OllamaService
 try:
     from models.database import MODELS
 except Exception:
-    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
+    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "mxbai-embed-large"}
 from services.document_service import DocumentService
 from services.study_service import StudyService
 from services.memory_service import MemoryService

@@ -14,7 +14,7 @@ from services.ollama_service import OllamaService
 try:
     from models.database import MODELS
 except Exception:
-    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
+    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "mxbai-embed-large"}
 from services.memory_service import MemoryService
 from services.nsw_curriculum_service import NSWCurriculumService, NSW_KLAS, NSW_STAGES
 
@@ -211,9 +211,10 @@ class AdvancedStudyIntelligence:
 
     async def add_flashcard(self, front: str, back: str, subject: str = "general") -> dict:
         """Add a flashcard to the spaced repetition system."""
+        import uuid as _uuid
         cards = _load_json(SR_FILE, [])
         card = {
-            "id": f"card_{int(datetime.now().timestamp()*1000)}",
+            "id": f"card_{_uuid.uuid4().hex[:12]}",
             "front": front,
             "back": back,
             "subject": subject,
@@ -347,13 +348,23 @@ class AdvancedStudyIntelligence:
 
     async def add_flashcards_bulk(self, flashcards: list[dict], subject: str = "general") -> list[dict]:
         """Add multiple flashcards at once (e.g. from generated flashcard set)."""
+        import uuid as _uuid
         cards = _load_json(SR_FILE, [])
+        existing_ids = {c.get("id") for c in cards}
         added = []
-        for fc in flashcards:
+        for fc in flashcards[:200]:
+            front = str(fc.get("front", "")).strip()
+            back = str(fc.get("back", "")).strip()
+            if not front or not back:
+                continue  # skip empties — previously stored blank cards
+            cid = f"card_{_uuid.uuid4().hex[:12]}"
+            while cid in existing_ids:
+                cid = f"card_{_uuid.uuid4().hex[:12]}"
+            existing_ids.add(cid)
             card = {
-                "id": f"card_{int(datetime.now().timestamp()*1000)}_{len(cards)}",
-                "front": fc.get("front", ""),
-                "back": fc.get("back", ""),
+                "id": cid,
+                "front": front,
+                "back": back,
                 "subject": subject,
                 "ease_factor": 2.5,
                 "interval": 1,

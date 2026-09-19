@@ -1,6 +1,6 @@
 """
 ARIA 3-day continuous master — runs nonstop for 3 days, even after success.
-Does: health checks, nomic warmup, Chroma rebuild, eval, weak_areas tracking, heartbeat.
+Does: health checks, embed warmup, Chroma rebuild, eval, weak_areas tracking, heartbeat.
 All $0 local, no API spend. Logs to ~/.aria_data/continuous_master.log
 """
 import time, json, logging, subprocess, sys
@@ -17,7 +17,7 @@ log = logging.getLogger("master")
 
 def log_msg(m):
     msg = f"{datetime.now().isoformat()} {m}"
-    print(msg, flush=True)
+    log.info(msg)
     try:
         with open(LOG, "a") as f:
             f.write(msg + "\n")
@@ -34,13 +34,13 @@ def health_check():
         log_msg(f"health fail: {e}")
         return False
 
-def nomic_warmup():
+def embed_warmup():
     try:
         import httpx
-        r = httpx.post("http://127.0.0.1:11434/api/embed", json={"model": "nomic-embed-text", "input": "warmup ok"}, timeout=30)
-        log_msg(f"nomic warmup {r.status_code}")
+        r = httpx.post("http://127.0.0.1:11434/api/embed", json={"model": "mxbai-embed-large", "input": "warmup ok"}, timeout=30)
+        log_msg(f"embed warmup {r.status_code}")
     except Exception as e:
-        log_msg(f"nomic warmup fail: {e}")
+        log_msg(f"embed warmup fail: {e}")
 
 def eval_weak_areas():
     try:
@@ -68,7 +68,7 @@ def run_pytest():
 
 iteration = 0
 log_msg(f"MASTER START {START.isoformat()} -> {END.isoformat()} — 3 days nonstop")
-nomic_warmup()
+embed_warmup()
 health_check()
 
 while datetime.now() < END:
@@ -76,9 +76,9 @@ while datetime.now() < END:
     log_msg(f"=== MASTER iteration {iteration} uptime {(datetime.now()-START).total_seconds()/3600:.2f}h ===")
     # 1. health
     health_check()
-    # 2. nomic warmup every 6h
+    # 2. embed warmup every 6h
     if iteration % 6 == 0:
-        nomic_warmup()
+        embed_warmup()
     # 3. eval weak_areas every iteration
     eval_weak_areas()
     # 4. pytest every 12 iterations (~1h if 5m sleep)

@@ -1,7 +1,7 @@
 """Notebook API router — Source-grounded AI notebooks (NotebookLM-style)."""
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import json
 
@@ -17,29 +17,29 @@ ollama = OllamaService()
 
 
 class CreateNotebookRequest(BaseModel):
-    name: str
-    description: str = ""
-    tags: List[str] = []
-    cover_color: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    tags: List[str] = Field(default_factory=list, max_length=20)
+    cover_color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class UpdateNotebookRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    persona: Optional[str] = None
-    tags: Optional[List[str]] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    persona: Optional[str] = Field(default=None, max_length=500)
+    tags: Optional[List[str]] = Field(default=None, max_length=20)
 
 
 class AddSourceRequest(BaseModel):
-    source_type: str
-    content: str
-    title: str = ""
-    metadata: dict = {}
+    source_type: str = Field(..., min_length=1, max_length=50)
+    content: str = Field(..., min_length=1, max_length=500000)
+    title: str = Field(default="", max_length=500)
+    metadata: dict = Field(default_factory=dict)
 
 
 class ChatRequest(BaseModel):
-    message: str
-    notebook_context: str = ""
+    message: str = Field(..., min_length=1, max_length=8000)
+    notebook_context: str = Field(default="", max_length=50000)
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -210,6 +210,7 @@ async def generate_study_guide(notebook_id: str):
 @router.get("/{notebook_id}/generate/quiz")
 async def generate_quiz(notebook_id: str, num_questions: int = 5):
     """Generate quiz questions from notebook sources."""
+    num_questions = max(1, min(20, num_questions))
     content = svc.get_all_content(notebook_id)
     if not content:
         raise HTTPException(status_code=400, detail="No sources in notebook")
@@ -235,6 +236,7 @@ Return ONLY the JSON array, no other text."""},
 @router.get("/{notebook_id}/generate/flashcards")
 async def generate_flashcards(notebook_id: str, num_cards: int = 10):
     """Generate flashcards from notebook sources."""
+    num_cards = max(1, min(50, num_cards))
     content = svc.get_all_content(notebook_id)
     if not content:
         raise HTTPException(status_code=400, detail="No sources in notebook")
@@ -293,42 +295,52 @@ async def get_organizer(notebook_id: str):
     return data
 
 
+class RenameSourceRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+
+
+class MoveSourceRequest(BaseModel):
+    folder: str = Field(default="Uncategorized", max_length=200)
+
+
+class BulkMoveRequest(BaseModel):
+    source_ids: List[str] = Field(default_factory=list, max_length=100)
+    folder: str = Field(default="Uncategorized", max_length=200)
+
+
+class BulkDeleteRequest(BaseModel):
+    source_ids: List[str] = Field(default_factory=list, max_length=100)
+
+
 @router.put("/{notebook_id}/sources/{source_id}/rename")
-async def rename_source(notebook_id: str, source_id: str, body: dict):
+async def rename_source(notebook_id: str, source_id: str, body: RenameSourceRequest):
     """Rename a source."""
-    new_title = body.get("title", "").strip()
-    if not new_title:
-        raise HTTPException(status_code=400, detail="Title required")
-    result = svc.rename_source(notebook_id, source_id, new_title)
+    result = svc.rename_source(notebook_id, source_id, body.title)
     if not result:
         raise HTTPException(status_code=404, detail="Source not found")
     return result
 
 
 @router.put("/{notebook_id}/sources/{source_id}/move")
-async def move_source(notebook_id: str, source_id: str, body: dict):
+async def move_source(notebook_id: str, source_id: str, body: MoveSourceRequest):
     """Move a source to a folder."""
-    folder = body.get("folder", "Uncategorized").strip()
-    result = svc.move_source(notebook_id, source_id, folder)
+    result = svc.move_source(notebook_id, source_id, body.folder)
     if not result:
         raise HTTPException(status_code=404, detail="Source not found")
     return result
 
 
 @router.post("/{notebook_id}/sources/bulk-move")
-async def bulk_move(notebook_id: str, body: dict):
+async def bulk_move(notebook_id: str, body: BulkMoveRequest):
     """Move multiple sources to a folder."""
-    source_ids = body.get("source_ids", [])
-    folder = body.get("folder", "Uncategorized")
-    count = svc.bulk_move_sources(notebook_id, source_ids, folder)
+    count = svc.bulk_move_sources(notebook_id, body.source_ids, body.folder)
     return {"moved": count}
 
 
 @router.post("/{notebook_id}/sources/bulk-delete")
-async def bulk_delete(notebook_id: str, body: dict):
+async def bulk_delete(notebook_id: str, body: BulkDeleteRequest):
     """Delete multiple sources."""
-    source_ids = body.get("source_ids", [])
-    count = svc.bulk_delete_sources(notebook_id, source_ids)
+    count = svc.bulk_delete_sources(notebook_id, body.source_ids)
     return {"deleted": count}
 
 
@@ -423,7 +435,7 @@ Use clear, descriptive folder names. Group related files together. No explanatio
             if 0 <= idx < len(sources):
                 sources[idx]["folder"] = folder
                 count += 1
-        svc._save_notebooks()
+        svc._save_notebook(notebook)
         return {"organized": count, "folders": list(set(s.get("folder", "Uncategorized") for s in sources))}
     except Exception:
         return {"organized": 0, "error": "Failed to parse AI response", "raw": result}

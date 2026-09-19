@@ -17,16 +17,40 @@ doc_svc = DocumentService()
 mem_svc = MemoryService()
 
 try:
+    from config.settings import get_settings as _get_chat_settings
+
+    _chat_settings = _get_chat_settings()
+    MAX_IMAGE_SIZE = _chat_settings.max_image_bytes
+    MAX_DOC_SIZE = _chat_settings.max_doc_bytes
+    MAX_MESSAGE_CHARS = _chat_settings.max_message_chars
+    MAX_UPLOAD_FILES = _chat_settings.max_upload_files
+    _CHAT_RATE = _chat_settings.rate_limit_chat
+except Exception:
+    MAX_IMAGE_SIZE = 20 * 1024 * 1024   # 20 MB fallback
+    MAX_DOC_SIZE = 50 * 1024 * 1024     # 50 MB fallback
+    MAX_MESSAGE_CHARS = 8000
+    MAX_UPLOAD_FILES = 10
+    _CHAT_RATE = "30/minute"
+
+try:
     from slowapi import Limiter
     from slowapi.util import get_remote_address
-    _chat_limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
-    _chat_limit = _chat_limiter.limit("30/minute")
+    _chat_limiter = Limiter(key_func=get_remote_address, default_limits=[_CHAT_RATE])
+    _chat_limit = _chat_limiter.limit(_CHAT_RATE)
 except Exception:
     _chat_limiter = None
     _chat_limit = lambda f: f  # no-op
 
-MAX_IMAGE_SIZE = 20 * 1024 * 1024   # 20 MB
-MAX_DOC_SIZE = 50 * 1024 * 1024     # 50 MB
+# ── Chat-core quality program, slice 3: SSE concurrency guard ────────────────
+# Matches voice WS pattern (4 streams, 5th gets busy). Ollama serves ~1 model at
+# a time; unbounded parallel chats queue up and hit the 300s timeout together.
+import asyncio as _aio
+MAX_CHAT_STREAMS = 4
+_chat_sem = _aio.Semaphore(MAX_CHAT_STREAMS)
+
+
+def _chat_slot_available() -> bool:
+    return _chat_sem._value > 0  # introspection for tests/metrics only
 
 
 @router.post("")
@@ -41,13 +65,13 @@ async def chat(
     mode:            str           = Form(default="normal"),
 ):
     # Input validation — prevent abuse / prompt injection via huge payloads
-    if len(message) > 8000:
-        raise HTTPException(400, "Message too long (max 8000 chars)")
+    if len(message) > MAX_MESSAGE_CHARS:
+        raise HTTPException(400, f"Message too long (max {MAX_MESSAGE_CHARS} chars)")
     # Strip control chars except newline/tab
     message = "".join(c for c in message if c == "\n" or c == "\t" or ord(c) >= 32)
     if not message.strip():
         raise HTTPException(400, "Message cannot be empty")
-    if mode not in ("normal", "think", "fast", "socratic", "hype"):
+    if mode not in ("normal", "think", "fast", "socratic", "hype", "voice"):
         mode = "normal"
     # Simple conversation_id sanitization (uuid or hex)
     if conversation_id and len(conversation_id) > 64:
@@ -90,7 +114,7 @@ async def chat(
         if key not in seen:
             seen.add(key)
             uniq_docs.append(d)
-    all_docs = uniq_docs[:10]  # cap at 10
+    all_docs = uniq_docs[:MAX_UPLOAD_FILES]  # cap from settings
 
     from services.telemetry_service import record_event
     record_event("chat_message", mode=mode, has_image=image_data is not None,
@@ -123,6 +147,13 @@ async def chat(
     import logging
     _log = logging.getLogger(__name__)
 
+    # Non-blocking acquire: 5th concurrent stream gets 429 busy (like voice WS).
+    try:
+        await asyncio.wait_for(_chat_sem.acquire(), timeout=0.05)
+    except asyncio.TimeoutError:
+        raise HTTPException(429, "ARIA is busy — 4 chats already streaming. Wait a moment and retry.")
+    acquired = True
+
     async def event_stream():
         try:
             async for chunk in orchestrate(
@@ -145,6 +176,11 @@ async def chat(
         except Exception as e:
             # Don't leak internal errors as 500 — orchestrator already yields error chunks
             _log.debug("event_stream ended: %s", e)
+        finally:
+            try:
+                _chat_sem.release()
+            except ValueError:
+                pass
 
     return StreamingResponse(
         event_stream(),
@@ -164,7 +200,8 @@ async def get_conversations():
 
 @router.get("/search")
 async def search_conversations(q: str = ""):
-    if not q.strip():
+    q = q.strip()[:500]
+    if not q:
         return []
     return await mem_svc.search_conversations(q)
 

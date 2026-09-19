@@ -23,7 +23,7 @@ log = logging.getLogger("train3d")
 
 def log_msg(m):
     msg = f"{datetime.now().isoformat()} {m}"
-    print(msg, flush=True)
+    log.info(msg)
     try:
         with open(LOG_FILE, "a") as f:
             f.write(msg + "\n")

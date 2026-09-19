@@ -4,22 +4,23 @@ uvicorn[standard]>=0.20.0
 httpx>=0.24.0
 python-multipart>=0.0.5
 pydantic>=2.0.0
+pydantic-settings>=2.0.0
 aiofiles>=23.0.0
 
 # Document processing
 PyPDF2>=3.0.0
-pdfminer.six
-python-docx
-python-pptx
-openpyxl
+pdfminer.six>=4.0.0
+python-docx>=1.1.0
+python-pptx>=0.6.23
+openpyxl>=3.1.0
 
 # Vision / OCR
 pillow>=10.0.0
 pytesseract>=0.3.10
-opencv-python-headless
+opencv-python-headless>=4.8.0
 
 # Memory / RAG
-chromadb>=0.4.0
+chromadb>=0.4.0,<2.0.0
 
 # Research
 duckduckgo-search>=5.0.0
@@ -29,10 +30,16 @@ youtube-transcript-api>=0.6.0
 requests>=2.28.0
 numpy>=1.24.0
 
+# Voice — local neural TTS (Piper, engine #1; macOS `say` stays as fallback).
+# Needs onnxruntime (already a transitive dep) + ~65 MB per voice in
+# $ARIA_DATA_DIR/piper (see backend/docs/voice_api.md).
+piper-tts>=1.8.0
+
 # Tests
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+pytest-cov>=5.0.0
 
 # Reliability
-slowapi>=0.1.8
+slowapi>=0.1.8,<1.0.0
 filelock>=3.0.0

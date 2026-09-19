@@ -66,7 +66,7 @@ class ImageGenService:
                 f"&nologo=true&enhance=true"
             )
 
-            async with httpx.AsyncClient(timeout=60, follow_redirects=True, verify=False) as client:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 r = await client.get(url, follow_redirects=True)
                 ct = r.headers.get("content-type", "")
                 # Success: image/*
@@ -118,7 +118,7 @@ class ImageGenService:
 
         # Check Pollinations (needs internet) — HEAD is lighter than GET
         try:
-            async with httpx.AsyncClient(timeout=8, verify=False) as client:
+            async with httpx.AsyncClient(timeout=8) as client:
                 r = await client.get("https://image.pollinations.ai/", timeout=8, follow_redirects=True)
                 # Pollinations returns HTML on root; 200 means reachable
                 status["pollinations"] = r.status_code < 500

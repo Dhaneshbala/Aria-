@@ -74,11 +74,11 @@ pull_if_missing() {
 # Main model — handles chat, reasoning, coding, math, vision/multimodal (all Study Tools via brain)
 pull_if_missing "gemma4:e4b-mlx"   "main model (multimodal)" "5-6 GB"
 
-# Embedding model — ONLY for memory/RAG retrieval (tiny, not for generation)
-pull_if_missing "nomic-embed-text" "embedding model" "274 MB"
+# Embedding model — ONLY for memory/RAG retrieval (not for generation)
+pull_if_missing "mxbai-embed-large" "embedding model" "670 MB"
 
 echo ""
-echo -e "  📊 Disk used by models: ~9.8 GB total (gemma4: 9.5 GB + nomic: 274 MB)"
+echo -e "  📊 Disk used by models: ~10.2 GB total (gemma4: 9.5 GB + mxbai: 670 MB)"
 echo -e "  🖥  RAM: Ollama loads ONE generation model at a time (M4 Metal GPU active)"
 echo -e "  🧠 Main model handles vision + coding — no extra models needed"
 
@@ -110,6 +110,14 @@ pip install -r requirements.txt || { echo -e "${RED}  ❌ pip install failed${NC
 
 # Ensure pdfminer is installed for better PDF text extraction
 pip install -q pdfminer.six 2>/dev/null || true
+
+# Optional neural TTS voices (~450 MB, one-time download). Opt-in so a fresh
+# start never surprises on network/time: ARIA_FETCH_VOICES=1 ./start.sh
+# Never fails the boot — without voices ARIA uses macOS `say`.
+if [[ "${ARIA_FETCH_VOICES:-0}" == "1" ]]; then
+  echo "       Fetching Piper TTS voices (~450 MB, first run only)..."
+  python scripts/fetch_piper_voices.py 2>/dev/null || true
+fi
 
 echo "       Starting FastAPI on port 8000..."
 python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload \
@@ -150,9 +158,9 @@ echo -e "${GRN}  ║                                     ║${NC}"
 echo -e "${GRN}  ║  Press Ctrl+C to stop               ║${NC}"
 echo -e "${GRN}  ╚════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Models loaded: gemma4:e4b-mlx (main, multimodal) + nomic-embed-text (embeddings)"
+echo -e "  Models loaded: gemma4:e4b-mlx (main, multimodal) + mxbai-embed-large (embeddings)"
 echo -e "  Image gen:     Pollinations.ai (free, no GPU needed)"
-echo -e "  Memory/RAG:    ChromaDB + nomic-embed-text saved to ~/.aria_data/"
+echo -e "  Memory/RAG:    ChromaDB + mxbai-embed-large saved to ~/.aria_data/"
 echo ""
 
 # Open browser automatically

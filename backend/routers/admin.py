@@ -1,6 +1,8 @@
 """Admin router — config, health, model management, memory."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from typing import Optional
 from models.database import get_config, save_config, MODELS
 from services.ollama_service import OllamaService
 from services.memory_service import MemoryService
@@ -14,14 +16,46 @@ ollama  = OllamaService()
 mem_svc = MemoryService()
 
 
+class ConfigUpdateRequest(BaseModel):
+    model: Optional[str] = Field(default=None, max_length=100)
+    reasoning_model: Optional[str] = Field(default=None, max_length=100)
+    vision_model: Optional[str] = Field(default=None, max_length=100)
+    fallback_model: Optional[str] = Field(default=None, max_length=100)
+    coding_model: Optional[str] = Field(default=None, max_length=100)
+    fast_model: Optional[str] = Field(default=None, max_length=100)
+    embedding_model: Optional[str] = Field(default=None, max_length=100)
+    doc_context_chars: Optional[int] = Field(default=None, ge=500, le=50000)
+    web_search_enabled: Optional[bool] = None
+    knowledge_base_enabled: Optional[bool] = None
+    memory_enabled: Optional[bool] = None
+    voice_enabled: Optional[bool] = None
+    image_gen_enabled: Optional[bool] = None
+    telemetry_enabled: Optional[bool] = None
+    student_name: Optional[str] = Field(default=None, max_length=100)
+    student_age: Optional[int] = Field(default=None, ge=5, le=18)
+
+
+class PullModelRequest(BaseModel):
+    model: str = Field(..., min_length=1, max_length=100, description="Model name to pull")
+
+
+class UnloadModelRequest(BaseModel):
+    model: str = Field(default="", max_length=100)
+
+
+class TelemetryToggleRequest(BaseModel):
+    enabled: bool
+
+
 @router.get("/config")
 async def get_config_endpoint():
     return get_config()
 
 
 @router.post("/config")
-async def update_config(data: dict):
-    return save_config(data)
+async def update_config(data: ConfigUpdateRequest):
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    return save_config(updates)
 
 
 @router.get("/models")
@@ -64,11 +98,9 @@ async def health_check():
 
 
 @router.post("/models/pull")
-async def pull_model(data: dict):
+async def pull_model(data: PullModelRequest):
     """Stream model download progress."""
-    model_name = data.get("model", "")
-    if not model_name:
-        return {"error": "model name required"}
+    model_name = data.model
 
     async def stream_pull():
         async for status in ollama.pull_model(model_name):
@@ -79,9 +111,9 @@ async def pull_model(data: dict):
 
 
 @router.post("/models/unload")
-async def unload_model(data: dict):
+async def unload_model(data: UnloadModelRequest):
     """Unload a model from RAM to free memory."""
-    await ollama.unload_model(data.get("model", ""))
+    await ollama.unload_model(data.model)
     return {"unloaded": True}
 
 
@@ -128,10 +160,9 @@ async def get_telemetry():
 
 
 @router.post("/telemetry/toggle")
-async def toggle_telemetry(data: dict):
+async def toggle_telemetry(data: TelemetryToggleRequest):
     """Turn anonymous usage counters on/off (config flag)."""
-    enabled = bool(data.get("enabled"))
-    return save_config({"telemetry_enabled": enabled})
+    return save_config({"telemetry_enabled": data.enabled})
 
 
 @router.delete("/telemetry")

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { getMathsTopics, generateMathsSet, submitMathsSet, getMathsMastery } from '../services/api'
+import { startTask, cancelTask, useBgTask } from '../services/tasks'
+import { useStore } from '../store'
 import { showToast } from '../components/Toast'
 import { Sigma, Clock, Lightbulb, AlertTriangle, Zap, Trophy } from 'lucide-react'
 
@@ -24,19 +26,26 @@ const TIERS = [
 ]
 
 export default function MathsAcceleratorPage() {
+  const { studyTools, setStudyTool } = useStore()
+  const saved = studyTools.maths || {}
   const [topics, setTopics] = useState([])
   const [tiers, setTiers] = useState({})
-  const [topicId, setTopicId] = useState('quadratics')
-  const [tier, setTier] = useState('selective')
-  const [count, setCount] = useState(5)
+  const [topicId, setTopicId] = useState(saved.topicId || 'quadratics')
+  const [tier, setTier] = useState(saved.tier || 'selective')
+  const [count, setCount] = useState(saved.count || 5)
   const [timed, setTimed] = useState(true)
   const [secsLeft, setSecsLeft] = useState(0)
-  const [questions, setQuestions] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [revealed, setRevealed] = useState({})
-  const [marks, setMarks] = useState({}) // idx -> true/false self-mark
+  const [questions, setQuestions] = useState(saved.questions || [])
+  const [loading, setLoading] = useState(
+    () => useStore.getState().bgTasks?.maths?.status === 'running'
+  )
+  const [revealed, setRevealed] = useState(saved.revealed || {})
+  const [marks, setMarks] = useState(saved.marks || {})
   const [mastery, setMastery] = useState({})
-  const [submitted, setSubmitted] = useState(false)
+  const [submitted, setSubmitted] = useState(saved.submitted || false)
+  const bg = useBgTask('maths')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
     getMathsTopics().then(d => {
@@ -48,6 +57,27 @@ export default function MathsAcceleratorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Adopt background run on mount
+  useEffect(() => {
+    if (bg?.status === 'running') setLoading(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (bg?.status === 'done' && questions.length === 0 && saved.questions?.length) {
+      setQuestions(saved.questions)
+      setTopicId(saved.topicId || topicId)
+      setTier(saved.tier || tier)
+      setCount(saved.count || count)
+      setRevealed(saved.revealed || {})
+      setMarks(saved.marks || {})
+      setSubmitted(saved.submitted || false)
+      setLoading(false)
+    } else if ((bg?.status === 'error' || bg?.status === 'cancelled') && loading) {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bg?.status])
+
   useEffect(() => {
     if (!timed || questions.length === 0 || submitted) return
     setSecsLeft(questions.reduce((a, q) => a + (q.marks || 2), 0) * 120)
@@ -56,21 +86,43 @@ export default function MathsAcceleratorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions.length, submitted])
 
+  // Auto-persist to store
+  useEffect(() => {
+    setStudyTool('maths', { topicId, tier, count, questions, revealed, marks, submitted })
+  }, [topicId, tier, count, questions, revealed, marks, submitted])
+
   const start = async () => {
+    cancelTask('maths', { silent: true })
     setLoading(true)
     setQuestions([])
     setRevealed({})
     setMarks({})
     setSubmitted(false)
     try {
-      const data = await generateMathsSet(topicId, tier, count)
-      setQuestions(data.questions || [])
-      if (!data.questions?.length) showToast('No questions — try again', 'error')
-      else if (data.source === 'fallback') showToast('Offline bank — still exam-sharp', 'info')
+      await startTask('maths', {
+        label: `Maths: ${topicId} (${tier})`,
+        page: '/create',
+        topic: topicId,
+        run: (signal) => generateMathsSet(topicId, tier, count, signal),
+        onDone: (data) => {
+          setStudyTool('maths', {
+            topicId, tier, count,
+            questions: data.questions || [],
+            revealed: {}, marks: {}, submitted: false,
+          })
+        },
+      })
+      if (mountedRef.current) {
+        const latest = useStore.getState().studyTools.maths
+        setQuestions(latest.questions || [])
+        setLoading(false)
+        if (!latest.questions?.length) showToast('No questions — try again', 'error')
+      }
     } catch (e) {
-      showToast('Could not generate set: ' + e.message, 'error')
-    } finally {
-      setLoading(false)
+      if (mountedRef.current) {
+        showToast('Could not generate set: ' + e.message, 'error')
+        setLoading(false)
+      }
     }
   }
 

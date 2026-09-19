@@ -333,6 +333,21 @@ async def test_orchestrate_plain_chat_flow(fakes):
     assert types.count("text") == 2  # "Hello" + " world"
 
 
+async def test_orchestrate_emits_timings_summary(fakes):
+    events = _collect([c async for c in orchestrate("hello", "c1", config={})])
+    timings = [e for e in events if e["type"] == "timings"]
+    assert len(timings) == 1
+    marks = timings[0]["content"]
+    for key in ("intent", "retrieval", "ttft", "llm_done", "total"):
+        assert key in marks, f"missing mark {key}"
+    assert all(isinstance(v, int) and v >= 0 for v in marks.values())
+    ordered = ["intent", "retrieval", "prompt_ready", "ttft", "llm_done", "total"]
+    present = [k for k in ordered if k in marks]
+    assert [marks[k] for k in present] == sorted(marks[k] for k in present)
+    # timings precedes the terminal done event
+    assert events[-1]["type"] == "done"
+
+
 async def test_orchestrate_emits_intents_event(fakes):
     events = _collect([c async for c in orchestrate("quiz me on maths", "c1", config={})])
     intent_ev = events[0]
@@ -470,9 +485,9 @@ async def test_generate_suggestions_parses_numbered_lines():
                              think=None, json_mode=False, context_window=4096):
         return "1. What happens next?\n2. Why is the sky blue?\n3. Can you show me an example?"
 
-    import services.orchestrator as o
+    import services.post_processor as pp
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(o.ollama, "complete", _fake_complete)
+    monkeypatch.setattr(pp.ollama, "complete", _fake_complete)
     try:
         sugg = await _generate_suggestions("q", "a")
         assert sugg is not None and len(sugg) == 3
@@ -486,9 +501,9 @@ async def test_generate_suggestions_fails_gracefully():
                     think=None, json_mode=False, context_window=4096):
         raise RuntimeError("nope")
 
-    import services.orchestrator as o
+    import services.post_processor as pp
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(o.ollama, "complete", _boom)
+    monkeypatch.setattr(pp.ollama, "complete", _boom)
     try:
         assert await _generate_suggestions("q", "a") is None
     finally:

@@ -1,6 +1,6 @@
 """Maths Accelerator API — selective-level practice sets + mastery."""
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from services import maths_accelerator_service as svc
 
@@ -8,17 +8,17 @@ router = APIRouter(prefix="/api/maths", tags=["maths"])
 
 
 class GenerateRequest(BaseModel):
-    topic_id: str = "quadratics"
-    tier: str = "selective"
-    count: int = 5
+    topic_id: str = Field(default="quadratics", max_length=100)
+    tier: str = Field(default="selective", pattern="^(foundation|selective|extension)$")
+    count: int = Field(default=5, ge=1, le=20)
 
 
 class SubmitRequest(BaseModel):
-    topic_id: str = "quadratics"
-    tier: str = "selective"
-    correct: int = 0
-    total: int = 1
-    mistakes: list[dict] = []
+    topic_id: str = Field(default="quadratics", max_length=100)
+    tier: str = Field(default="selective", pattern="^(foundation|selective|extension)$")
+    correct: int = Field(default=0, ge=0)
+    total: int = Field(default=1, ge=1)
+    mistakes: list[dict] = Field(default_factory=list, max_length=50)
 
 
 @router.get("/topics")

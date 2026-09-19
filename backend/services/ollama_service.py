@@ -18,7 +18,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 if OLLAMA_URL.endswith("/api/generate") or OLLAMA_URL.endswith("/api/chat"):
     OLLAMA_URL = OLLAMA_URL.rsplit("/api", 1)[0]
 
-# ── 16 GB optimisation: single main model (gemma4:e4b-mlx) + nomic-embed-text  ──
+# ── 16 GB optimisation: single main model (gemma4:e4b-mlx) + mxbai-embed-large ──
 # Avoid loading multiple large generation models at once. Keep context modest
 # (8K default) to reduce KV-cache RAM; allow 16K only for large docs.
 # gemma4 is multimodal — handles text, coding, vision, and tool calling.
@@ -42,7 +42,7 @@ try:
 except Exception:
     MODELS = {
         "main": "gemma4:e4b-mlx",
-        "embedding": "nomic-embed-text",
+        "embedding": "mxbai-embed-large",
     }
 
 TIMEOUT = 300.0

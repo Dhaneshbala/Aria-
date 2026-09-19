@@ -27,6 +27,21 @@ ollama = OllamaService()
 LOG_FILE = DATA_DIR / "aria.log"
 
 
+def _redacted_config() -> dict:
+    """Support-zip config with secrets stripped. The zip leaves the machine
+    (emailed to support), so any *key/*token/*secret/*password value is
+    replaced — the shape stays for debugging, the secret doesn't."""
+    try:
+        cfg = dict(get_config())
+    except Exception:
+        return {"error": "config unreadable"}
+    sensitive = ("key", "token", "secret", "password", "passwd", "auth", "credential")
+    return {
+        k: ("<redacted>" if any(s in k.lower() for s in sensitive) and v else v)
+        for k, v in cfg.items()
+    }
+
+
 # ── Diagnostics ─────────────────────────────────────────────────────────────
 
 @router.get("/diagnostics")
@@ -65,7 +80,7 @@ async def diagnostics():
     ]
     missing = []
     installed = report["checks"]["ollama"].get("models", [])
-    # Ollama reports "nomic-embed-text:latest" but config is "nomic-embed-text"
+    # Ollama reports "mxbai-embed-large:latest" but config is "mxbai-embed-large"
     # so compare base names (before :) as well.
     installed_bases = {m.split(":")[0] for m in installed}
     installed_set = set(installed) | installed_bases
@@ -81,14 +96,14 @@ async def diagnostics():
     if missing:
         problems.append("models")
 
-    # 3b. Embedding actually works? (nomic-embed-text loads and returns vector)
+    # 3b. Embedding actually works? (mxbai-embed-large loads and returns vector)
     if not missing:
         try:
-            emb = await ollama.embed(cfg.get("embedding_model", "nomic-embed-text"), "test ok")
-            ok_emb = isinstance(emb, list) and len(emb) > 100  # nomic is 768-dim
+            emb = await ollama.embed(cfg.get("embedding_model", "mxbai-embed-large"), "test ok")
+            ok_emb = isinstance(emb, list) and len(emb) > 100  # mxbai is 1024-dim
             report["checks"]["embedding"] = {
                 "ok": ok_emb,
-                "message": f"Embedding OK ({len(emb)}-dim)" if ok_emb else "Embedding returned empty — nomic may be missing",
+                "message": f"Embedding OK ({len(emb)}-dim)" if ok_emb else "Embedding returned empty — mxbai-embed-large may be missing",
             }
             if not ok_emb:
                 problems.append("models")
@@ -217,6 +232,7 @@ async def _sleep(seconds: float):
 
 @router.get("/logs")
 async def tail_logs(lines: int = 200):
+    lines = max(1, min(5000, lines))
     if not LOG_FILE.exists():
         return {"content": "", "lines": 0}
     content = LOG_FILE.read_text(errors="replace").splitlines()
@@ -240,7 +256,7 @@ async def download_logs():
         if LOG_FILE.exists():
             log_text = LOG_FILE.read_text(errors="replace")[-200_000:]
         zf.writestr("aria.log", log_text)
-        zf.writestr("config.json", json.dumps(get_config(), indent=2, default=str))
+        zf.writestr("config.json", json.dumps(_redacted_config(), indent=2, default=str))
 
     buffer.seek(0)
     from fastapi.responses import Response

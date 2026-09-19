@@ -1,0 +1,219 @@
+{
+ "model": "gemma4:e4b-mlx",
+ "score": 28,
+ "total": 30,
+ "seconds": 4.3,
+ "ts": 1789705034.0266318,
+ "results": [
+  {
+   "q": "What is 7 + 8?",
+   "ok": true,
+   "expected": 15,
+   "got": 15.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 23 - 9?",
+   "ok": true,
+   "expected": 14,
+   "got": 14.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 6 times 7?",
+   "ok": true,
+   "expected": 42,
+   "got": 42.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 144 divided by 12?",
+   "ok": true,
+   "expected": 12,
+   "got": 12.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "Solve for x: 3x + 5 = 20.",
+   "ok": true,
+   "expected": 5,
+   "got": 5.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "Solve for x: 2x - 7 = 11.",
+   "ok": true,
+   "expected": 9,
+   "got": 9.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 15% of 200?",
+   "ok": true,
+   "expected": 30,
+   "got": 30.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is the area of a rectangle 8 cm by 5 cm? Give just the number.",
+   "ok": true,
+   "expected": 40,
+   "got": 40.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 2 to the power 5?",
+   "ok": true,
+   "expected": 32,
+   "got": 32.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is the square root of 81?",
+   "ok": true,
+   "expected": 9,
+   "got": 9.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "Simplify: 4/8 as a decimal.",
+   "ok": true,
+   "expected": 0.5,
+   "got": 0.5,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 1/2 + 1/4 as a decimal?",
+   "ok": true,
+   "expected": 0.75,
+   "got": 0.75,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 9 squared?",
+   "ok": true,
+   "expected": 81,
+   "got": 81.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 100 - 37?",
+   "ok": true,
+   "expected": 63,
+   "got": 63.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 13 times 4?",
+   "ok": true,
+   "expected": 52,
+   "got": 52.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "Solve for y: y/4 = 9.",
+   "ok": true,
+   "expected": 36,
+   "got": 36.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 1000 divided by 8?",
+   "ok": true,
+   "expected": 125,
+   "got": 125.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 3 cubed?",
+   "ok": true,
+   "expected": 27,
+   "got": 27.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "A triangle has base 10 and height 6. What is its area? Give just the number.",
+   "ok": true,
+   "expected": 30,
+   "got": 30.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 17 + 28?",
+   "ok": true,
+   "expected": 45,
+   "got": 45.0,
+   "seconds": 0.0
+  },
+  {
+   "q": "What is 2 + 3 times 4? Order of operations applies.",
+   "ok": true,
+   "expected": 14,
+   "got": 14.0,
+   "seconds": 1.3
+  },
+  {
+   "q": "What is (2 + 3) times 4?",
+   "ok": true,
+   "expected": 20,
+   "got": 20.0,
+   "seconds": 0.3
+  },
+  {
+   "q": "What is 100 divided by 4 divided by 5?",
+   "ok": true,
+   "expected": 5,
+   "got": 5.0,
+   "seconds": 0.3
+  },
+  {
+   "q": "Solve for x: 5x - 3 = 2x + 12.",
+   "ok": false,
+   "expected": 5,
+   "got": 15.0,
+   "seconds": 0.3
+  },
+  {
+   "q": "A shop discounts $80 by 25%. What is the sale price? Give just the number.",
+   "ok": true,
+   "expected": 60,
+   "got": 60.0,
+   "seconds": 0.4
+  },
+  {
+   "q": "What is 3/4 of 96?",
+   "ok": true,
+   "expected": 72,
+   "got": 72.0,
+   "seconds": 0.3
+  },
+  {
+   "q": "A train travels 60 km in 1.5 hours. What is its speed in km/h? Give just the number.",
+   "ok": true,
+   "expected": 40,
+   "got": 40.0,
+   "seconds": 0.4
+  },
+  {
+   "q": "What is 7 squared minus 3 squared?",
+   "ok": true,
+   "expected": 40,
+   "got": 40.0,
+   "seconds": 0.4
+  },
+  {
+   "q": "Solve for x: x/3 + x/6 = 9.",
+   "ok": false,
+   "expected": 18,
+   "got": 12.0,
+   "seconds": 0.3
+  },
+  {
+   "q": "What is the next prime after 47?",
+   "ok": true,
+   "expected": 53,
+   "got": 53.0,
+   "seconds": 0.3
+  }
+ ]
+}

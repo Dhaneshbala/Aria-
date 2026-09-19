@@ -19,8 +19,11 @@ Run from the backend directory:
     python scripts/make_aria_dataset.py
 """
 import json
+import logging
 import random
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 OUT_DIR = BACKEND_DIR / "data" / "finetune-aria"
@@ -308,9 +311,9 @@ if organizer_file.exists():
         for line in f:
             if line.strip():
                 records.append(json.loads(line))
-    print(f"  + included {organizer_file.name} (organizer examples)")
+    logger.info(f"  + included {organizer_file.name} (organizer examples)")
 else:
-    print(f"  ! organizer dataset not found at {organizer_file} — skipping")
+    logger.warning(f"  ! organizer dataset not found at {organizer_file} — skipping")
 
 # ── Split and write ─────────────────────────────────────────────────────────
 rng = random.Random(7)
@@ -323,4 +326,4 @@ for name, rows in (("train", train), ("valid", valid)):
     path = OUT_DIR / f"{name}.jsonl"
     path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-print(f"Wrote {len(train)} train + {len(valid)} valid examples to {OUT_DIR}")
+logger.info(f"Wrote {len(train)} train + {len(valid)} valid examples to {OUT_DIR}")

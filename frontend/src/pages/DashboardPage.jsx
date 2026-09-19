@@ -8,6 +8,7 @@ import {
   getLeaderboard, getTrends
 } from '../services/api'
 import { showToast } from '../components/Toast'
+import ConfirmModal from '../components/ui/ConfirmModal'
 import {
   Clock, AlertTriangle, CheckSquare, Timer, Play, Pause, RotateCcw,
   Plus, Pencil, Trash2, X, Check, Flame, Target, Trophy, Zap,
@@ -326,6 +327,7 @@ function AssignmentsCard() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   const refresh = async () => {
     try {
@@ -365,7 +367,7 @@ function AssignmentsCard() {
   }
 
   const handleToggle = async (t) => { try { const u = await updateTodo(t.id, { completed: !t.completed }); setTodos(prev => prev.map(x => (x.id === t.id ? u : x))); refresh() } catch (err) { showToast(`Couldn't update: ${err.message}`, 'error') } }
-  const handleDelete = async (id) => { if (!window.confirm('Delete this assignment?')) return; try { await deleteTodo(id); setTodos(prev => prev.filter(t => t.id !== id)); showToast('Assignment deleted', 'success', 2500); refresh() } catch (err) { showToast(`Couldn't delete: ${err.message}`, 'error') } }
+  const handleDelete = async (id) => { try { await deleteTodo(id); setTodos(prev => prev.filter(t => t.id !== id)); showToast('Assignment deleted', 'success', 2500); refresh() } catch (err) { showToast(`Couldn't delete: ${err.message}`, 'error') } finally { setPendingDelete(null) } }
 
   return (
     <div className="p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl flex flex-col">
@@ -426,11 +428,19 @@ function AssignmentsCard() {
                 <p className="text-[10px] text-[#5f6368] mt-0.5">{t.due_date ? `Due ${t.due_date}` : 'No due date'} · {t.estimated_mins}m · {t.priority}</p>
               </div>
               <button onClick={() => startEdit(t)} title="Edit" className="p-1.5 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-white shrink-0"><Pencil size={12} /></button>
-              <button onClick={() => handleDelete(t.id)} title="Delete" className="p-1.5 rounded-full hover:bg-red-500/20 text-[#9aa0a6] hover:text-[#f28b82] shrink-0"><Trash2 size={12} /></button>
+              <button onClick={() => setPendingDelete(t.id)} title="Delete" aria-label="Delete assignment" className="p-1.5 rounded-full hover:bg-red-500/20 text-[#9aa0a6] hover:text-[#f28b82] shrink-0"><Trash2 size={12} /></button>
             </div>
           ))}
         </div>
       )}
+      <ConfirmModal
+        open={pendingDelete !== null}
+        title="Delete this assignment?"
+        body="This removes the assignment from your list. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => handleDelete(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

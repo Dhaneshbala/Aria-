@@ -407,66 +407,9 @@ def test_notebook_chat():
 
 
 # ═══════════════════════════ 9. File organizer (non-AI) ═══════════════════════
-
-def test_organizer_upload_rename_move_search(tmp_path):
-    p = tmp_path / "algebra_homework.txt"
-    p.write_text("Solve 2x + 5 = 13. Algebra homework.")
-    with open(p, "rb") as f:
-        r = client.post("/api/files/upload", files={"file": ("algebra_homework.txt",
-                                                              f, "text/plain")})
-    assert r.status_code == 200, r.text
-    fid = r.json()["file_id"]
-
-    r = client.get("/api/files")
-    assert r.status_code == 200
-    # files response is list or {"files": [...]} depending on impl
-    files = r.json() if isinstance(r.json(), list) else r.json().get("files", r.json().get("items", []))
-    assert any(f.get("id") == fid for f in files)
-
-    r = client.get("/api/files/stats")
-    assert r.status_code == 200
-
-    r = client.put(f"/api/files/{fid}/rename", json={"name": "algebra_hw_v2.txt"})
-    assert r.status_code == 200, r.text
-
-    r = client.get("/api/files/search?q=algebra")
-    assert r.status_code == 200
-
-    r = client.delete(f"/api/files/{fid}")
-    assert r.status_code == 200
-
-    r = client.get("/api/files")
-    files2 = r.json() if isinstance(r.json(), list) else r.json().get("files", r.json().get("items", []))
-    assert not any(f.get("id") == fid for f in files2)
-
-
-def test_organizer_rules_crud():
-    # File organizer has no dedicated rules endpoints — verify the file APIs are coherent instead
-    r = client.get("/api/files")
-    assert r.status_code == 200
-    r = client.get("/api/files/stats")
-    assert r.status_code == 200
-
-
-def test_organizer_profiles_and_folders(tmp_path):
-    r = client.get("/api/files/scanned-folders")
-    assert r.status_code == 200
-
-    r = client.get("/api/files/folder-tree")
-    assert r.status_code == 200
-
-
-def test_organizer_undo_and_rollback(tmp_path):
-    p = tmp_path / "essay_final.txt"
-    p.write_text("Essay content")
-    with open(p, "rb") as f:
-        r = client.post("/api/files/upload",
-                        files={"file": ("essay_final.txt", f, "text/plain")})
-    fid = r.json()["file_id"]
-    r = client.put(f"/api/files/{fid}/rename", json={"name": "essay_v2.txt"})
-    assert r.status_code == 200
-
-    client.delete(f"/api/files/{fid}")
+# NOTE: the /api/files endpoints were removed with the File Organizer feature
+# (see conftest clean_db note) — no routes to test here. Coverage for the
+# surviving file flows lives in the notebooks tests below.
 
 
 # ═══════════════════════════ 10. Intelligence & memory ════════════════════════
@@ -575,7 +518,8 @@ def test_premium_planner_removed():
 def test_agent_safe_read_commands():
     r = client.post("/api/agent/terminal", json={"command": "echo hello"})
     assert r.status_code == 200
-    assert "hello" in r.json().get("output", "")
+    # Contract: AgentService.execute_terminal returns {"stdout": ..., ...}
+    assert "hello" in r.json().get("stdout", "")
 
     r = client.post("/api/agent/list-directory", json={"path": "."})
     assert r.status_code == 200

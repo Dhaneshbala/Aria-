@@ -18,8 +18,9 @@ from typing import List, Dict
 from urllib.parse import quote_plus
 
 import requests
-import urllib3
-urllib3.disable_warnings()
+import logging
+
+logger = logging.getLogger(__name__)
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -33,7 +34,8 @@ def _get(url, **kwargs):
     """GET with TLS verify True, fallback to False on SSL error (school proxy)."""
     try:
         return requests.get(url, verify=True, **kwargs)
-    except requests.exceptions.SSLError:
+    except requests.exceptions.SSLError as e:
+        logger.warning("TLS verify failed for %s (%s) — retrying unverified (school proxy?)", url, e)
         return requests.get(url, verify=False, **kwargs)
 
 

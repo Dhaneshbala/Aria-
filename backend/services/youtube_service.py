@@ -279,23 +279,6 @@ class YouTubeService:
             pass
         return ""
 
-        if not transcript:
-            return ""
-
-        # Combine all entries into full text
-        lines = []
-        for entry in transcript:
-            text = entry.text.strip()
-            if text:
-                # Clean up common transcript artifacts
-                text = re.sub(r'\[.*?\]', '', text)  # Remove [Music], [Applause], etc.
-                text = re.sub(r'♪.*?♪', '', text)    # Remove music notes
-                text = text.strip()
-                if text:
-                    lines.append(text)
-
-        return " ".join(lines)
-
     def _scrape_metadata(self, video_id: str) -> dict:
         """Scrape video metadata from the YouTube page."""
         import httpx

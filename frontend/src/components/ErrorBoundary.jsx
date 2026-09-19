@@ -15,18 +15,24 @@ export default class ErrorBoundary extends Component {
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, message: '' })
+    // Remount children by bumping key (passed to wrapper if used),
+    // plus clear error state so retry actually re-renders.
+    this.setState({ hasError: false, message: '', retryKey: (this.state.retryKey || 0) + 1 })
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-full px-6">
-          <p className="text-5xl mb-4">⚠️</p>
+        <div className="flex flex-col items-center justify-center h-full px-6" role="alert">
+          <p className="text-5xl mb-4" aria-hidden="true">⚠️</p>
           <h1 className="text-lg font-semibold text-[#e8e8e8] mb-2">Something went wrong</h1>
-          <p className="text-sm text-[#666] mb-4 text-center max-w-md">
-            {this.state.message || 'An unexpected error occurred while rendering this page.'}
+          <p className="text-sm text-[#8e8e8e] mb-4 text-center max-w-md">
+            An unexpected error occurred while rendering this page. Your data is safe — try again.
           </p>
+          <details className="mb-4 max-w-md w-full text-xs text-[#8e8e8e]">
+            <summary className="cursor-pointer hover:text-[#aaa]">Technical details</summary>
+            <pre className="mt-2 p-2 rounded bg-[#1e1e1e] overflow-auto whitespace-pre-wrap break-words">{this.state.message}</pre>
+          </details>
           <div className="flex gap-3">
             <button
               onClick={this.handleReset}
@@ -46,4 +52,9 @@ export default class ErrorBoundary extends Component {
     }
     return this.props.children
   }
+}
+
+// Key-based remount helper: <ErrorBoundary key={...}> forces fresh mount on reset.
+export function withErrorBoundaryKey() {
+  return Date.now()
 }

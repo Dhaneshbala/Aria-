@@ -9,9 +9,12 @@ Usage:
 """
 import asyncio
 import json
+import logging
 import os
 import re
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -147,7 +150,7 @@ async def main():
         results.append({"feature": "BRAIN_STUDY_INTENTS", "ok": False, "detail": str(e)})
     for name, coro, validator in tasks:
         results.append(await run_task(name, coro, validator))
-        print(f"  ...{name} done", flush=True)
+        logger.info(f"  ...{name} done")
     # difficulty classification (deterministic given empty profile → "medium")
     try:
         diff = await si.get_difficulty("unknown topic 12345")
@@ -158,14 +161,14 @@ async def main():
 
     results.append(tasks_result_difficulty)
 
-    print("\n=== FEATURE ACCURACY (live Ollama) ===")
+    logger.info("\n=== FEATURE ACCURACY (live Ollama) ===")
     all_ok = True
     for r in results:
         tag = "PASS" if r.get("ok") else "FAIL"
         if not r.get("ok"):
             all_ok = False
-        print(f"[{tag}] {r['feature']:18} {r.get('detail', '')[:140]}")
-    print(f"\nOVERALL: {sum(1 for r in results if r.get('ok'))}/{len(results)} features OK")
+        logger.info(f"[{tag}] {r['feature']:18} {r.get('detail', '')[:140]}")
+    logger.info(f"\nOVERALL: {sum(1 for r in results if r.get('ok'))}/{len(results)} features OK")
     with open("/tmp/feature_accuracy.json", "w") as f:
         json.dump(results, f, indent=1)
     return 0 if all_ok else 1

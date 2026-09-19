@@ -25,22 +25,30 @@ import { Menu, ChevronDown, Sparkles, Search, Maximize, Minimize } from 'lucide-
 
 function PageLoader() {
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full bg-[#131314]">
-      <div className="w-8 h-8 border-2 border-[#7c6af7] border-t-transparent rounded-full animate-spin mb-3" />
-      <p className="text-sm text-[#666]">Loading...</p>
+    <div className="flex flex-col h-full w-full bg-aria-bg p-4 gap-2" role="status" aria-live="polite" aria-label="Loading page">
+      <div className="skeleton h-8 w-48" aria-hidden="true" />
+      <div className="skeleton h-4 w-full" aria-hidden="true" />
+      <div className="skeleton h-4 w-11/12" aria-hidden="true" />
+      <div className="skeleton h-4 w-4/5" aria-hidden="true" />
+      <div className="card mt-2 p-4 flex items-center gap-3">
+        <div className="w-8 h-8 border-2 border-aria-accent border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+        <p className="text-sm text-aria-muted">Loading your workspace…</p>
+      </div>
     </div>
   )
 }
 
 function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4">
-      <p className="text-6xl mb-4">🔍</p>
-      <h1 className="text-xl font-semibold text-[#e8e8e8] mb-2">Page not found</h1>
-      <p className="text-sm text-[#666] mb-4">The page you're looking for doesn't exist.</p>
-      <a href="/chat" className="px-4 py-2 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm transition-colors">
-        Go to Chat
-      </a>
+    <div className="flex flex-col items-center justify-center h-full px-4 py-10">
+      <div className="card flex flex-col items-center px-8 py-10 text-center max-w-sm animate-fade-slide">
+        <p className="text-5xl mb-3" aria-hidden="true">🔍</p>
+        <h1 className="text-lg font-semibold text-aria-text mb-1">Page not found</h1>
+        <p className="text-[13px] text-aria-muted mb-4">The page you&apos;re looking for doesn&apos;t exist or moved.</p>
+        <a href="/chat" className="btn-primary touch-target px-5 py-2 text-sm inline-flex items-center">
+          Go to Chat
+        </a>
+      </div>
     </div>
   )
 }
@@ -58,26 +66,30 @@ function GeminiHeader({ onToggleSidebar }) {
     try {
       if (document.fullscreenElement) await document.exitFullscreen()
       else await document.documentElement.requestFullscreen()
-    } catch {}
+    } catch (e) {
+      console.warn('Fullscreen toggle failed:', e)
+    }
   }
   return (
-    <header className="gemini-header flex items-center justify-between px-3 sm:px-4 shrink-0 sticky top-0 z-20 backdrop-blur-md" style={{ background: 'rgba(19,19,20,0.9)' }}>
+    <header className="gemini-header flex items-center justify-between px-3 sm:px-4 shrink-0 sticky top-0 z-20 backdrop-blur-md safe-bottom" style={{ background: 'rgba(19,19,20,0.9)' }}>
       <div className="flex items-center gap-3">
         <button onClick={onToggleSidebar} aria-label="Toggle menu"
-          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#e3e3e3] transition-colors">
+          className="touch-target p-2 rounded-full hover:bg-aria-variant text-aria-text transition-colors">
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2 select-none">
-          <span className="hidden sm:block text-[22px] font-normal tracking-tight text-[#e3e3e3]" style={{ fontFamily: "'Google Sans', Inter, sans-serif" }}>ARIA</span>
-          <span className="hidden sm:block text-[11px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] text-white ml-1">2.5</span>
+          <span className="text-[22px] font-normal tracking-tight text-aria-text" style={{ fontFamily: "'Google Sans', Inter, sans-serif" }}>ARIA</span>
+          <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] text-white ml-1">2.5</span>
         </div>
       </div>
       <div className="flex items-center gap-1">
         <button onClick={toggleFullscreen} title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
-          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors">
+          aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+          aria-pressed={isFullscreen}
+          className="touch-target p-2 rounded-full hover:bg-aria-variant text-aria-muted hover:text-aria-text transition-colors">
           {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
         </button>
-        <div title={config.student_name || 'Student'} className="w-8 h-8 rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#4285f4] flex items-center justify-center text-white text-xs font-medium ml-1">
+        <div title={config.student_name || 'Student'} aria-label={`Signed in as ${config.student_name || 'Student'}`} className="w-8 h-8 rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#4285f4] flex items-center justify-center text-white text-xs font-medium ml-1">
           {initial}
         </div>
       </div>
@@ -105,7 +117,8 @@ export default function App() {
       try {
         const h = await getHealth()
         setOllamaStatus(h.ollama ? 'ok' : 'error')
-      } catch {
+      } catch (e) {
+        console.warn('Health check failed:', e)
         setOllamaStatus('error')
       }
     }
@@ -116,21 +129,21 @@ export default function App() {
     const onVis = () => document.visibilityState === 'visible' && checkHealth()
     document.addEventListener('visibilitychange', onVis)
 
-    getConversations().then(setConversations).catch(() => {})
-    getConfig().then(setConfig).catch(() => {})
+    getConversations().then(setConversations).catch((e) => console.warn('Failed to load conversations:', e))
+    getConfig().then(setConfig).catch((e) => console.warn('Failed to load config:', e))
 
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
   return (
     <BrowserRouter>
-      <div className={`flex h-screen w-full bg-[#131314] text-[#e3e3e3] overflow-hidden ${fontClass} ${uiPrefs.contrast ? 'aria-contrast' : ''}`}>
+      <div className={`flex min-h-screen w-full bg-aria-bg text-aria-text overflow-x-hidden ${fontClass} ${uiPrefs.contrast ? 'aria-contrast' : ''}`}>
         <div className="aria-bg opacity-40" />
         <Sidebar collapsed={!sidebarOpen} onToggle={() => setSidebarOpen(v => !v)} mobileOpen={sidebarOpen} setMobileOpen={setSidebarOpen} />
         <div className="flex-1 flex flex-col min-w-0 w-full">
           <GeminiHeader onToggleSidebar={() => setSidebarOpen(v => !v)} />
           <StatusBar />
-          <main className="flex-1 w-full overflow-y-auto bg-[#131314] flex flex-col">
+          <main className="flex-1 w-full overflow-y-auto bg-aria-bg flex flex-col">
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>
                 <Routes>

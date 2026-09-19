@@ -3,7 +3,7 @@ Extended Intelligence router — Analytics, Gamification, Automation,
 NSW Curriculum, Advanced Study Intelligence.
 """
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -51,11 +51,13 @@ def _svc(name):
 
 @router.get("/analytics/heatmap")
 async def get_heatmap(months: int = 6):
+    months = max(1, min(24, months))
     return _svc("analytics").get_heatmap(months)
 
 
 @router.get("/analytics/trends")
 async def get_trends(days: int = 30):
+    days = max(1, min(365, days))
     return _svc("analytics").get_trends(days)
 
 
@@ -98,7 +100,7 @@ async def get_leaderboard():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/auto/flashcards-from-pdf")
-async def auto_flashcards(file: UploadFile = File(...), count: int = Form(default=10)):
+async def auto_flashcards(file: UploadFile = File(...), count: int = Form(default=10, ge=1, le=50)):
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 50MB)")
@@ -106,7 +108,7 @@ async def auto_flashcards(file: UploadFile = File(...), count: int = Form(defaul
 
 
 @router.post("/auto/quiz-from-notes")
-async def auto_quiz(file: UploadFile = File(...), count: int = Form(default=5)):
+async def auto_quiz(file: UploadFile = File(...), count: int = Form(default=5, ge=1, le=20)):
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 50MB)")
@@ -173,6 +175,7 @@ async def get_progression(kla: str):
 
 @router.get("/study/exam-readiness/{subject}")
 async def exam_readiness(subject: str, days: int = 14):
+    days = max(1, min(90, days))
     return await _svc("advanced_study").calculate_exam_readiness(subject, days)
 
 
@@ -188,6 +191,7 @@ async def learning_style():
 
 @router.get("/study/due-cards")
 async def due_cards(subject: str | None = None, limit: int = 20):
+    limit = max(1, min(100, limit))
     return await _svc("advanced_study").get_due_cards(subject, limit)
 
 
@@ -197,13 +201,13 @@ async def sr_stats():
 
 
 class AddCardRequest(BaseModel):
-    front: str
-    back: str
-    subject: str = "general"
+    front: str = Field(..., min_length=1, max_length=5000)
+    back: str = Field(..., min_length=1, max_length=5000)
+    subject: str = Field(default="general", max_length=100)
 
 class ReviewCardRequest(BaseModel):
-    card_id: str
-    quality: int  # 0-5
+    card_id: str = Field(..., min_length=1, max_length=100)
+    quality: int = Field(..., ge=0, le=5)
 
 @router.post("/study/add-card")
 async def add_card(req: AddCardRequest):
@@ -216,7 +220,7 @@ async def review_card(req: ReviewCardRequest):
 
 
 class DeleteCardRequest(BaseModel):
-    card_id: str
+    card_id: str = Field(..., min_length=1, max_length=100)
 
 @router.post("/study/delete-card")
 async def delete_card(req: DeleteCardRequest):
@@ -224,8 +228,8 @@ async def delete_card(req: DeleteCardRequest):
 
 
 class BulkAddCardsRequest(BaseModel):
-    cards: list[dict]
-    subject: str = "general"
+    cards: list[dict] = Field(..., min_length=1, max_length=200)
+    subject: str = Field(default="general", max_length=100)
 
 @router.post("/study/bulk-add-cards")
 async def bulk_add_cards(req: BulkAddCardsRequest):
@@ -240,7 +244,10 @@ async def all_cards(subject: str | None = None):
 @router.post("/study/import-csv")
 async def import_csv(file: UploadFile = File(...), subject: str = Form(default="general")):
     """Import flashcards from a CSV file (columns: front,back[,subject])."""
+    from fastapi import HTTPException
     content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(413, "CSV too large (max 2 MB)")
     text = content.decode("utf-8-sig", errors="replace")
     import csv as csv_mod
     import io
@@ -255,6 +262,8 @@ async def import_csv(file: UploadFile = File(...), subject: str = Form(default="
             continue
         if front and back:
             cards.append({"front": front, "back": back})
+        if len(cards) >= 200:
+            break
     if not cards:
         return {"status": "error", "error": "No valid rows found. Expected: front,back", "count": 0}
     added = await _svc("advanced_study").add_flashcards_bulk(cards, subject)

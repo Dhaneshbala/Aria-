@@ -4,6 +4,7 @@ import {
   getKBCollections, searchKB
 } from '../services/api'
 import { showToast } from '../components/Toast'
+import ConfirmModal from '../components/ui/ConfirmModal'
 import { Database, Upload, Search, Trash2, FileText, Loader, X, FolderOpen } from 'lucide-react'
 
 export default function KBPage() {
@@ -15,6 +16,7 @@ export default function KBPage() {
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState(null)
   const [activeCollection, setActiveCollection] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null) // {hash, name}
   const fileRef = useRef(null)
 
   const load = async () => {
@@ -53,14 +55,16 @@ export default function KBPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  const handleDelete = async (hash, name) => {
-    if (!window.confirm(`Delete "${name || 'document'}"?`)) return
+  const handleDelete = async () => {
+    const { hash } = pendingDelete || {}
+    if (!hash && hash !== 0) { setPendingDelete(null); return }
     try {
       await deleteKBDocument(hash)
       setDocuments(prev => prev.filter(d => d.file_hash !== hash))
       showToast('Document deleted', 'success', 2500)
       load()
     } catch (e) { showToast('Delete failed', 'error') }
+    finally { setPendingDelete(null) }
   }
 
   const handleSearch = async (q) => {
@@ -157,7 +161,8 @@ export default function KBPage() {
                         {chunks !== '?' && `${chunks} chunks`}
                       </p>
                     </div>
-                    <button onClick={() => handleDelete(hash, name)}
+                    <button onClick={() => setPendingDelete({ hash, name })}
+                      aria-label={`Delete ${name}`}
                       className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-[#5f6368] hover:text-red-400 transition-all">
                       <Trash2 size={12} />
                     </button>
@@ -168,6 +173,14 @@ export default function KBPage() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        open={pendingDelete !== null}
+        title={`Delete "${pendingDelete?.name || 'document'}"?`}
+        body="This removes it from the Knowledge Base. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

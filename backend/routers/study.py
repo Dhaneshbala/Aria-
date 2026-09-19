@@ -3,19 +3,30 @@ import json as _json
 
 from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.study_service import StudyService
 from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/study", tags=["study"])
 study_svc = StudyService()
 
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from config.settings import get_settings as _get_study_settings
+    _study_limit_val = _get_study_settings().rate_limit_chat
+    _study_limiter = Limiter(key_func=get_remote_address, default_limits=[_study_limit_val])
+    _study_limit = _study_limiter.limit(_study_limit_val)
+except Exception:
+    _study_limiter = None
+    _study_limit = lambda f: f  # no-op
+
 
 class StudyRequest(BaseModel):
-    topic: str
-    level: str = "medium"
-    count: int = 5
-    days: int = 7
+    topic: str = Field(min_length=1, max_length=300)
+    level: str = Field(default="medium", pattern="^(easy|medium|hard|exam|olympiad)$")
+    count: int = Field(default=5, ge=1, le=15)
+    days: int = Field(default=7, ge=1, le=365)
     verify: bool = True  # cross-check (second model + Google) — on by default, as requested
 
 
@@ -48,7 +59,8 @@ class SummaryResponse(BaseModel):
 
 
 @router.post("/quiz", response_model=QuizResponse)
-async def generate_quiz(req: StudyRequest):
+@_study_limit
+async def generate_quiz(req: StudyRequest, request: Request):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     # verify flag: request body takes precedence; config/env also honoured.
@@ -64,6 +76,7 @@ async def generate_quiz(req: StudyRequest):
 
 
 @router.post("/quiz/stream")
+@_study_limit
 async def stream_quiz(req: StudyRequest, request: Request):
     """SSE quiz stream — each verified question arrives as it's done.
 
@@ -104,7 +117,8 @@ async def stream_quiz(req: StudyRequest, request: Request):
 
 
 @router.post("/flashcards")
-async def generate_flashcards(req: StudyRequest):
+@_study_limit
+async def generate_flashcards(req: StudyRequest, request: Request):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     cards = await study_svc.generate_flashcards(req.topic, req.count, model)
@@ -112,30 +126,40 @@ async def generate_flashcards(req: StudyRequest):
 
 
 @router.post("/summary")
-async def generate_summary(req: StudyRequest):
+@_study_limit
+async def generate_summary(req: StudyRequest, request: Request):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     summary = await study_svc.generate_summary(req.topic, model)
     return {"summary": summary}
 
+class QuizCheckRequest(BaseModel):
+    subject: str = Field(default="general", max_length=100)
+    correct: bool = False
+
+
+class AdaptiveDifficultyRequest(BaseModel):
+    current_difficulty: str = Field(default="medium", pattern="^(easy|medium|hard)$")
+    correct: bool = False
+    history: list[bool] = Field(default_factory=list, max_length=100)
+
+
 @router.post("/quiz/check")
-async def check_answer(data: dict):
+async def check_answer(data: QuizCheckRequest):
     from services.memory_service import MemoryService
     mem = MemoryService()
-    subject = data.get("subject", "general")
-    correct = data.get("correct", False)
-    profile = await mem.update_profile(subject, correct)
+    profile = await mem.update_profile(data.subject, data.correct)
     return {"profile": profile}
 
 
 @router.post("/quiz/adaptive-difficulty")
-async def adaptive_difficulty(data: dict):
+async def adaptive_difficulty(data: AdaptiveDifficultyRequest):
     """Real-time difficulty adjustment based on rolling accuracy.
     POST {"current_difficulty": "easy|medium|hard", "correct": true/false, "history": [true,false,true,true]}
     Returns {"suggested_difficulty": "easy|medium|hard", "reason": "..."}
     """
-    current = data.get("current_difficulty", "medium")
-    history = data.get("history", [])  # last N answers as booleans
+    current = data.current_difficulty
+    history = data.history
     if not history:
         return {"suggested_difficulty": current, "reason": "No history yet"}
 
@@ -183,7 +207,8 @@ async def adaptive_difficulty(data: dict):
 
 
 @router.post("/notes")
-async def generate_notes(req: StudyRequest):
+@_study_limit
+async def generate_notes(req: StudyRequest, request: Request):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     notes = await study_svc.generate_notes(req.topic, style=req.level, model=model)
@@ -251,6 +276,8 @@ async def parse_exam_notification(file: UploadFile = File(...)):
     data = await file.read()
     if not data:
         raise HTTPException(400, "Empty file")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Notification file too large (max 10 MB)")
     fname = file.filename or "notification"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     try:

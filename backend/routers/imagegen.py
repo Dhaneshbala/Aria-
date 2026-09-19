@@ -1,22 +1,33 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 from services.imagegen_service import ImageGenService
 from models.database import get_config
 
 router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
 sd = ImageGenService()
 
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    from config.settings import get_settings as _get_img_settings
+    _img_limit_val = _get_img_settings().rate_limit_chat
+    _img_limiter = Limiter(key_func=get_remote_address, default_limits=[_img_limit_val])
+    _img_limit = _img_limiter.limit(_img_limit_val)
+except Exception:
+    _img_limit = lambda f: f  # no-op
+
 
 class ImageRequest(BaseModel):
-    prompt:  str
-    negative: str = ""
-    width:   int  = 512
-    height:  int  = 512
-    model:   str  = "flux"     # "flux" | "turbo" | "sana" | "flux-realism"
+    prompt:  str = Field(..., min_length=1, max_length=2000)
+    negative: str = Field(default="", max_length=1000)
+    width:   int  = Field(default=512, ge=64, le=2048)
+    height:  int  = Field(default=512, ge=64, le=2048)
+    model:   str  = Field(default="flux", max_length=50)
 
 
 @router.post("/generate")
-async def generate_image(req: ImageRequest):
+@_img_limit
+async def generate_image(req: ImageRequest, request: Request):
     config = get_config()
     poll_model = config.get("pollinations_model", "flux")
     # Allow request to override, but config is source of truth if req uses default

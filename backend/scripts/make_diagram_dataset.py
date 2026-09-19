@@ -13,9 +13,12 @@ Run from the backend directory:
     ../.venv/bin/python scripts/make_diagram_dataset.py
 """
 import json
+import logging
 import random
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 OUT_DIR = Path.home() / ".aria_data" / "lora_data_diagrams"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1535,7 +1538,7 @@ add(
     "</svg>\n```",
 )
 
-print(f"Built {len(E)} diagram examples (batch 4 appended)")
+logger.info(f"Built {len(E)} diagram examples (batch 4 appended)")
 
 
 def _to_record(user: str, assistant: str) -> dict:
@@ -1559,9 +1562,9 @@ for i, (u, a) in enumerate(E):
         except Exception as e:
             bad.append((i, u[:40], str(e)[:100]))
 if bad:
-    print("INVALID SVG FOUND:")
+    logger.error("INVALID SVG FOUND:")
     for b in bad:
-        print(" ", b)
+        logger.error(f"  {b}")
     raise SystemExit("Fix invalid SVGs before writing dataset")
 
 # ── Split and write ─────────────────────────────────────────────────────────
@@ -1587,5 +1590,5 @@ for name, rows in splits.items():
     path = OUT_DIR / f"{name}.jsonl"
     path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-print(f"Wrote {len(splits['train'])} train + {len(splits['valid'])} valid "
+logger.info(f"Wrote {len(splits['train'])} train + {len(splits['valid'])} valid "
       f"+ {len(splits['test'])} test examples to {OUT_DIR}")

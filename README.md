@@ -102,6 +102,8 @@ Just type naturally — ARIA figures out what you need:
 - Attach images — worksheets, handwritten notes, diagrams, photos
 - Attach PDFs, Word, PowerPoint, Excel — ask questions about them
 - Voice input
+- Voice Tutor — hands-free spoken sessions: live partial transcripts, barge-in
+  (Interrupt/Esc), per-language voices, maths spoken aloud (`backend/docs/voice_api.md`)
 - Export chats as Markdown or JSON
 - Pin and search past conversations
 - Memory of past chats (ChromaDB)
@@ -221,6 +223,11 @@ Needs internet. Check your Wi-Fi connection.
 
 ### Voice not working
 Allow microphone access in Safari/Chrome when prompted.
+
+### Voice Tutor slow or robotic
+- First spoken reply takes ~10 s (the AI thinking, not the voice) — replies after that stream sentence by sentence.
+- English/Hindi/Telugu/Bengali/Malayalam/Marathi/Urdu use neural voices; other languages use macOS voices. To install all neural voices once: `ARIA_FETCH_VOICES=1 ./start.sh` (~450 MB).
+- Tamil answers need the Vani voice (macOS Settings → Accessibility → Spoken Content → System Voice → Manage Voices); without it ARIA falls back to the default voice automatically.
 
 ### Backend won't start
 ```bash

@@ -27,11 +27,14 @@ body {
   background: var(--aria-bg);
   color: #e3e3e3;
   font-family: 'Google Sans', 'Inter', system-ui, sans-serif;
-  overflow: hidden;
-  height: 100vh;
+  overflow-x: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-#root { height: 100vh; width: 100vw; display: flex; }
+#root { min-height: 100vh; min-height: 100dvh; width: 100vw; display: flex; }
 /* App root must grow to fill #root — otherwise the whole app shrink-wraps
    its content and leaves a dead black zone on the right of wide screens. */
 #root > div { flex: 1 1 0%; min-width: 0; }
@@ -214,6 +217,87 @@ main {
 .card-glow:hover {
   border-color: rgba(124, 106, 247, 0.3);
   box-shadow: 0 0 15px rgba(124, 106, 247, 0.08);
+}
+
+/* ── Premium design system ($100k polish) ─────────────────────────────── */
+/* Single card system — replaces 40+ ad-hoc bg-[#1e1f20] blocks */
+.card {
+  background: var(--aria-surface);
+  border: 1px solid var(--aria-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+}
+.card-hover {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 106, 247, 0.3);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 15px rgba(124,106,247,0.08);
+}
+
+/* Skeleton shimmer — replaces bare "Loading…" text */
+.skeleton {
+  background: linear-gradient(90deg, #1e1f20 25%, #2d2e30 50%, #1e1f20 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 8px;
+  color: transparent !important;
+  pointer-events: none;
+}
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+/* Premium buttons / inputs */
+.btn-primary {
+  background: linear-gradient(135deg, #7c6af7, #6a59e0);
+  color: #fff;
+  border-radius: 28px;
+  transition: all 0.2s ease;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #8d7df8, #7c6af7);
+  box-shadow: 0 4px 15px rgba(124, 106, 247, 0.3);
+  transform: translateY(-1px);
+}
+.btn-primary:active { transform: translateY(0); }
+
+.input-premium {
+  background: var(--aria-surface);
+  border: 1px solid var(--aria-border);
+  border-radius: 28px;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.input-premium:focus-within, .input-premium:focus {
+  border-color: rgba(124, 106, 247, 0.5);
+  box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.12);
+  outline: none;
+}
+
+/* 44px touch targets + safe-area for mobile premium feel */
+.touch-target { min-height: 44px; min-width: 44px; }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+/* Prose tables never break mobile — horizontal scroll */
+.prose { overflow-wrap: anywhere; }
+.prose pre, .prose table { max-width: 100%; }
+.prose table { display: block; overflow-x: auto; }
+
+/* Muted text contrast fix — #9aa0a6 passes 4.5:1 on #131314 */
+.text-muted-fixed { color: #9aa0a6; }
+
+/* Light theme (future toggle — set class="light" on <html>) */
+.light {
+  --aria-bg: #fafafa;
+  --aria-surface: #ffffff;
+  --aria-surface-variant: #f1f3f4;
+  --aria-border: #e8eaed;
+  --aria-border-light: #dadce0;
+  --aria-accent: #1a73e8;
+  --aria-accent-purple: #7c6af7;
+  --aria-glow: rgba(26,115,232,0.08);
 }
 
 /* Responsive sidebar */

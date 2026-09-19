@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getConfig, saveConfig, getModels, getHealth, clearAllMemory } from '../services/api'
+import { getConfig, saveConfig, getModels, getHealth, getVoiceStatus, clearAllMemory, createBackup, listBackups, downloadBackup, deleteBackup, restoreBackup, pullModel, unloadModel } from '../services/api'
 import { showToast } from '../components/Toast'
+import ConfirmModal from '../components/ui/ConfirmModal'
 import { Settings, Server, Cpu, HardDrive, RefreshCw, Check, Trash2, Zap, Info } from 'lucide-react'
 import { useStore } from '../store'
 
@@ -19,21 +20,36 @@ export default function AdminPage() {
   const [config, setConfig] = useState({})
   const [models, setModels] = useState([])
   const [health, setHealth] = useState(null)
+  const [voice, setVoice] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [confirm, setConfirm] = useState(null) // {title, body, confirmLabel, run}
   const { setConfig: setStoreConfig, uiPrefs, setUiPrefs } = useStore()
 
   useEffect(() => {
     getConfig().then(setConfig).catch(() => {})
     getModels().then(d => setModels(d.models || [])).catch(() => {})
     getHealth().then(setHealth).catch(() => {})
+    getVoiceStatus().then(setVoice).catch(() => {})
   }, [])
 
   const refresh = () => {
     getHealth().then(setHealth).catch(() => {})
     getModels().then(d => setModels(d.models || [])).catch(() => {})
+    getVoiceStatus().then(setVoice).catch(() => {})
   }
+
+  // Day 48: one-line voice summary for System Status (null-safe pre-load)
+  const voiceDesc = (() => {
+    if (!voice) return 'Loading voice engines…'
+    const engines = voice.tts_engines || {}
+    const piper = Object.entries(engines).filter(([, e]) => e === 'piper').map(([c]) => c)
+    const cache = voice.tts_cache
+    const cacheBit = cache ? ` · TTS cache ${cache.entries}/${cache.max_entries}` : ''
+    if (!piper.length) return `macOS voices only — run fetch_piper_voices.py for neural TTS${cacheBit}`
+    return `Neural: ${piper.join(', ')} · macOS fallback for the rest${cacheBit}`
+  })()
 
   const save = async () => {
     setSaving(true)
@@ -47,13 +63,13 @@ export default function AdminPage() {
   }
 
   const handleClearMemory = async () => {
-    if (!window.confirm('Clear all conversation memory and study profiles? This cannot be undone.')) return
     setClearing(true)
     try {
       await clearAllMemory()
       showToast('Memory cleared successfully.', 'success')
     } catch {}
     setClearing(false)
+    setConfirm(null)
   }
 
   const modelNames = models.map(m => m.name || m)
@@ -112,6 +128,9 @@ export default function AdminPage() {
           <StatusRow label="Pollinations.ai"
             ok={health?.pollinations !== false}
             desc="Free image generation — needs internet" />
+          <StatusRow label="Voice"
+            ok
+            desc={voiceDesc} />
         </div>
         {/* Installed models */}
         {models.length > 0 && (
@@ -278,18 +297,37 @@ export default function AdminPage() {
         <p className="text-xs text-[#444] mb-3">
           Conversations and study progress are saved to <code className="text-[#666]">~/.aria_data/</code>
         </p>
-        <button onClick={handleClearMemory} disabled={clearing}
+        <button onClick={() => setConfirm({
+          title: 'Clear all memory?',
+          body: 'This clears all conversation memory and study profiles. This cannot be undone.',
+          confirmLabel: 'Clear everything',
+          run: handleClearMemory,
+        })} disabled={clearing}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/8 border border-red-500/15 text-red-400 hover:bg-red-500/15 text-xs transition-colors disabled:opacity-50">
           <Trash2 size={13} />
           {clearing ? 'Clearing...' : 'Clear All Memory & Profiles'}
         </button>
       </div>
 
+      {/* Backup / Restore */}
+      <AdminBackupSection />
+
+      {/* Model Management */}
+      <AdminModelSection models={models} installed={models} />
+
       {/* Save */}
       <button onClick={save} disabled={saving}
         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm font-medium disabled:opacity-60 transition-colors">
         {saved ? <><Check size={14} /> Saved!</> : saving ? 'Saving...' : 'Save Settings'}
       </button>
+      <ConfirmModal
+        open={confirm !== null}
+        title={confirm?.title || 'Are you sure?'}
+        body={confirm?.body || ''}
+        confirmLabel={confirm?.confirmLabel || 'Confirm'}
+        onConfirm={() => confirm?.run?.()}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }
@@ -343,6 +381,174 @@ function ToggleRow({ label, desc, value, onChange }) {
         className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${value ? 'bg-[#7c6af7]' : 'bg-[#2a2a2a]'}`}>
         <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${value ? 'left-5' : 'left-0.5'}`} />
       </button>
+    </div>
+  )
+}
+
+function AdminBackupSection() {
+  const [backups, setBackups] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const [confirm, setConfirm] = useState(null) // {title, body, confirmLabel, run}
+  const fileRef = useState(null)
+
+  useEffect(() => {
+    listBackups().then(b => setBackups(Array.isArray(b) ? b : b?.backups || [])).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const handleCreate = async () => {
+    setCreating(true)
+    try {
+      await createBackup(false)
+      showToast('Backup created', 'success', 2500)
+      const b = await listBackups()
+      setBackups(Array.isArray(b) ? b : b?.backups || [])
+    } catch (e) { showToast('Backup failed: ' + e.message, 'error') }
+    setCreating(false)
+  }
+
+  const handleRestore = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setConfirm({
+      title: 'Restore backup?',
+      body: 'Restore will overwrite current data. Continue?',
+      confirmLabel: 'Restore',
+      run: async () => {
+        setConfirm(null)
+        setRestoring(true)
+        try {
+          await restoreBackup(file)
+          showToast('Restored! Refresh the page.', 'success', 5000)
+        } catch (err) { showToast('Restore failed: ' + err.message, 'error') }
+        setRestoring(false)
+      },
+    })
+  }
+
+  const handleDelete = async (name) => {
+    setConfirm({
+      title: `Delete backup "${name}"?`,
+      body: 'The backup file will be permanently removed.',
+      confirmLabel: 'Delete',
+      run: async () => {
+        setConfirm(null)
+        try {
+          await deleteBackup(name)
+          setBackups(prev => prev.filter(b => (b.name || b.filename) !== name))
+          showToast('Backup deleted', 'success', 2500)
+        } catch (e) { showToast('Delete failed', 'error') }
+      },
+    })
+  }
+
+  return (
+    <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+      <h3 className="text-sm font-medium text-[#e8e8e8] mb-2">Backup & Restore</h3>
+      <p className="text-xs text-[#444] mb-3">Save or restore all your data (conversations, flashcards, settings)</p>
+      <div className="flex gap-2 mb-3">
+        <button onClick={handleCreate} disabled={creating}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7c6af7]/15 text-[#a89bf8] hover:bg-[#7c6af7]/25 text-xs transition-colors disabled:opacity-50">
+          {creating ? 'Creating…' : 'Create Backup'}
+        </button>
+        <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2a2a2a] text-[#9aa0a6] hover:text-white text-xs cursor-pointer transition-colors">
+          {restoring ? 'Restoring…' : 'Restore from file'}
+          <input type="file" className="hidden" accept=".zip" onChange={handleRestore} disabled={restoring} />
+        </label>
+      </div>
+      {loading ? (
+        <p className="text-xs text-[#555]">Loading backups…</p>
+      ) : backups.length > 0 ? (
+        <div className="space-y-1.5">
+          {backups.slice(0, 5).map((b, i) => {
+            const name = b.name || b.filename || `backup-${i}`
+            const size = b.size ? `${(b.size / 1024 / 1024).toFixed(1)} MB` : ''
+            const date = b.created || b.date || ''
+            return (
+              <div key={name} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0f0f0f] border border-[#1e1e1e]">
+                <span className="text-xs text-[#aaa] flex-1 truncate">{name}</span>
+                {size && <span className="text-[10px] text-[#555]">{size}</span>}
+                {date && <span className="text-[10px] text-[#444]">{new Date(date).toLocaleDateString()}</span>}
+                <a href={`${window.location.origin}/api/backup/download/${encodeURIComponent(name)}`}
+                  className="text-[10px] text-[#8ab4f8] hover:underline">Download</a>
+                <button onClick={() => handleDelete(name)} className="text-[10px] text-[#555] hover:text-red-400">×</button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-[#444]">No backups yet</p>
+      )}
+      <ConfirmModal
+        open={confirm !== null}
+        title={confirm?.title || 'Are you sure?'}
+        body={confirm?.body || ''}
+        confirmLabel={confirm?.confirmLabel || 'Confirm'}
+        onConfirm={() => confirm?.run?.()}
+        onCancel={() => setConfirm(null)}
+      />
+    </div>
+  )
+}
+
+function AdminModelSection({ models, installed }) {
+  const [pulling, setPulling] = useState(null)
+  const [pullProgress, setPullProgress] = useState('')
+  const [unloading, setUnloading] = useState(null)
+
+  const handlePull = async (name) => {
+    setPulling(name)
+    setPullProgress('Starting download…')
+    try {
+      await pullModel(name)
+      showToast(`${name} downloaded`, 'success', 3000)
+      setPullProgress('')
+    } catch (e) { showToast('Pull failed: ' + e.message, 'error'); setPullProgress('') }
+    setPulling(null)
+  }
+
+  const handleUnload = async (name) => {
+    setUnloading(name)
+    try {
+      await unloadModel(name)
+      showToast(`${name} unloaded from RAM`, 'success', 2500)
+    } catch (e) { showToast('Unload failed: ' + e.message, 'error') }
+    setUnloading(null)
+  }
+
+  const installedNames = installed.map(m => m.name || m)
+
+  return (
+    <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+      <h3 className="text-sm font-medium text-[#e8e8e8] mb-2">Model Management</h3>
+      <p className="text-xs text-[#444] mb-3">Download new models or free up RAM</p>
+      <div className="space-y-1.5">
+        {RECOMMENDED.map(m => {
+          const isInstalled = installedNames.includes(m.name)
+          const isPulling = pulling === m.name
+          return (
+            <div key={m.name} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0f0f0f] border border-[#1e1e1e]">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-[#aaa] font-mono truncate">{m.name}</p>
+                <p className="text-[10px] text-[#444]">{m.ram} RAM · {m.disk} disk</p>
+              </div>
+              {isInstalled ? (
+                <button onClick={() => handleUnload(m.name)} disabled={unloading === m.name}
+                  className="text-[10px] px-2 py-1 rounded-full bg-[#2a2a2a] text-[#9aa0a6] hover:text-white transition-colors disabled:opacity-50">
+                  {unloading === m.name ? '…' : 'Unload'}
+                </button>
+              ) : (
+                <button onClick={() => handlePull(m.name)} disabled={isPulling}
+                  className="text-[10px] px-2 py-1 rounded-full bg-[#8ab4f8]/15 text-[#8ab4f8] hover:bg-[#8ab4f8]/25 transition-colors disabled:opacity-50">
+                  {isPulling ? pullProgress || 'Pulling…' : 'Pull'}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

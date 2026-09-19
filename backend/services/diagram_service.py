@@ -27,20 +27,25 @@ logger = logging.getLogger(__name__)
 
 VISUAL_TYPES = [
     "flowchart", "mindmap", "cycle", "timeline", "steps",
-    "comparison", "pyramid", "venn", "pie", "bar",
+    "comparison", "pyramid", "venn", "pie", "bar", "geometry",
 ]
 
 # ── Auto-detect: prompt keywords → best visual type (Napkin's auto-pick) ──
+# NOTE: order matters — explicit types first. "venn" previously mapped to
+# "comparison" so Venn was unreachable; bare words like "about"/"year"/"if "
+# caused false positives ("Year 7 maths" → timeline). Use word boundaries.
 _TYPE_HINTS = [
-    ({"venn", "overlap", "both", "neither", "compare", "contrast", "vs", "versus"}, "comparison"),
-    ({"timeline", "history", "chronolog", "evolution", "year", "century", "ww2", "war"}, "timeline"),
+    ({"venn"}, "venn"),
+    ({"pie", "percent", "percentage", "share of", "proportion", "distribution"}, "pie"),
+    ({"bar chart", "bar graph", "histogram", "compare numbers", "statistics", "stats"}, "bar"),
+    ({"timeline", "chronolog", "evolution", "century", "ww2", "world war"}, "timeline"),
     ({"cycle", "water cycle", "carbon cycle", "circulat", "loop", "recycl"}, "cycle"),
-    ({"process", "steps", "procedure", "how to", "method", "stage"}, "steps"),
-    ({"flowchart", "flow", "decision", "if ", "workflow", "algorithm"}, "flowchart"),
     ({"pyramid", "hierarchy", "levels of", "maslow", "food chain"}, "pyramid"),
-    ({"pie", "percent", "share", "proportion", "distribution"}, "pie"),
-    ({"bar", "statistics", "stats", "compare numbers", "chart"}, "bar"),
-    ({"mindmap", "mind map", "branches", "concept map", "overview", "about"}, "mindmap"),
+    ({"flowchart", "flow chart", "workflow", "algorithm", "decision tree"}, "flowchart"),
+    ({"process", "procedure", "how to", "method", "stage"}, "steps"),
+    ({"mind map", "mindmap", "concept map", "branch diagram", "topic map", "branches"}, "mindmap"),
+    ({"compare", "contrast", "versus", "pros and cons", "advantages and disadvantages"}, "comparison"),
+    ({"angle", "vertex", "ray", "complement", "supplement", "straight line", "protract", "geometry", "parallel", "perpendicular", "triangle", "polygon", "quadrilateral"}, "geometry"),
 ]
 
 _ICON_HINTS = [
@@ -83,12 +88,26 @@ _SUB_HINTS = [
 def detect_visual_type(prompt: str) -> str:
     p = prompt.lower()
     for keywords, vtype in _TYPE_HINTS:
-        if any(k in p for k in keywords):
-            return vtype
-    if re.search(r"\bvs\b|versus|pros.?cons|advantages?.*disadvantages?", p):
+        for k in keywords:
+            # Multi-word / distinctive hints: substring is fine.
+            # Short tokens (<=3 chars): require word boundaries to avoid
+            # matching inside other words ("vs" in "versus" is ok, but
+            # "pie" in "piece" is not).
+            if len(k) <= 3:
+                if re.search(rf"\b{re.escape(k)}\b", p):
+                    return vtype
+            elif k in p:
+                return vtype
+    if re.search(r"\bvs\b|versus|pros\s*.?\s*cons|advantages?\s*.{0,20}disadvantages?", p):
         return "comparison"
-    if re.search(r"\b(1[.)]|first|then|next|finally)\b", p):
+    if re.search(r"\b(flow|decision|if\s+.*\sthen)\b", p) and re.search(r"\b(then|else|step|next)\b", p):
+        return "flowchart"
+    if re.search(r"\b(1[.)]|first\b.{0,20}\bthen\b|\bthen\b.{0,20}\bnext\b|\bfinally\b)", p):
         return "steps"
+    if re.search(r"\b(overlap|both|neither|shared|in common)\b", p):
+        return "venn"
+    if re.search(r"\b(history of|evolution of|timeline of)\b", p):
+        return "timeline"
     return "flowchart"
 
 
@@ -138,29 +157,174 @@ def suggest_visuals(prompt: str) -> list[dict]:
     return [{"type": t, "label": labels.get(t, t), "recommended": i == 0} for i, t in enumerate(picks[:3])]
 
 
-def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
-    """Smart heuristic spec builder — works with zero model (offline-safe).
+def _smart_title(prompt: str) -> str:
+    """Title-case without mangling acronyms (WW2, DNA, NSW stay uppercase)."""
+    first_line = prompt.strip().split("\n")[0][:60]
+    cleaned = re.sub(
+        r"^(please\s+)?(draw|generate|create|make|show|give|explain|visualise|visualize)\b[^a-zA-Z]*",
+        "", first_line, flags=re.I,
+    ).strip()
+    cleaned = re.sub(r"^(me\s+)?(an?\s+)?(diagram|flowchart|chart|graph|map|figure|mind\s*map|timeline|poster)\s+(of|for|showing|that shows|about)?\s*", "", cleaned, flags=re.I).strip()
+    cleaned = re.sub(r"\s+(please|thanks|thank you)[.!]?\s*$", "", cleaned, flags=re.I).strip()
+    if not cleaned:
+        return "Overview"
+    words = cleaned.split()
+    out = [w if (w.isupper() and len(w) <= 5) or re.fullmatch(r"[A-Za-z]*\d+[A-Za-z]*", w) else w.capitalize() for w in words]
+    return _short(" ".join(out), 60) or "Overview"
 
-    Now extracts meaningful nodes with sub-descriptions and context-aware icons.
-    """
-    vtype = visual_type or detect_visual_type(prompt)
-    if vtype not in VISUAL_TYPES:
-        vtype = "flowchart"
-    # Try bullets / numbered lines first, then sentences, then phrases
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for it in items:
+        key = re.sub(r"\s+", " ", it.strip().lower())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(it.strip())
+    return out
+
+
+def _split_items(prompt: str) -> list[str]:
+    """Split prompt into candidate node labels: bullets → sentences → clauses."""
     lines = [l.strip(" •-*0123456789.)\t ") for l in re.split(r"[\n;]", prompt) if l.strip()]
     items: list[str] = []
     for ln in lines:
         parts = re.split(r"\s*[•·]\s*|\s{2,}", ln)
         items.extend(p.strip() for p in parts if p.strip())
+    items = _dedupe(items)
     if len(items) < 3:
-        items = [s.strip() for s in re.split(r"(?<=[.!?])\s+", prompt) if len(s.strip()) > 8]
+        sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", prompt) if len(s.strip()) > 8]
+        items = _dedupe(items + sents)
     if len(items) < 3:
-        items = [p.strip() for p in re.split(r",\s*", prompt) if len(p.strip()) > 3]
-    items = [i[:70] for i in items if i][:6]
+        clauses = [p.strip() for p in re.split(r",\s*|\s+and\s+", prompt) if len(p.strip()) > 3]
+        items = _dedupe(items + clauses)
+    # Last resort: split the longest item on " — "/" : " rather than filler text
+    if len(items) < 3 and items:
+        longest = max(items, key=len)
+        for part in re.split(r"\s+[—–:]\s+|\s+—\s+", longest):
+            if len(items) >= 3:
+                break
+            if len(part.strip()) > 3 and part.strip() not in items:
+                items.append(part.strip())
+    return [i[:70] for i in items if i][:6]
+
+
+def _geometry_spec(prompt: str) -> dict:
+    """Parse angle/geometry prompt into a Napkin geometry spec.
+
+    Extracts ray names and angle values from the prompt.
+    Examples:
+      "angle AOB = 60°" → rays OA, OB with 60° between them
+      "angles 60°, 45°, 75° on a straight line" → 4 rays with those angles
+      "complementary angles 30° and 60°" → 3 rays with 30° and 60°
+    """
+    p = prompt.lower()
+    title = _short(re.sub(
+        r"^(please\s+)?(draw|show|give|make|create|explain)\s+(me\s+)?(an?\s+)?",
+        "", prompt, flags=re.I
+    ).strip().title() or "Angles", 60)
+
+    # Extract angle values (e.g. 60°, 45 degrees, 30 deg)
+    angle_vals = [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\s*(?:°|deg|degree)", p)]
+    # Also try bare numbers after "angle" or before "and"
+    if len(angle_vals) < 2:
+        angle_vals += [float(x) for x in re.findall(r"(\d+(?:\.\d+)?)\b", p)
+                       if 1 <= float(x) <= 359 and float(x) not in angle_vals]
+
+    # Extract ray/point names (e.g. OA, OB, PQR, XYZ)
+    ray_names = re.findall(r"\b([A-Z]{2,3})\b", prompt)
+    # Filter to likely ray names (2-3 uppercase letters, not common words)
+    _skip = {"THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS",
+             "ONE", "OUR", "OUT", "HAS", "HIS", "HOW", "MAN", "NEW", "NOW", "OLD", "SEE",
+             "WAY", "WHO", "DID", "GET", "LET", "SAY", "SHE", "TOO", "USE", "MATH", "THIS",
+             "THAT", "WITH", "HAVE", "FROM", "THEY", "BEEN", "WILL", "WHAT", "WHEN", "YOUR",
+             "YEAR", "MAKE", "LIKE", "LONG", "LOOK", "MANY", "MOST", "OVER", "SUCH", "TAKE",
+             "THAN", "THEM", "THEN", "ALSO", "INTO", "JUST", "SHALL"}
+    ray_names = [r for r in ray_names if r not in _skip and len(r) <= 3]
+
+    # Determine vertex label
+    vertex = "V"
+    if ray_names:
+        # Try to find a single-letter vertex (e.g. "angle PQR" → vertex Q)
+        for name in ray_names:
+            if len(name) == 3:
+                vertex = name[1]
+                break
+        # Or use first point name as vertex
+        if vertex == "V" and ray_names:
+            vertex = ray_names[0][0] if len(ray_names[0]) >= 2 else ray_names[0]
+
+    # Build ray labels
+    if len(ray_names) >= 2 and all(len(r) >= 2 for r in ray_names[:4]):
+        # Use the extracted names (e.g. OA, OB, OC)
+        ray_labels = ray_names[:min(len(angle_vals) + 1, 5)]
+    else:
+        # Generate generic ray names from vertex
+        ray_labels = [f"{vertex}{chr(65 + i)}" for i in range(max(len(angle_vals), 2))]
+
+    # Ensure we have enough angle values
+    while len(angle_vals) < len(ray_labels) - 1:
+        # Fill with equal divisions of 180° or 360°
+        is_straight = any(w in p for w in ["straight", "line", "180"])
+        is_full = any(w in p for w in ["around", "point", "full", "360"])
+        total = 180 if is_straight else (360 if is_full else 180)
+        remaining = total - sum(angle_vals)
+        n_missing = len(ray_labels) - 1 - len(angle_vals)
+        if n_missing > 0 and remaining > 0:
+            each = remaining / n_missing
+            angle_vals.extend([round(each, 1)] * n_missing)
+        else:
+            angle_vals.append(30)
+
+    # Build nodes (one per ray)
+    nodes = []
+    for i, label in enumerate(ray_labels[:6]):
+        deg = angle_vals[i] if i < len(angle_vals) else 30
+        nodes.append({
+            "id": f"n{i+1}",
+            "label": label,
+            "angle": deg,
+            "angleLabel": f"{int(deg) if deg == int(deg) else deg}°",
+            "vertexLabel": vertex if i == 0 else "",
+            "sub": "",
+            "icon": "📐" if i == 0 else "",
+        })
+
+    return {"visual_type": "geometry", "title": title, "nodes": nodes, "edges": []}
+
+
+def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
+    """Smart heuristic spec builder — works with zero model (offline-safe).
+
+    Extracts meaningful nodes with sub-descriptions and context-aware icons.
+    Never emits "Key point N" filler: short prompts fall back to splitting the
+    prompt itself into clauses so every node carries real content.
+    """
+    vtype = visual_type or detect_visual_type(prompt)
+    if vtype not in VISUAL_TYPES:
+        vtype = "flowchart"
+
+    # ── Geometry: parse rays + angles from prompt ──
+    if vtype == "geometry":
+        return _geometry_spec(prompt)
+
+    items = _split_items(prompt)
+    if not items:
+        # Single short topic, e.g. "the water cycle" — use the topic as the
+        # centre node plus generic-but-honest stage labels derived from it.
+        topic = _smart_title(prompt)
+        items = [topic, f"{topic} — how it starts", f"{topic} — key parts"]
     while len(items) < 3:
-        items.append(f"Key point {len(items) + 1}")
-    title_bits = prompt.strip().split("\n")[0][:60]
-    title = re.sub(r"^(please\s+)?(draw|generate|create|make|show|give|explain)\b[^a-zA-Z]*", "", title_bits, flags=re.I).strip().title() or "Overview"
+        # Duplicate-free padding from the prompt's own keywords, not filler.
+        keywords = [w for w in re.findall(r"[A-Za-z]{4,}", prompt) if len(w) > 4]
+        extra = keywords[len(items) % max(len(keywords), 1)] if keywords else prompt[:24]
+        candidate = f"{extra.strip().capitalize()} — key idea"
+        if candidate not in items:
+            items.append(candidate)
+        else:
+            break
+    title = _smart_title(prompt)
     nodes = [
         {
             "id": f"n{i+1}",
@@ -183,7 +347,7 @@ def _chain_edges(nodes: list[dict], vtype: str) -> list[dict]:
     ids = [nd["id"] for nd in nodes]
     if vtype == "cycle":
         return [{"from": ids[i], "to": ids[(i + 1) % len(ids)], "label": ""} for i in range(len(ids))]
-    if vtype in ("comparison", "venn", "pie", "bar", "pyramid", "mindmap", "timeline"):
+    if vtype in ("comparison", "venn", "pie", "bar", "pyramid", "mindmap", "timeline", "geometry"):
         return []
     return [{"from": ids[i], "to": ids[i + 1], "label": ""} for i in range(len(ids) - 1)]
 
@@ -193,10 +357,11 @@ def _sanitize_spec(data: dict, prompt: str, fallback_type: str) -> dict:
     vtype = str(data.get("visual_type", fallback_type or "")).lower().strip()
     if vtype not in VISUAL_TYPES:
         vtype = detect_visual_type(prompt) if not fallback_type else fallback_type
-    title = _short(str(data.get("title", "") or prompt[:50]), 60) or "Overview"
+    title = _short(str(data.get("title", "") or _smart_title(prompt)), 60) or "Overview"
     raw_nodes = data.get("nodes") or []
     nodes: list[dict] = []
-    for i, nd in enumerate(raw_nodes[:8]):
+    seen_labels: set[str] = set()
+    for nd in raw_nodes[:8]:
         if isinstance(nd, str):
             nd = {"label": nd}
         if not isinstance(nd, dict):
@@ -204,13 +369,27 @@ def _sanitize_spec(data: dict, prompt: str, fallback_type: str) -> dict:
         label = _short(str(nd.get("label", "")), 48)
         if not label:
             continue
+        key = label.strip().lower()
+        if key in seen_labels:
+            continue
+        seen_labels.add(key)
+        icon_raw = str(nd.get("icon", "")).strip()
+        # Grapheme-safe: keep up to ~8 chars so compound emoji (🏔️, ❤️)
+        # aren't sliced mid-sequence; fall back to context icon.
+        icon = icon_raw[:8] if icon_raw else _icon_for(label, prompt)
         nodes.append({
-            "id": f"n{i+1}",
+            "id": f"n{len(nodes)+1}",
             "label": label,
             "sub": _short(str(nd.get("sub", "")), 80),
-            "icon": str(nd.get("icon", ""))[:4] or _icon_for(label, prompt),
+            "icon": icon or _icon_for(label, prompt),
+            # Preserve geometry-specific fields
+            **({} if vtype != "geometry" else {
+                "angle": nd.get("angle", 30),
+                "angleLabel": str(nd.get("angleLabel", "")),
+                "vertexLabel": str(nd.get("vertexLabel", "")),
+            }),
         })
-    if len(nodes) < 3:
+    if len(nodes) < (2 if vtype == "geometry" else 3):
         return _fallback_spec(prompt, vtype)
     ids = {nd["id"] for nd in nodes}
     edges: list[dict] = []
@@ -242,12 +421,17 @@ class DiagramService:
     Speed strategy: heuristic-first (instant), LLM refines in background (optional).
     """
 
+    # Tiny in-memory cache: identical prompts skip the LLM round-trip.
+    _refine_cache: dict[tuple[str, str], dict] = {}
+    _REFINE_CACHE_MAX = 50
+    LLM_TIMEOUT_SECS = 12.0
+
     async def generate(self, prompt: str, visual_type: str | None = None,
-                       model: str | None = None, max_tokens: int = 300) -> dict:
+                       model: str | None = None, max_tokens: int = 500) -> dict:
         """Returns {"type": "napkin", "spec": {...}} — or {"error": ...}.
 
         Instant: returns heuristic spec immediately.
-        Then: tries LLM refinement (faster with reduced params).
+        Then: tries LLM refinement (12s budget — local gemma needs >5s).
         """
         prompt = (prompt or "").strip()[:1200]
         if not prompt:
@@ -260,7 +444,13 @@ class DiagramService:
         # Instant: heuristic spec
         instant_spec = _fallback_spec(prompt, hint)
 
-        # Try LLM refinement with timeout (5s max — don't block the user)
+        # Cache hit: skip the LLM entirely
+        cache_key = (prompt[:300].lower(), hint)
+        cached = self._refine_cache.get(cache_key)
+        if cached and len(cached.get("nodes", [])) >= 3:
+            return {"type": "napkin", "spec": cached, "cached": True}
+
+        # Try LLM refinement with timeout (don't block the user long)
         try:
             from services.ollama_service import OllamaService
             from models.database import get_config, MODELS
@@ -279,22 +469,29 @@ class DiagramService:
             raw = await asyncio.wait_for(
                 ollama.complete(
                     mdl, full_prompt, system=_SPEC_SYSTEM,
-                    max_tokens=max(250, min(max_tokens, 400)),
+                    max_tokens=max(250, min(max_tokens, 700)),
                     think=False, json_mode=True, context_window=4096,
                 ),
-                timeout=5.0,
+                timeout=self.LLM_TIMEOUT_SECS,
             )
             data = json.loads(_strip_fences(raw))
             refined_spec = _sanitize_spec(data, prompt, hint)
             if len(refined_spec.get("nodes", [])) >= len(instant_spec.get("nodes", [])):
+                self._cache_refine(cache_key, refined_spec)
                 return {"type": "napkin", "spec": refined_spec}
             return {"type": "napkin", "spec": instant_spec, "refined": False}
         except asyncio.TimeoutError:
-            logger.info("Diagram LLM timed out (5s) — using heuristic")
+            logger.info("Diagram LLM timed out (%.0fs) — using heuristic", self.LLM_TIMEOUT_SECS)
             return {"type": "napkin", "spec": instant_spec, "fallback": True}
         except Exception as e:
             logger.info("Diagram LLM refinement skipped (%s) — using heuristic", e)
             return {"type": "napkin", "spec": instant_spec, "fallback": True}
+
+    @classmethod
+    def _cache_refine(cls, key: tuple[str, str], spec: dict) -> None:
+        if len(cls._refine_cache) >= cls._REFINE_CACHE_MAX:
+            cls._refine_cache.pop(next(iter(cls._refine_cache)))
+        cls._refine_cache[key] = spec
 
     async def suggest(self, prompt: str) -> dict:
         """Return 3 Napkin-style visual options + a preview spec for the top pick."""

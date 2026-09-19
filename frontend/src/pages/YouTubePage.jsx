@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { processYouTube, generateQuiz, generateFlashcards } from '../services/api'
+import { startTask, cancelTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
 import { Youtube, FileText, BookOpen, CreditCard, Info, ExternalLink } from 'lucide-react'
@@ -9,11 +10,50 @@ export default function YouTubePage() {
   const saved = studyTools.youtube
   const [url, setUrl] = useState(saved.url || '')
   const [result, setResult] = useState(saved.result || null)
-  const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState('summary')
   const [quiz, setQuiz] = useState(saved.quiz || null)
   const [flashcards, setFlashcards] = useState(saved.flashcards || null)
+  const [loading, setLoading] = useState(
+    () => useStore.getState().bgTasks?.yt_process?.status === 'running'
+  )
   const [loadingExtra, setLoadingExtra] = useState('')
+  const bgProcess = useBgTask('yt_process')
+  const bgQuiz = useBgTask('yt_quiz')
+  const bgFlash = useBgTask('yt_flashcards')
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+
+  // Adopt background runs on mount
+  useEffect(() => {
+    if (bgProcess?.status === 'running') setLoading(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (bgProcess?.status === 'done' && !result && saved.result) {
+      setResult(saved.result)
+      setQuiz(saved.quiz || null)
+      setFlashcards(saved.flashcards || null)
+      setLoading(false)
+    } else if ((bgProcess?.status === 'error' || bgProcess?.status === 'cancelled') && loading) {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgProcess?.status])
+
+  // Adopt quiz/flashcard background tasks
+  useEffect(() => {
+    if (bgQuiz?.status === 'done' && !quiz && saved.quiz) {
+      setQuiz(saved.quiz)
+      setTab('quiz')
+      setLoadingExtra('')
+    }
+    if (bgFlash?.status === 'done' && !flashcards && saved.flashcards) {
+      setFlashcards(saved.flashcards)
+      setTab('flashcards')
+      setLoadingExtra('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgQuiz?.status, bgFlash?.status])
 
   // Auto-persist to store
   useEffect(() => {
@@ -22,55 +62,97 @@ export default function YouTubePage() {
 
   const process = async () => {
     if (!url.trim()) return
+    cancelTask('yt_process', { silent: true })
     setLoading(true)
     setResult(null)
     setQuiz(null)
     setFlashcards(null)
     setTab('summary')
     try {
-      const data = await processYouTube(url)
-      setResult(data)
-      if (data.error) {
-        showToast(data.error, 'error')
+      await startTask('yt_process', {
+        label: `YouTube: ${url.slice(0, 40)}`,
+        page: '/youtube',
+        run: (signal) => processYouTube(url, signal),
+        onDone: (data) => {
+          setStudyTool('youtube', { result: data, quiz: null, flashcards: null, url })
+        },
+      })
+      if (mountedRef.current) {
+        const latest = useStore.getState().studyTools.youtube
+        setResult(latest.result || null)
+        setLoading(false)
       }
     } catch (e) {
-      setResult({ error: e.message })
-      showToast('Failed to process video: ' + e.message, 'error')
+      if (mountedRef.current) {
+        if (e?.name !== 'AbortError') {
+          setResult({ error: e.message })
+          showToast('Failed to process video: ' + e.message, 'error')
+        }
+        setLoading(false)
+      }
     }
-    setLoading(false)
   }
 
   const makeQuiz = async () => {
     if (!result?.title) return
+    cancelTask('yt_quiz', { silent: true })
     setLoadingExtra('quiz')
-    // Use transcript if available, otherwise use title + description
     const context = result.transcript
       ? `${result.title}: ${result.transcript.slice(0, 500)}`
       : `${result.title}. ${result.channel ? 'By ' + result.channel + '. ' : ''}${result.description || ''}`
     try {
-      const data = await generateQuiz(context, 'medium', 5)
-      setQuiz(data.questions)
-      setTab('quiz')
+      await startTask('yt_quiz', {
+        label: `Quiz from: ${result.title?.slice(0, 30)}`,
+        page: '/youtube',
+        run: (signal) => generateQuiz(context, 'medium', 5, true, signal),
+        onDone: (data) => {
+          const q = data.questions || []
+          setStudyTool('youtube', { quiz: q })
+        },
+      })
+      if (mountedRef.current) {
+        const latest = useStore.getState().studyTools.youtube
+        setQuiz(latest.quiz || null)
+        setTab('quiz')
+        setLoadingExtra('')
+      }
     } catch (e) {
-      showToast('Failed to generate quiz: ' + e.message, 'error')
+      if (mountedRef.current) {
+        if (e?.name !== 'AbortError') showToast('Failed to generate quiz: ' + e.message, 'error')
+        setLoadingExtra('')
+      }
     }
-    setLoadingExtra('')
   }
 
   const makeFlashcards = async () => {
     if (!result?.title) return
+    cancelTask('yt_flashcards', { silent: true })
     setLoadingExtra('flashcards')
     const context = result.transcript
       ? `${result.title}: ${result.transcript.slice(0, 500)}`
       : `${result.title}. ${result.channel ? 'By ' + result.channel + '. ' : ''}${result.description || ''}`
     try {
-      const data = await generateFlashcards(context, 8)
-      setFlashcards(data.cards)
-      setTab('flashcards')
+      await startTask('yt_flashcards', {
+        label: `Flashcards from: ${result.title?.slice(0, 30)}`,
+        page: '/youtube',
+        run: (signal) => generateFlashcards(context, 8, signal),
+        onDone: (data) => {
+          const fc = data.cards || []
+          setStudyTool('youtube', { flashcards: fc })
+        },
+      })
+      if (mountedRef.current) {
+        const latest = useStore.getState().studyTools.youtube
+        setFlashcards(latest.flashcards || null)
+        setTab('flashcards')
+        setLoadingExtra('')
+      }
     } catch (e) {
-      showToast('Failed to generate flashcards: ' + e.message, 'error')
+      if (mountedRef.current) {
+        if (e?.name !== 'AbortError') showToast('Failed to generate flashcards: ' + e.message, 'error')
+        setLoadingExtra('')
+      }
     }
-    setLoadingExtra('')
   }
 
   return (
@@ -115,7 +197,7 @@ export default function YouTubePage() {
 
       {result && !result.error && (
         <div className="space-y-4">
-          {/* Video info card — Gemini dark cards */}
+          {/* Video info card */}
           <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
@@ -134,7 +216,6 @@ export default function YouTubePage() {
               </div>
             </div>
 
-            {/* Status — captions vs AI inference */}
             <div className="mt-3 flex items-start gap-2 bg-[#1e1f20] border border-[#2d2e30] rounded-lg px-3 py-2.5">
               <Info size={13} className={`${result.has_transcript ? 'text-green-400' : 'text-[#8ab4f8]'} mt-0.5 flex-shrink-0`} />
               <p className="text-xs leading-relaxed text-[#9aa0a6]">
@@ -154,7 +235,6 @@ export default function YouTubePage() {
               </div>
             )}
 
-            {/* Description */}
             {result.description && (
               <div className="mt-3">
                 <p className="text-xs text-[#444] mb-1 font-medium">Description:</p>
@@ -204,7 +284,7 @@ export default function YouTubePage() {
             </div>
           )}
 
-          {/* Tab: Summary (always available — works without captions) */}
+          {/* Tab: Summary */}
           {tab === 'summary' && (
             <div className="bg-[#1e1f20] border border-[#2d2e30] rounded-2xl p-5 space-y-3">
               <h3 className="text-sm font-medium text-[#e3e3e3]">Video Summary</h3>
@@ -252,7 +332,7 @@ export default function YouTubePage() {
             </div>
           )}
 
-          {/* Tab: Flashcards — full width grid */}
+          {/* Tab: Flashcards */}
           {tab === 'flashcards' && flashcards && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {flashcards.map((c, i) => (

@@ -1,7 +1,7 @@
 """
 Knowledge Base Service — ARIA's RAG-powered knowledge system.
 ─────────────────────────────────────────────────────────────
-Stores documents in ChromaDB with nomic-embed-text embeddings.
+Stores documents in ChromaDB with mxbai-embed-large embeddings.
 Supports: PDF, DOCX, PPTX, XLSX, TXT, MD, HTML, CSV, JSON, images (OCR).
 Collections: education_au, general, coding, research, math, science, history, geography, literature, productivity, user_docs.
 """
@@ -32,7 +32,7 @@ try:
     from models.database import MODELS
     EMBEDDING_MODEL = MODELS["embedding"]
 except Exception:
-    EMBEDDING_MODEL = "nomic-embed-text"
+    EMBEDDING_MODEL = "mxbai-embed-large"
 CHUNK_SIZE = 800       # Phase 2 free win: larger chunks for science/history (was 600)
 CHUNK_OVERLAP = 120    # was 100 — better context retention
 

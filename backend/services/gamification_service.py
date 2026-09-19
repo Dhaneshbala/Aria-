@@ -129,18 +129,27 @@ class GamificationService:
         return new_achievements
 
     def get_progress(self) -> dict:
-        """Get gamification progress."""
+        """Get gamification progress.
+
+        `achievements_earned` is the LIST of earned achievement dicts (the
+        Dashboard renders `.slice(0, 8)` from it); `earned_count` is the int
+        for anything counting. Previously this was just the int, so
+        `achievements_earned.length` was undefined and earned badges never
+        rendered — streak showed 0 forever.
+        """
         total_ach = len(ACHIEVEMENT_DEFS)
-        earned = len(self._data.get("achievements", []))
+        earned_list = self._data.get("achievements", [])
+        earned = len(earned_list)
 
         return {
             "xp": self._data.get("xp", 0),
             "level": self._data.get("level", 1),
             "xp_to_next": 100 - (self._data.get("xp", 0) % 100),
-            "achievements_earned": earned,
+            "achievements_earned": earned_list,
+            "earned_count": earned,
             "total_achievements": total_ach,
             "percentage": round(earned / total_ach * 100) if total_ach > 0 else 0,
-            "achievements": self._data.get("achievements", []),
+            "achievements": earned_list,
             "all_achievements": ACHIEVEMENT_DEFS,
         }
 
@@ -151,7 +160,7 @@ class GamificationService:
 
         challenges = [
             {"id": "speed_quiz", "name": "Speed Round", "desc": "Complete 5 questions in under 3 minutes", "xp_reward": 20, "type": "timed"},
-            {"id": "accuracy挑战", "name": "Accuracy Challenge", "desc": "Get 80%+ on a 10-question quiz", "xp_reward": 25, "type": "accuracy"},
+            {"id": "accuracy_challenge", "name": "Accuracy Challenge", "desc": "Get 80%+ on a 10-question quiz", "xp_reward": 25, "type": "accuracy"},
             {"id": "subject_blend", "name": "Subject Blend", "desc": "Study 3 different subjects today", "xp_reward": 15, "type": "variety"},
             {"id": "flashcard_sprint", "name": "Flashcard Sprint", "desc": "Review 10 flashcards in a row without missing", "xp_reward": 30, "type": "streak"},
             {"id": "weekend_warrior", "name": "Weekend Warrior", "desc": "Study for 30+ minutes on a weekend", "xp_reward": 15, "type": "weekend"},

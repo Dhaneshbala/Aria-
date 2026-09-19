@@ -14,6 +14,23 @@ import { showToast } from '../components/Toast'
 let activeAbort = null
 let activeBlobUrls = []
 
+function trackBlobUrl(url) {
+  if (!url) return
+  activeBlobUrls.push(url)
+  // Cap preview URLs to avoid unbounded memory growth — revoke oldest
+  while (activeBlobUrls.length > 20) {
+    const old = activeBlobUrls.shift()
+    try { URL.revokeObjectURL(old) } catch {}
+  }
+}
+
+export function revokeAllPreviewUrls() {
+  for (const u of activeBlobUrls) {
+    try { URL.revokeObjectURL(u) } catch {}
+  }
+  activeBlobUrls = []
+}
+
 function heuristicTitle(users) {
   if (!users.length) return 'New chat'
   if (users.length === 1) {
@@ -78,13 +95,14 @@ export function useChat() {
         sessionStorage.removeItem('aria_pending_doc')
         text = `[Document: ${pending.name}]\n\n${(pending.text || '').slice(0, 3000)}\n\n---\n\n${text || 'Please summarise this document and tell me the key points.'}`
       } catch {
-        sessionStorage.removeItem('aria_pending_doc')
-      }
+      try { sessionStorage.removeItem('aria_pending_doc') } catch {}
+      console.warn('Failed to parse pending doc from library')
+    }
     }
 
     // User message bubble — support multiple doc names
     const imagePreview = image ? URL.createObjectURL(image) : null
-    if (imagePreview) blobUrlsRef.current.push(imagePreview)
+    if (imagePreview) trackBlobUrl(imagePreview)
     const userMsg = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -105,7 +123,7 @@ export function useChat() {
         const optimistic = heuristicTitle(users)
         useStore.getState().upsertConversationTitle?.(conversationId, optimistic, new Date().toISOString())
         // Also update via quick heuristic; server will refine with LLM later
-      } catch {}
+      } catch (e) { console.warn('Optimistic title update failed:', e) }
     }
 
     // AI placeholder
@@ -328,17 +346,17 @@ export function useChat() {
                 const seed = heuristicTitle(users)
                 useStore.getState().upsertConversationTitle?.(newConvId, seed, new Date().toISOString())
               }
-            } catch {}
+            } catch (e) { console.warn('Title seed failed:', e) }
             if (location.pathname.startsWith('/chat')) {
               navigate(`/chat/${newConvId}`, { replace: true })
             }
             // Fetch authoritative titles (heuristic + LLM) — slight delay to let LLM title persist
-            setTimeout(() => getConversations().then(setConversations).catch(() => {}), 800)
-            getConversations().then(setConversations).catch(() => {})
+            setTimeout(() => getConversations().then(setConversations).catch((e) => console.warn('Refresh conversations failed:', e)), 800)
+            getConversations().then(setConversations).catch((e) => console.warn('Refresh conversations failed:', e))
           } else if (newConvId) {
             // Existing chat — refresh list to pick up LLM-refined title (with small delay for background task)
-            setTimeout(() => getConversations().then(setConversations).catch(() => {}), 1200)
-            getConversations().then(setConversations).catch(() => {})
+            setTimeout(() => getConversations().then(setConversations).catch((e) => console.warn('Refresh conversations failed:', e)), 1200)
+            getConversations().then(setConversations).catch((e) => console.warn('Refresh conversations failed:', e))
           }
         },
       })

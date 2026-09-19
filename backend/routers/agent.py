@@ -1,6 +1,6 @@
 """Agent router — tool calling endpoints for autonomous actions."""
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from services.agent_service import AgentService
 
@@ -9,19 +9,19 @@ agent_svc = AgentService()
 
 
 class TerminalRequest(BaseModel):
-    command: str
-    cwd: Optional[str] = None
-    timeout: int = 30
+    command: str = Field(..., min_length=1, max_length=5000)
+    cwd: Optional[str] = Field(default=None, max_length=500)
+    timeout: int = Field(default=30, ge=1, le=300)
 
 
 class FileRequest(BaseModel):
-    path: str
-    content: Optional[str] = None
+    path: str = Field(..., min_length=1, max_length=1000)
+    content: Optional[str] = Field(default=None, max_length=1000000)
 
 
 class SearchRequest(BaseModel):
-    pattern: str
-    path: str = "."
+    pattern: str = Field(..., min_length=1, max_length=500)
+    path: str = Field(default=".", max_length=500)
 
 
 @router.post("/terminal")

@@ -5,6 +5,7 @@ import {
   deleteMemoryConversation, getMemoryProfile
 } from '../services/api'
 import { showToast } from '../components/Toast'
+import ConfirmModal from '../components/ui/ConfirmModal'
 import { Search, Trash2, MessageSquare, Brain, ChevronRight, X, Loader } from 'lucide-react'
 
 export default function MemoryPage() {
@@ -16,6 +17,7 @@ export default function MemoryPage() {
   const [selected, setSelected] = useState(null)
   const [selectedTurns, setSelectedTurns] = useState([])
   const [loadingTurns, setLoadingTurns] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   const load = async () => {
     try {
@@ -50,13 +52,13 @@ export default function MemoryPage() {
   }
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this conversation?')) return
     try {
       await deleteMemoryConversation(id)
       setConversations(prev => prev.filter(c => (c.id || c.conversation_id) !== id))
       if (selected?.id === id || selected?.conversation_id === id) { setSelected(null); setSelectedTurns([]) }
       showToast('Conversation deleted', 'success', 2500)
     } catch (e) { showToast('Delete failed', 'error') }
+    finally { setPendingDelete(null) }
   }
 
   const goChat = (convId) => {
@@ -138,7 +140,8 @@ export default function MemoryPage() {
                       {conv.last_active ? ` · ${new Date(conv.last_active).toLocaleDateString()}` : ''}
                     </p>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); handleDelete(id) }}
+                  <button onClick={e => { e.stopPropagation(); setPendingDelete(id) }}
+                    aria-label="Delete conversation"
                     className="p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-[#5f6368] hover:text-red-400 transition-all shrink-0">
                     <Trash2 size={12} />
                   </button>
@@ -205,6 +208,14 @@ export default function MemoryPage() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        open={pendingDelete !== null}
+        title="Delete this conversation?"
+        body="This removes it from Memory. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => handleDelete(pendingDelete)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

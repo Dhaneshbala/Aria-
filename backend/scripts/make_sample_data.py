@@ -11,9 +11,12 @@ Example:
     python scripts/make_sample_data.py /tmp/sample_downloads
 """
 import argparse
+import logging
 import shutil
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 SAMPLES = {
     # (relative path, content)
@@ -49,7 +52,7 @@ def main() -> int:
         (dest / f"download_{i:03d}.txt").write_text(
             f"Untitled document {i} with some text content about nothing in particular.")
 
-    print(f"Created {len(SAMPLES) + args.files} sample files in {dest}")
+    logger.info(f"Created {len(SAMPLES) + args.files} sample files in {dest}")
     return 0
 
 

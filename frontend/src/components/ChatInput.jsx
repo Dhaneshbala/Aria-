@@ -34,13 +34,50 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
     focus: () => textareaRef.current?.focus(),
   }))
 
+  const SLASH_COMMANDS = {
+    '/quiz': 'Make a quiz on',
+    '/flashcard': 'Make flashcards on',
+    '/flashcards': 'Make flashcards on',
+    '/note': 'Create study notes on',
+    '/notes': 'Create study notes on',
+    '/cheat': 'Create a cheat sheet on',
+    '/cheatsheet': 'Create a cheat sheet on',
+    '/mindmap': 'Draw a mind map of',
+    '/timeline': 'Make a timeline for',
+    '/summary': 'Summarise',
+    '/explain': 'Explain',
+    '/clear': '__CLEAR__',
+    '/help': '__HELP__',
+  }
+
   const handleSend = () => {
-    if (!text.trim() && !attachedImage && attachedDocs.length === 0) return
-    // Send as documents array for multiple, or single document for backward compat
+    let msg = text.trim()
+    if (!msg && !attachedImage && attachedDocs.length === 0) return
+
+    // Slash command expansion
+    const slashMatch = msg.match(/^\/(\w+)\s*(.*)/)
+    if (slashMatch) {
+      const [, cmd, rest] = slashMatch
+      const expansion = SLASH_COMMANDS['/' + cmd]
+      if (expansion === '__CLEAR__') {
+        onSend({ text: '/clear', command: 'clear' })
+        setText(''); setAttachedImage(null); setAttachedDocs([])
+        return
+      }
+      if (expansion === '__HELP__') {
+        onSend({ text: 'List all available slash commands', command: 'help' })
+        setText(''); setAttachedImage(null); setAttachedDocs([])
+        return
+      }
+      if (expansion) {
+        msg = rest.trim() ? `${expansion} ${rest.trim()}` : expansion
+      }
+    }
+
     if (attachedDocs.length > 1) {
-      onSend({ text: text.trim(), image: attachedImage, documents: attachedDocs })
+      onSend({ text: msg, image: attachedImage, documents: attachedDocs })
     } else {
-      onSend({ text: text.trim(), image: attachedImage, document: attachedDocs[0] || null })
+      onSend({ text: msg, image: attachedImage, document: attachedDocs[0] || null })
     }
     setText('')
     setAttachedImage(null)
@@ -148,6 +185,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={disabled ? "ARIA is thinking..." : "Ask ARIA"}
+          aria-label="Ask ARIA"
           rows={1}
           className="w-full bg-transparent text-[16px] leading-6 text-[#e3e3e3] placeholder-[#9aa0a6] resize-none outline-none max-h-40 py-1"
           style={{ height: 'auto', minHeight: '24px' }}
@@ -165,6 +203,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
               onClick={() => imageInputRef.current.click()}
               className="w-8 h-8 rounded-full hover:bg-[#35363a] flex items-center justify-center text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors"
               title="Add image"
+              aria-label="Add image"
             >
               <Image size={18} />
             </button>
@@ -175,6 +214,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
               onClick={() => docInputRef.current.click()}
               className="w-8 h-8 rounded-full hover:bg-[#35363a] flex items-center justify-center text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors"
               title={attachedDocs.length > 0 ? `Add more files (${attachedDocs.length}/10)` : "Add files (PDFs, docs - up to 10)"}
+              aria-label="Attach files"
             >
               <Paperclip size={18} />
             </button>
@@ -215,6 +255,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
                 onClick={() => { const c = getActiveAbort(); if (c) c.abort() }}
                 className="w-8 h-8 rounded-full bg-[#5f6368] hover:bg-[#5f6368]/80 flex items-center justify-center text-white transition-colors"
                 title="Stop"
+                aria-label="Stop generating"
               >
                 <Square size={12} className="fill-current" />
               </button>
@@ -224,6 +265,7 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
             <button
               onClick={handleSend}
               disabled={disabled || (!text.trim() && !attachedImage && attachedDocs.length === 0)}
+              aria-label="Send message"
               className="w-9 h-9 rounded-full bg-[#8ab4f8] text-[#062e6f] disabled:bg-[#2d2e30] disabled:text-[#5f6368] hover:bg-[#aecbfa] disabled:hover:bg-[#2d2e30] flex items-center justify-center transition-colors shrink-0"
             >
               <Send size={16} className={text.trim() || attachedImage || attachedDocs.length > 0 ? 'translate-x-[1px]' : ''} />
@@ -251,7 +293,7 @@ function AttachmentChip({ icon, name, file, onRemove }) {
       {preview && <img src={preview} className="w-5 h-5 rounded-full object-cover" alt="" />}
       {!preview && <span className="text-[#9aa0a6]">{icon}</span>}
       <span className="max-w-24 truncate">{name}</span>
-      <button onClick={onRemove} className="ml-1 w-5 h-5 rounded-full hover:bg-[#35363a] flex items-center justify-center text-[#9aa0a6] hover:text-[#f28b82]">
+      <button onClick={onRemove} aria-label={`Remove ${name}`} className="ml-1 w-5 h-5 rounded-full hover:bg-[#35363a] flex items-center justify-center text-[#9aa0a6] hover:text-[#f28b82]">
         <X size={11} />
       </button>
     </div>

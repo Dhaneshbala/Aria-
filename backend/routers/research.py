@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.research_service import ResearchService
 from services.youtube_service import YouTubeService
 
@@ -9,11 +9,11 @@ youtube_svc = YouTubeService()
 
 
 class SearchRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=1000)
 
 
 class YouTubeRequest(BaseModel):
-    url: str
+    url: str = Field(..., min_length=1, max_length=500)
 
 
 @router.post("/search")

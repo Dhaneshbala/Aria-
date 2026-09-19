@@ -1,15 +1,130 @@
-const BASE = '/api'
+const BASE = import.meta.env?.VITE_API_BASE || '/api'
+const DEFAULT_TIMEOUT_MS = 30_000
+
+export class ApiError extends Error {
+  constructor(status, type, message, hint = '') {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.type = type
+    this.hint = hint
+  }
+}
+
+function friendlyStatusMessage(status) {
+  if (status === 429) return 'Too many requests — please wait a moment and try again.'
+  if (status === 413) return 'That file is too large. Try a smaller file.'
+  if (status === 502 || status === 503) return 'ARIA backend is waking up — try again in a few seconds.'
+  if (status === 401 || status === 403) return 'Not allowed. Check your session and try again.'
+  return ''
+}
+
+async function parseErrorBody(resp) {
+  // Unified backend envelope: {detail: {type, message, hint}} — fall back to text.
+  try {
+    const text = await resp.text()
+    if (!text) return { message: resp.statusText || `HTTP ${resp.status}`, type: 'friendly', hint: '' }
+    try {
+      const data = JSON.parse(text)
+      const d = data?.detail
+      if (typeof d === 'string') return { message: d, type: 'friendly', hint: '' }
+      if (d && typeof d === 'object') {
+        return {
+          message: d.message || d.msg || resp.statusText,
+          type: d.type || 'friendly',
+          hint: d.hint || '',
+        }
+      }
+      if (data?.message) return { message: data.message, type: 'friendly', hint: '' }
+      return { message: text.slice(0, 300), type: 'friendly', hint: '' }
+    } catch {
+      return { message: text.slice(0, 300), type: 'friendly', hint: '' }
+    }
+  } catch {
+    return { message: resp.statusText || `HTTP ${resp.status}`, type: 'friendly', hint: '' }
+  }
+}
 
 async function apiFetch(url, options = {}) {
-  const resp = await fetch(url, options)
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText)
-    throw new Error(`API error ${resp.status}: ${text}`)
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, retryGet = true, ...fetchOpts } = options
+  const doFetch = async (signal) => fetch(url, { ...fetchOpts, ...(signal ? { signal } : {}) })
+
+  const runOnce = async () => {
+    // timeoutMs === 0 disables timeout (SSE streams).
+    if (!timeoutMs || fetchOpts.signal) return doFetch(fetchOpts.signal)
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs)
+    try {
+      return await doFetch(ctrl.signal)
+    } finally {
+      clearTimeout(t)
+    }
   }
-  return resp
+
+  let resp
+  try {
+    resp = await runOnce()
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e
+    if (e?.name === 'TimeoutError') throw new ApiError(0, 'upstream', 'Request timed out — is the backend running?', 'Check http://localhost:8000/api/health')
+    throw new ApiError(0, 'upstream', 'Cannot reach ARIA backend. Is it running?', 'Run ./start.sh, then retry.')
+  }
+  if (resp.ok) return resp
+  // Retry once for GET on bad-gateway (proxy cold start).
+  if (retryGet && (!fetchOpts.method || fetchOpts.method === 'GET') && (resp.status === 502 || resp.status === 503)) {
+    await new Promise(r => setTimeout(r, 800))
+    try {
+      const retry = await runOnce()
+      if (retry.ok) return retry
+      resp = retry
+    } catch {}
+  }
+  const parsed = await parseErrorBody(resp)
+  const friendly = friendlyStatusMessage(resp.status)
+  throw new ApiError(
+    resp.status,
+    parsed.type,
+    friendly ? `${friendly} (${parsed.message})`.slice(0, 400) : parsed.message,
+    parsed.hint,
+  )
 }
 
 // ── Chat (SSE streaming) ──────────────────────────────────────────────────────
+
+function getSseReader(resp) {
+  if (!resp.body) throw new Error('Streaming not supported by this browser')
+  return resp.body.getReader()
+}
+
+/** Shared SSE line parser — dedupes streamChat/streamQuiz logic. */
+export async function parseSseStream(resp, onEvent, { signal } = {}) {
+  const reader = getSseReader(resp)
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          onEvent(data)
+          if (data.type === 'done') return data
+        } catch {
+          // ignore partial chunks
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock() } catch {}
+  }
+  return null
+}
 
 export async function streamChat({ message, conversationId, image, document, documents, onChunk, onDone, mode = 'normal', signal }) {
   const form = new FormData()
@@ -22,30 +137,20 @@ export async function streamChat({ message, conversationId, image, document, doc
   }
   form.append('mode', mode)
 
-  const resp = await apiFetch(`${BASE}/chat`, { method: 'POST', body: form, signal })
+  // timeoutMs: 0 — streams can run for minutes (LLM), never abort on timeout.
+  const resp = await apiFetch(`${BASE}/chat`, { method: 'POST', body: form, signal, timeoutMs: 0 })
 
   const newConvId = resp.headers.get('X-Conversation-Id')
-  const reader = resp.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6))
-          onChunk(data)
-          if (data.type === 'done') { onDone(newConvId); return }
-        } catch {
-          // SSE parse error — ignore partial chunks
-        }
-      }
-    }
+  try {
+    await parseSseStream(resp, (data) => {
+      onChunk(data)
+      if (data.type === 'done') onDone(newConvId)
+    }, { signal })
+  } catch (err) {
+    // AbortError on user cancel is expected — rethrow so caller can handle
+    if (err?.name === 'AbortError') throw err
+    throw new ApiError(0, 'upstream', `Stream interrupted: ${err.message}`, 'Check your connection and try again.')
   }
   onDone(newConvId)
 }
@@ -131,37 +236,23 @@ export const generateCheatsheet = (topic, subject = '', signal) => {
 // ── Quiz streaming (each verified question arrives as it's done) ───────────
 
 export async function streamQuiz({ topic, level = 'medium', count = 5, signal, onTotal, onQuestion, onProgress }) {
-  const resp = await fetch(`${BASE}/study/quiz/stream`, {
+  const resp = await apiFetch(`${BASE}/study/quiz/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, level, count, verify: true }),
     signal,
+    timeoutMs: 0,
   })
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText)
-    throw new Error(`API error ${resp.status}: ${text}`)
-  }
-  const reader = resp.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
   const questions = []
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      let data
-      try { data = JSON.parse(line.slice(6)) } catch { continue }
-      if (data.type === 'total') onTotal?.(data.total)
-      else if (data.type === 'question') { questions.push(data.question); onQuestion?.(data.question, questions.length) }
-      else if (data.type === 'progress') onProgress?.(data.done, data.total)
-      else if (data.type === 'error') throw new Error(data.content || 'Quiz stream failed')
-      else if (data.type === 'done') return { questions: data.questions?.length ? data.questions : questions }
-    }
-  }
+  let donePayload = null
+  await parseSseStream(resp, (data) => {
+    if (data.type === 'total') onTotal?.(data.total)
+    else if (data.type === 'question') { questions.push(data.question); onQuestion?.(data.question, questions.length) }
+    else if (data.type === 'progress') onProgress?.(data.done, data.total)
+    else if (data.type === 'error') throw new ApiError(0, 'upstream', data.content || 'Quiz stream failed')
+    else if (data.type === 'done') donePayload = data
+  }, { signal })
+  if (donePayload?.questions?.length) return { questions: donePayload.questions }
   return { questions }
 }
 
@@ -287,11 +378,12 @@ export const webSearch = (query) =>
     body: JSON.stringify({ query }),
   }).then(r => r.json())
 
-export const processYouTube = (url) =>
+export const processYouTube = (url, signal) =>
   apiFetch(`${BASE}/research/youtube`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
+    signal,
   }).then(r => r.json())
 
 // ── Image generation ──────────────────────────────────────────────────────────
@@ -338,6 +430,46 @@ export const getModels = () => apiFetch(`${BASE}/admin/models`).then(r => r.json
 export const getHealth = () => apiFetch(`${BASE}/admin/health`).then(r => r.json())
 export const getProfile = () => apiFetch(`${BASE}/admin/profile`).then(r => r.json())
 
+export const pullModel = (name) =>
+  apiFetch(`${BASE}/admin/models/pull`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(r => r.json())
+
+export const unloadModel = (name) =>
+  apiFetch(`${BASE}/admin/models/unload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(r => r.json())
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+
+const BACKUP = `${BASE}/backup`
+
+export const createBackup = (includeUploads = false) =>
+  apiFetch(`${BACKUP}/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ include_uploads: includeUploads }),
+  }).then(r => r.json())
+
+export const listBackups = () =>
+  apiFetch(`${BACKUP}/list`).then(r => r.json())
+
+export const downloadBackup = (filename) =>
+  apiFetch(`${BACKUP}/download/${encodeURIComponent(filename)}`)
+
+export const deleteBackup = (filename) =>
+  apiFetch(`${BACKUP}/${encodeURIComponent(filename)}`, { method: 'DELETE' }).then(r => r.json())
+
+export const restoreBackup = async (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return apiFetch(`${BACKUP}/restore`, { method: 'POST', body: form }).then(r => r.json())
+}
+
 // ── Voice ─────────────────────────────────────────────────────────────────────
 
 export const transcribeAudio = (blob, language) => {
@@ -350,14 +482,91 @@ export const transcribeAudio = (blob, language) => {
   return apiFetch(`${BASE}/voice/transcribe`, { method: 'POST', body: form }).then(r => r.json())
 }
 
-export const synthesizeSpeech = async (text) => {
+export const synthesizeSpeech = async (text, language) => {
   const resp = await apiFetch(`${BASE}/voice/synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: text.slice(0, 3500) }),
+    body: JSON.stringify({ text: text.slice(0, 3500), ...(language ? { language } : {}) }),
   })
   const blob = await resp.blob()
   return URL.createObjectURL(blob)
+}
+
+// Day 3: client-side TTS URL cache + prefetch. Repeated tutor phrases
+// ("Well done!", "Try again") reuse the same object URL instead of
+// re-hitting /synthesize. LRU-capped to avoid blob leaks.
+const _ttsUrlCache = new Map() // text -> objectUrl
+const TTS_CACHE_MAX = 30
+
+function _ttsCacheGet(text) {
+  const url = _ttsUrlCache.get(text)
+  if (url) {
+    // refresh LRU order
+    _ttsUrlCache.delete(text)
+    _ttsUrlCache.set(text, url)
+  }
+  return url || null
+}
+
+function _ttsCachePut(text, url) {
+  if (_ttsUrlCache.has(text)) _ttsUrlCache.delete(text)
+  _ttsUrlCache.set(text, url)
+  while (_ttsUrlCache.size > TTS_CACHE_MAX) {
+    const oldest = _ttsUrlCache.keys().next().value
+    const oldUrl = _ttsUrlCache.get(oldest)
+    _ttsUrlCache.delete(oldest)
+    try { if (oldUrl?.startsWith('blob:')) URL.revokeObjectURL(oldUrl) } catch {}
+  }
+}
+
+export const synthesizeSpeechCached = async (text, language) => {
+  const key = `${language || ''}\0${text.slice(0, 3500)}`
+  const hit = _ttsCacheGet(key)
+  if (hit) return hit
+  const url = await synthesizeSpeech(text, language)
+  _ttsCachePut(key, url)
+  return url
+}
+
+// Fire-and-forget warm of the TTS cache for an upcoming sentence.
+// Never throws — prefetch failures just mean a cache miss later.
+export const prefetchSpeech = (text, language) => {
+  try {
+    const body = (text || '').slice(0, 3500)
+    if (!body) return Promise.resolve(null)
+    const key = `${language || ''}\0${body}`
+    if (_ttsUrlCache.has(key)) return Promise.resolve(_ttsCacheGet(key))
+    return synthesizeSpeechCached(body, language).catch(() => null)
+  } catch {
+    return Promise.resolve(null)
+  }
+}
+
+// Day 1 realtime: split long text into TTS sentence chunks server-side,
+// with local fallback if the endpoint is unavailable (older backend).
+export const chunkTextForSpeech = async (text, maxChars = 350) => {
+  try {
+    const resp = await apiFetch(`${BASE}/voice/chunk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.slice(0, 10000), max_chars: maxChars }),
+    })
+    const data = await resp.json()
+    if (Array.isArray(data?.chunks) && data.chunks.length) return data.chunks
+  } catch {}
+  // Local fallback mirrors backend chunking (see voiceQueue.js)
+  const { chunkForSpeech } = await import('./voiceQueue.js')
+  return chunkForSpeech(text, maxChars)
+}
+
+// Day 48: voice system status for the Admin panel (engines, cache, stats).
+export const getVoiceStatus = () =>
+  apiFetch(`${BASE}/voice/stream-info`).then(r => r.json()).catch(() => null)
+
+// Caller MUST call this when the audio URL is no longer needed
+// (prevents ObjectURL memory leaks on repeated TTS).
+export const revokeSpeechUrl = (url) => {
+  try { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url) } catch {}
 }
 
 // ── Memory management ─────────────────────────────────────────────────────────

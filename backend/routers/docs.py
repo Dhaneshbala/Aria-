@@ -34,7 +34,7 @@ async def upload_document(file: UploadFile = File(...)):
 async def summarise_document(
     file: UploadFile = File(...),
     style: str = Form(default="structured"),
-    focus: Optional[str] = Form(default=None),
+    focus: Optional[str] = Form(default=None, max_length=500),
 ):
     """
     Summarise a document. Works on large PDFs by chunking.
@@ -110,8 +110,8 @@ async def summarise_document(
 @router.post("/quotes")
 async def extract_quotes(
     file: UploadFile = File(...),
-    theme: str = Form(...),
-    min_relevance: float = Form(default=0.2),
+    theme: str = Form(..., min_length=1, max_length=500),
+    min_relevance: float = Form(default=0.2, ge=0.0, le=1.0),
 ):
     """
     Extract quotes/passages from a document relevant to a theme.
@@ -133,7 +133,7 @@ async def extract_quotes(
 @router.post("/ask")
 async def ask_document(
     file: UploadFile = File(...),
-    question: str = Form(...),
+    question: str = Form(..., min_length=1, max_length=8000),
 ):
     """
     Ask any question about the document.
