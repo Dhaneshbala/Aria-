@@ -291,7 +291,7 @@ export const getPlanPracticeSet = (planId, count = 5, level = 'hard') =>
 export const getMathsTopics = () =>
   apiFetch(`${BASE}/maths/topics`).then(r => r.json())
 
-export const generateMathsSet = (topic_id, tier = 'selective', count = 5, signal) => {
+export const generateMathsSet = (topic_id, tier = 'stage4', count = 5, signal) => {
   const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

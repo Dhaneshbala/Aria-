@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BookOpen, Layers, CalendarClock, Calculator, Sigma } from 'lucide-react'
 
 const QuizPage = lazy(() => import('./QuizPage'))
@@ -18,6 +18,14 @@ const TABS = [
 export default function CreatePage() {
   const [tab, setTab] = useState('quiz')
   const Active = TABS.find(t => t.id === tab)?.comp
+
+  // Maths Accelerator dispatches this after auto-creating a quiz —
+  // jump straight to the Quiz tab to take it.
+  useEffect(() => {
+    const openQuiz = () => setTab('quiz')
+    window.addEventListener('aria:open-quiz', openQuiz)
+    return () => window.removeEventListener('aria:open-quiz', openQuiz)
+  }, [])
 
   return (
     <div className="flex flex-col h-full w-full">

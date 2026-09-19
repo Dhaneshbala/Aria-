@@ -1,10 +1,13 @@
 """
 Maths Accelerator — selective-level maths for North Sydney Boys standard.
 
+Starts at Stage 4 (Year 7-8 foundations) and builds to selective + Extension.
+
 Tiers:
-  • foundation — Stage 5.2 consolidation (speed + accuracy)
-  • selective  — Stage 5.3 exam style (multi-step, NESA verbs, traps)
-  • extension  — early Extension 1 bridge (proof-flavoured, harder)
+  • stage4      — Stage 4 Advanced (Year 7-8 challenge): multi-step, traps, exam thinking
+  • foundation  — Stage 5.2 consolidation (speed + accuracy)
+  • selective   — Stage 5.3 exam style (multi-step, NESA verbs, traps)
+  • extension   — early Extension 1 bridge (proof-flavoured, harder)
 
 Each generated question carries:
   question, marks, solution_steps[], trap, shortcut, answer
@@ -62,6 +65,11 @@ def _save_mastery(data: dict) -> None:
 
 
 TIERS = {
+    "stage4": {
+        "name": "Stage 4 Advanced",
+        "desc": "Year 7-8 challenge — multi-step, traps, exam thinking",
+        "marks_hint": "2-3 marks each",
+    },
     "foundation": {
         "name": "Foundation",
         "desc": "Stage 5.2 — speed + accuracy, single method",
@@ -79,8 +87,49 @@ TIERS = {
     },
 }
 
-# NSW Stage 4/5.3 topic map — what a selective student actually faces.
+# NSW Stage 4 → 5.3 topic map — starts where a Year 7 student is.
+# Stage 4 topics come first so the Accelerator opens at Stage 4.
 MATHS_TOPICS = [
+    {
+        "id": "algebra_foundations",
+        "name": "Advanced Algebra",
+        "stage": "Stage 4",
+        "outcomes": ["MA4-5NA"],
+        "prereq": "Two-step equations",
+        "focus": "Equations with brackets and fractions, forming equations from words, inequations intro",
+    },
+    {
+        "id": "fractions_decimals_percent",
+        "name": "Advanced FDP & Finance",
+        "stage": "Stage 4",
+        "outcomes": ["MA4-1NA", "MA4-2NA", "MA4-11NA"],
+        "prereq": "Basic FDP conversions",
+        "focus": "Repeated percentage change, GST/discount/profit chains, best-buy reasoning",
+    },
+    {
+        "id": "angles_triangles",
+        "name": "Advanced Angles",
+        "stage": "Stage 4",
+        "outcomes": ["MA4-7NA"],
+        "prereq": "Basic angle facts",
+        "focus": "Parallel lines and transversals, multi-step angle chasing with reasons",
+    },
+    {
+        "id": "area_volume_basics",
+        "name": "Advanced Area & Volume",
+        "stage": "Stage 4",
+        "outcomes": ["MA4-6NA"],
+        "prereq": "Rectangle/triangle area",
+        "focus": "Composite shapes, surface area of prisms, unit conversions",
+    },
+    {
+        "id": "linear_intro",
+        "name": "Advanced Linear Relations",
+        "stage": "Stage 4",
+        "outcomes": ["MA4-8NA"],
+        "prereq": "Plotting points",
+        "focus": "Gradient and intercepts from graphs, sketching lines, break-even style problems",
+    },
     {
         "id": "quadratics",
         "name": "Quadratics",
@@ -243,9 +292,126 @@ _FALLBACK: dict[str, dict[str, list[dict]]] = {
             },
         ],
     },
+    "algebra_foundations": {
+        "stage4": [
+            {
+                "question": "Solve the equation $\\frac{2(x+3)}{5} = 4 - x$. Show all steps to justify your solution for $x$. [3 marks]",
+                "marks": 3,
+                "solution_steps": [
+                    "Clear the fraction — multiply both sides by 5: $2(x+3) = 5(4 - x)$",
+                    "Expand both sides: $2x + 6 = 20 - 5x$",
+                    "Collect $x$-terms left, numbers right: $2x + 5x = 20 - 6$ → $7x = 14$ → $x = 2$",
+                    "Justify: LHS $= \\frac{2(2+3)}{5} = \\frac{10}{5} = 2$, RHS $= 4-2 = 2$ ✓ — so $x=2$ satisfies the equation.",
+                ],
+                "trap": "Forgetting to multiply EVERY term on the right by 5 — $5(4-x) = 20-5x$, not $20-x$. Write the $\\times 5$ line explicitly.",
+                "shortcut": "Cross-multiply first, then collect $x$-terms in one move — one sign check then substitute $x=2$ back in.",
+                "answer": "$x = 2$",
+            },
+            {
+                "question": "Solve for $x$: $3(x - 2) + 4 = 2x + 11$. Show every step. [2 marks]",
+                "marks": 2,
+                "solution_steps": [
+                    "Expand the bracket (watch the sign): $3x - 6 + 4 = 2x + 11$",
+                    "Simplify the left: $3x - 2 = 2x + 11$",
+                    "Collect x-terms left, numbers right: $3x - 2x = 11 + 2$ → $x = 13$",
+                    "Check: $3(11) + 4 = 37$ and $2(13) + 11 = 37$ ✓",
+                ],
+                "trap": "Sign slip on expanding $3(x-2)$ gives $3x-6$, not $3x+6$ — write the expansion as its own line.",
+                "shortcut": "Move x-terms and numbers in one line each, then verify by substitution.",
+                "answer": "$x = 13$",
+            },
+            {
+                "question": "A rectangle's length is 3 cm more than twice its width. Its perimeter is 36 cm. Find its width. [3 marks]",
+                "marks": 3,
+                "solution_steps": [
+                    "Let width $= w$ cm, so length $= (2w + 3)$ cm",
+                    "Perimeter: $2(w + 2w + 3) = 36$ → $2(3w + 3) = 36$",
+                    "$6w + 6 = 36$ → $6w = 30$ → $w = 5$",
+                    "Check: length $= 13$, perimeter $= 2(5+13) = 36$ ✓",
+                ],
+                "trap": "Forgetting the factor of 2 in perimeter — draw and label the rectangle first.",
+                "shortcut": "Halve the perimeter first: length + width $= 18$, then $3w + 3 = 18$.",
+                "answer": "Width $= 5$ cm",
+            },
+        ],
+    },
+    "fractions_decimals_percent": {
+        "stage4": [
+            {
+                "question": "A shop prices a jacket at \\$240, then applies GST of 10% and a 15% staff discount (discount after GST). What does staff pay, to the nearest dollar? [3 marks]",
+                "marks": 3,
+                "solution_steps": [
+                    "GST: $240 \\times 1.10 = 264$",
+                    "Discount: $264 \\times 0.85 = 224.40$ (multiply by $1-0.15$)",
+                    "Nearest dollar: $\\$224$",
+                ],
+                "trap": "Order matters — discount after GST. $240 \\times 0.85 \\times 1.10$ does NOT give the same rounded result; do GST first as worded.",
+                "shortcut": "Combine as $240 \\times 1.10 \\times 0.85$ — one chain, then round once at the end.",
+                "answer": "\\$224",
+            },
+        ],
+    },
+    "angles_triangles": {
+        "stage4": [
+            {
+                "question": "In the diagram, $AB \\parallel CD$ and $EF$ is a transversal. $\\angle AEF = 4x + 12^\\circ$ and $\\angle EFD = 2x + 48^\\circ$ are co-interior. Find $x$ and the size of each angle. Give reasons. [3 marks]",
+                "marks": 3,
+                "solution_steps": [
+                    "Co-interior angles are supplementary: $(4x+12) + (2x+48) = 180$",
+                    "$6x + 60 = 180$ → $6x = 120$ → $x = 20$",
+                    "So $\\angle AEF = 92^\\circ$, $\\angle EFD = 88^\\circ$ (check: $92+88=180$ ✓)",
+                ],
+                "trap": "Co-interior add to $180^\\circ$, not $90^\\circ$ — write 'co-interior, $AB \\parallel CD$' for the reason mark.",
+                "shortcut": "Spot the pair first (same side of transversal, between parallels), then set the sum to $180^\\circ$.",
+                "answer": "$x=20$, angles $92^\\circ$ and $88^\\circ$",
+            },
+        ],
+    },
+    "area_volume_basics": {
+        "stage4": [
+            {
+                "question": "A composite shape is a rectangle $12$ cm by $8$ cm with a right-triangle (base $8$ cm, height $6$ cm) attached along the $8$ cm side. Find the total area. [2 marks]",
+                "marks": 2,
+                "solution_steps": [
+                    "Rectangle: $12 \\times 8 = 96$ cm²",
+                    "Triangle: $\\frac12 \\times 8 \\times 6 = 24$ cm²",
+                    "Total: $96 + 24 = 120$ cm²",
+                ],
+                "trap": "Forgetting the $\\frac12$ on the triangle — always label which part is which before adding.",
+                "shortcut": "Sketch and shade each part so you never mix a side length between shapes.",
+                "answer": "$120$ cm²",
+            },
+        ],
+    },
+    "linear_intro": {
+        "stage4": [
+            {
+                "question": "A phone plan charges \\$20 fixed plus \\$0.40 per GB of data. For a \\$38 bill, how many GB were used? Sketch the line $C = 20 + 0.4d$ and state its gradient. [3 marks]",
+                "marks": 3,
+                "solution_steps": [
+                    "Set up: $20 + 0.4d = 38$ → $0.4d = 18$",
+                    "$d = 18 \\div 0.4 = 45$ GB",
+                    "Gradient is $0.4$ ($\\$0.40$ per GB) — the rate of change of cost with data.",
+                ],
+                "trap": "Mixing up intercept and gradient — $20$ is where the line cuts the cost axis, not the slope.",
+                "shortcut": "Read the equation: fixed fee = intercept, per-unit rate = gradient.",
+                "answer": "$45$ GB, gradient $0.4$",
+            },
+        ],
+    },
 }
 
 _GENERIC_FALLBACK = {
+    "stage4": [
+        {
+            "question": "Challenge task: form equations from words (or a diagram), solve with full working, then verify and reject extras with a reason. [3 marks]",
+            "marks": 3,
+            "solution_steps": ["Define variables + write the equation", "Solve showing every line", "Verify + justify any rejection"],
+            "trap": "Skipping the setup line — markers award method marks for defined variables.",
+            "shortcut": "Estimate the answer size first — catches algebra slips early.",
+            "answer": "See full solution",
+        },
+    ],
     "foundation": [
         {
             "question": "State the key definition for this topic in one sentence, then give one worked example.",
@@ -297,6 +463,7 @@ def _fallback_set(topic_id: str, tier: str, count: int) -> list[dict]:
 # ── LLM generation ───────────────────────────────────────────────────────────
 
 _TIER_STYLE = {
+    "stage4": "Stage 4 ADVANCED (Year 7-8 challenge): multi-step, form-from-words, NESA verbs (solve, justify, show), one deliberate trap per question, 2-3 marks with [n marks] shown. Stretch hard but stay inside the Stage 4 syllabus — never assume Stage 5 content.",
     "foundation": "Stage 5.2 consolidation: single-method, fluency, 1-2 marks. NSW syllabus, 13-14 y.o. reading level.",
     "selective": "Stage 5.3 selective-exam style: multi-step, NESA verbs (solve, justify, show), one deliberate trap per question, 2-4 marks with [n marks] shown.",
     "extension": "Early Extension 1 bridge: prove/generalise/derive, one question should need insight beyond routine method, 3-5 marks.",
@@ -369,15 +536,15 @@ def _parse_set(text: str) -> list[dict]:
 
 
 async def generate_set(
-    topic_id: str,
-    tier: str = "selective",
+    topic_id: str = "algebra_foundations",
+    tier: str = "stage4",
     count: int = 5,
     model: str | None = None,
 ) -> dict:
     topic = get_topic(topic_id)
     if not topic:
         raise ValueError(f"Unknown topic: {topic_id}")
-    tier = tier if tier in TIERS else "selective"
+    tier = tier if tier in TIERS else "stage4"
     count = max(1, min(10, int(count or 5)))
 
     if model is None:

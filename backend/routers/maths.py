@@ -8,14 +8,14 @@ router = APIRouter(prefix="/api/maths", tags=["maths"])
 
 
 class GenerateRequest(BaseModel):
-    topic_id: str = Field(default="quadratics", max_length=100)
-    tier: str = Field(default="selective", pattern="^(foundation|selective|extension)$")
+    topic_id: str = Field(default="algebra_foundations", max_length=100)
+    tier: str = Field(default="stage4", pattern="^(stage4|foundation|selective|extension)$")
     count: int = Field(default=5, ge=1, le=20)
 
 
 class SubmitRequest(BaseModel):
-    topic_id: str = Field(default="quadratics", max_length=100)
-    tier: str = Field(default="selective", pattern="^(foundation|selective|extension)$")
+    topic_id: str = Field(default="algebra_foundations", max_length=100)
+    tier: str = Field(default="stage4", pattern="^(stage4|foundation|selective|extension)$")
     correct: int = Field(default=0, ge=0)
     total: int = Field(default=1, ge=1)
     mistakes: list[dict] = Field(default_factory=list, max_length=50)

@@ -15,9 +15,38 @@ class TestMathsAccelerator:
 
     def test_tiers_exist(self):
         from services.maths_accelerator_service import TIERS
+        assert "stage4" in TIERS
         assert "foundation" in TIERS
         assert "selective" in TIERS
         assert "extension" in TIERS
+
+    def test_starts_at_stage4(self):
+        from services.maths_accelerator_service import list_topics
+        topics = list_topics()
+        assert topics[0]["id"] == "algebra_foundations"
+        assert topics[0]["stage"] == "Stage 4"
+        stage4 = [t for t in topics if t["stage"] == "Stage 4"]
+        assert len(stage4) >= 4
+
+    def test_stage4_is_advanced(self):
+        from services.maths_accelerator_service import TIERS, _TIER_STYLE
+        assert TIERS["stage4"]["name"] == "Stage 4 Advanced"
+        assert "trap" in _TIER_STYLE["stage4"].lower()
+
+    def test_fallback_set_stage4(self):
+        from services.maths_accelerator_service import _fallback_set
+        questions = _fallback_set("algebra_foundations", "stage4", 2)
+        assert len(questions) == 2
+        for q in questions:
+            assert "question" in q
+            assert "marks" in q
+            assert "answer" in q
+            assert "solution_steps" in q
+
+    def test_fallback_set_stage4_generic(self):
+        from services.maths_accelerator_service import _fallback_set
+        questions = _fallback_set("unknown_topic", "stage4", 1)
+        assert len(questions) == 1
 
     def test_fallback_set_foundation(self):
         from services.maths_accelerator_service import _fallback_set

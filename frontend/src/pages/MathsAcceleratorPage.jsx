@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { getMathsTopics, generateMathsSet, submitMathsSet, getMathsMastery } from '../services/api'
+import { mathsSetToQuiz, TIER_TO_LEVEL } from '../services/mathsQuiz'
 import { startTask, cancelTask, useBgTask } from '../services/tasks'
 import { useStore } from '../store'
 import { showToast } from '../components/Toast'
@@ -20,6 +21,7 @@ const MathText = ({ children, className }) => (
 )
 
 const TIERS = [
+  { id: 'stage4', label: 'Stage 4 Adv', hint: 'Year 7-8 challenge' },
   { id: 'foundation', label: 'Foundation', hint: '5.2 fluency' },
   { id: 'selective', label: 'Selective', hint: '5.3 exam' },
   { id: 'extension', label: 'Extension', hint: 'Ext 1 bridge' },
@@ -30,8 +32,8 @@ export default function MathsAcceleratorPage() {
   const saved = studyTools.maths || {}
   const [topics, setTopics] = useState([])
   const [tiers, setTiers] = useState({})
-  const [topicId, setTopicId] = useState(saved.topicId || 'quadratics')
-  const [tier, setTier] = useState(saved.tier || 'selective')
+  const [topicId, setTopicId] = useState(saved.topicId || 'algebra_foundations')
+  const [tier, setTier] = useState(saved.tier || 'stage4')
   const [count, setCount] = useState(saved.count || 5)
   const [timed, setTimed] = useState(true)
   const [secsLeft, setSecsLeft] = useState(0)
@@ -43,6 +45,9 @@ export default function MathsAcceleratorPage() {
   const [marks, setMarks] = useState(saved.marks || {})
   const [mastery, setMastery] = useState({})
   const [submitted, setSubmitted] = useState(saved.submitted || false)
+  const [quizSent, setQuizSent] = useState(null)
+  const [pendingQuiz, setPendingQuiz] = useState(saved.pendingQuiz || null)
+  const sendRef = useRef(null)
   const bg = useBgTask('maths')
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
@@ -62,6 +67,43 @@ export default function MathsAcceleratorPage() {
     if (bg?.status === 'running') setLoading(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // ── Maths → Quiz bridge: every generated set also becomes a Quiz-tab quiz.
+  // Writes straight to studyTools.quiz (runs in onDone even if page is gone).
+  const writeQuizToStore = (items, topicName, level) => {
+    useStore.getState().setStudyTool('quiz', {
+      questions: items, current: 0, selected: null, score: 0,
+      done: false, answers: [], topic: topicName, level, count: items.length,
+      cardState: { sending: false, done: false, count: 0 },
+    })
+  }
+  // Never clobber an unfinished quiz — stash it for the Replace banner.
+  const sendMathsToQuiz = (questions, topicName, level) => {
+    const { items } = mathsSetToQuiz(questions)
+    if (!items.length) return { status: 'empty', count: 0 }
+    const quiz = useStore.getState().studyTools.quiz
+    if (quiz?.questions?.length && !quiz.done) {
+      const pend = { items, topicName, level, at: Date.now() }
+      useStore.getState().setStudyTool('maths', { pendingQuiz: pend })
+      sendRef.current = { ...pend, status: 'deferred' }
+      return { status: 'deferred', count: items.length }
+    }
+    writeQuizToStore(items, topicName, level)
+    useStore.getState().setStudyTool('maths', { pendingQuiz: null })
+    return { status: 'sent', count: items.length }
+  }
+  const replaceQuiz = () => {
+    if (!pendingQuiz?.items?.length) return
+    writeQuizToStore(pendingQuiz.items, pendingQuiz.topicName, pendingQuiz.level)
+    useStore.getState().setStudyTool('maths', { pendingQuiz: null })
+    setQuizSent({ count: pendingQuiz.items.length, topic: pendingQuiz.topicName })
+    setPendingQuiz(null)
+    showToast(`📝 ${pendingQuiz.items.length} questions sent to Quiz Generator`, 'success', 3500)
+  }
+  const dismissPendingQuiz = () => {
+    useStore.getState().setStudyTool('maths', { pendingQuiz: null })
+    setPendingQuiz(null)
+  }
+  const openQuizTab = () => window.dispatchEvent(new CustomEvent('aria:open-quiz'))
   useEffect(() => {
     if (bg?.status === 'done' && questions.length === 0 && saved.questions?.length) {
       setQuestions(saved.questions)
@@ -72,6 +114,8 @@ export default function MathsAcceleratorPage() {
       setMarks(saved.marks || {})
       setSubmitted(saved.submitted || false)
       setLoading(false)
+      const pend = useStore.getState().studyTools.maths.pendingQuiz
+      if (pend?.items?.length) setPendingQuiz(pend)
     } else if ((bg?.status === 'error' || bg?.status === 'cancelled') && loading) {
       setLoading(false)
     }
@@ -98,6 +142,10 @@ export default function MathsAcceleratorPage() {
     setRevealed({})
     setMarks({})
     setSubmitted(false)
+    setQuizSent(null)
+    sendRef.current = null
+    const topicName = topics.find(t => t.id === topicId)?.name || topicId
+    const level = TIER_TO_LEVEL[tier] || 'medium'
     try {
       await startTask('maths', {
         label: `Maths: ${topicId} (${tier})`,
@@ -105,11 +153,13 @@ export default function MathsAcceleratorPage() {
         topic: topicId,
         run: (signal) => generateMathsSet(topicId, tier, count, signal),
         onDone: (data) => {
+          const qs = data.questions || []
           setStudyTool('maths', {
             topicId, tier, count,
-            questions: data.questions || [],
+            questions: qs,
             revealed: {}, marks: {}, submitted: false,
           })
+          sendMathsToQuiz(qs, topicName, level)
         },
       })
       if (mountedRef.current) {
@@ -117,6 +167,17 @@ export default function MathsAcceleratorPage() {
         setQuestions(latest.questions || [])
         setLoading(false)
         if (!latest.questions?.length) showToast('No questions — try again', 'error')
+        else {
+          const sent = sendRef.current
+          sendRef.current = null
+          if (sent?.status === 'deferred') {
+            setPendingQuiz({ items: sent.items, topicName: sent.topicName, level: sent.level })
+          } else if (sent?.status === 'sent') {
+            setPendingQuiz(null)
+            setQuizSent({ count: sent.count, topic: topicName })
+            showToast(`📝 ${sent.count} questions sent to Quiz Generator`, 'success', 3500)
+          }
+        }
       }
     } catch (e) {
       if (mountedRef.current) {
@@ -157,9 +218,9 @@ export default function MathsAcceleratorPage() {
       <div className="flex items-center gap-2 mb-1">
         <Sigma size={20} className="text-[#7c6af7]" />
         <h1 className="text-lg font-semibold text-[#e8e8e8]">Maths Accelerator</h1>
-        <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-[#7c6af7]/15 border border-[#7c6af7]/30 text-[#c4b5fd]">NSB selective level</span>
+        <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-[#7c6af7]/15 border border-[#7c6af7]/30 text-[#c4b5fd]">Stage 4 Adv → Stage 5</span>
       </div>
-      <p className="text-xs text-[#666] mb-5">Stage 5.3 exam style + early Extension bridge. Full worked solutions, traps, shortcuts — self-mark honestly.</p>
+      <p className="text-xs text-[#666] mb-5">Starts at advanced Stage 4 (Year 7-8), steps up to Stage 5 exam style + Extension bridge. Full worked solutions, traps, shortcuts — self-mark honestly.</p>
 
       {/* Topic grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
@@ -210,6 +271,32 @@ export default function MathsAcceleratorPage() {
           {loading ? 'Writing…' : 'Generate set'}
         </button>
       </div>
+
+      {quizSent && (
+        <div className="mb-4 p-3 rounded-xl bg-[#7c6af7]/10 border border-[#7c6af7]/30 flex items-center gap-2">
+          <p className="text-xs text-[#c4b5fd] flex-1">📝 Sent {quizSent.count} questions to Quiz Generator</p>
+          <button onClick={openQuizTab}
+            className="text-xs px-3 py-1.5 rounded-full bg-[#7c6af7] text-white hover:bg-[#6a59e0] transition-colors">
+            Take quiz →
+          </button>
+          <button onClick={() => setQuizSent(null)} className="text-[#666] hover:text-[#aaa] text-xs px-1">✕</button>
+        </div>
+      )}
+      {pendingQuiz?.items?.length > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+          <p className="text-xs text-amber-300">Quiz Generator holds an unfinished quiz (“{pendingQuiz.topicName}”). Replace it with this set?</p>
+          <div className="flex gap-2 mt-2">
+            <button onClick={replaceQuiz}
+              className="text-xs px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors">
+              Replace with this set
+            </button>
+            <button onClick={dismissPendingQuiz}
+              className="text-xs px-3 py-1.5 rounded-full bg-[#2a2a2a] text-[#888] hover:text-[#e8e8e8] transition-colors">
+              Keep existing
+            </button>
+          </div>
+        </div>
+      )}
 
       {questions.length > 0 && timed && !submitted && (
         <div className={`mb-4 text-center text-sm font-mono ${secsLeft === 0 ? 'text-red-400' : 'text-[#c4b5fd]'}`}>
@@ -263,6 +350,12 @@ export default function MathsAcceleratorPage() {
       {submitted && (
         <div className="mt-4 p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-300 text-xs text-center">
           ✓ Saved — {score}/{questions.length}. Weak sets repeat automatically in Exam Countdown.
+          {tier === 'stage4' && questions.length > 0 && score / questions.length >= 0.8 && (
+            <button onClick={() => { setTier('foundation'); setQuestions([]); setSubmitted(false) }}
+              className="block mx-auto mt-2 px-4 py-1.5 rounded-full bg-[#7c6af7] text-white text-xs hover:bg-[#6a59e0] transition-colors">
+              Stage 4 cleared — step up to Stage 5 Foundation →
+            </button>
+          )}
         </div>
       )}
     </div>
