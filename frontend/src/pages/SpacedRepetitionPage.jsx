@@ -103,7 +103,7 @@ export default function SpacedRepetitionPage() {
             <div className="flex-1 flex flex-col items-center justify-center text-[#666] gap-2 px-6 text-center">
               <p className="text-3xl">🃏</p>
               <p className="text-[#e8e8e8] font-medium">No flashcards yet</p>
-              <p className="text-xs text-[#555]">Create your first set — ARIA will schedule reviews for you</p>
+              <p className="text-xs text-[#555]">Create your first set — Study Buddy will schedule reviews for you</p>
               <div className="flex gap-2 mt-2">
                 <button onClick={() => navigate('/create')}
                   className="px-4 py-2 rounded-xl bg-[#7c6af7] text-white text-xs font-medium hover:bg-[#6a59e0] transition-colors">

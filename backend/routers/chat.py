@@ -151,7 +151,7 @@ async def chat(
     try:
         await asyncio.wait_for(_chat_sem.acquire(), timeout=0.05)
     except asyncio.TimeoutError:
-        raise HTTPException(429, "ARIA is busy — 4 chats already streaming. Wait a moment and retry.")
+        raise HTTPException(429, "Study Buddy is busy — 4 chats already streaming. Wait a moment and retry.")
     acquired = True
 
     async def event_stream():

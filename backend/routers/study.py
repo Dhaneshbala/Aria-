@@ -267,7 +267,7 @@ async def create_exam_plan(req: ExamPlanRequest):
 
 @router.post("/exam-plan/parse-notification")
 async def parse_exam_notification(file: UploadFile = File(...)):
-    """Upload an assessment notification (PDF/DOCX/TXT/image) so ARIA knows
+    """Upload an assessment notification (PDF/DOCX/TXT/image) so Study Buddy knows
     what the assessment is about. Returns extracted text + parsed fields
     (exam_name, exam_date, subjects, topics, summary) to prefill the plan form."""
     from fastapi import HTTPException

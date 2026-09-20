@@ -1,5 +1,5 @@
 """
-Knowledge Base Service — ARIA's RAG-powered knowledge system.
+Knowledge Base Service — Study Buddy's RAG-powered knowledge system.
 ─────────────────────────────────────────────────────────────
 Stores documents in ChromaDB with mxbai-embed-large embeddings.
 Supports: PDF, DOCX, PPTX, XLSX, TXT, MD, HTML, CSV, JSON, images (OCR).

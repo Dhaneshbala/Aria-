@@ -81,14 +81,13 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile overlay — premium scrim */}
       {mobileOpen && !collapsed && (
-        <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />
+        <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 md:hidden" aria-hidden="true" />
       )}
-      {/* Mobile floating hamburger is now in header, keep overlay only */}
-      <div className={`flex flex-col bg-[#1e1f20] md:bg-[#1e1f20] border-r border-[#2d2e30] transition-all duration-200 shrink-0
-        ${mobileOpen ? 'fixed inset-y-0 left-0 z-30 flex' : 'hidden md:flex'}
-        ${widthClass} ${!mobileOpen && collapsed ? 'hidden md:flex' : ''}`}>
+      <div className={`flex flex-col bg-aria-surface border-r border-aria-border transition-all duration-200 shrink-0
+        ${mobileOpen ? 'fixed inset-y-0 left-0 z-30 flex shadow-2xl' : 'hidden md:flex'}
+        ${widthClass} ${!mobileOpen && collapsed ? 'hidden md:flex' : ''}`} role="navigation" aria-label="Primary">
         {/* Header — Gemini style minimal */}
         <div className="flex items-center justify-between h-[64px] px-3 shrink-0">
           {!collapsed ? (

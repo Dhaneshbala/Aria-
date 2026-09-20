@@ -5,19 +5,24 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Unified with src/index.css :root vars — single dark system.
-        // bg #131314 / surface #1e1f20 / variant #2d2e30 (was 3 competing darks).
+        // $10B — single dark truth. All components must use aria.* (lint will catch hardcodes).
         aria: {
-          bg: '#131314',
-          surface: '#1e1f20',
-          variant: '#2d2e30',
-          border: '#2d2e30',
-          'border-light': '#3c4043',
+          bg: '#0f0f10',
+          elevated: '#131314',
+          surface: '#1a1b1e',
+          variant: '#232529',
+          hover: '#2a2d32',
+          border: '#232529',
+          'border-light': '#343840',
+          'border-strong': '#3c4043',
           accent: '#7c6af7',
+          'accent-strong': '#6a59e0',
           'accent-light': '#a89bf8',
           'accent-blue': '#8ab4f8',
-          text: '#e3e3e3',
-          muted: '#9aa0a6', // fixed from #888 for 4.5:1 contrast on #131314
+          text: '#ececec',
+          'text-soft': '#d8dbe0',
+          muted: '#9aa0a6',
+          'muted-strong': '#bdc1c6',
           green: '#4ade80',
           yellow: '#fbbf24',
           red: '#f87171',

@@ -1,6 +1,6 @@
-"""Backup & export — one-click full backup of ARIA data.
+"""Backup & export — one-click full backup of Study Buddy data.
 
-Zips everything that makes ARIA *yours*:
+Zips everything that makes Study Buddy *yours*:
   • conversations + study profile + analytics + telemetry (~/.aria_data)
   • app config and rules (backend/data)
   • organizer index + history (backend/storage/organizer.db, files_index)
@@ -90,7 +90,7 @@ async def create_backup(include_uploads: bool = False):
         }
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
-        # ARIA data dir (conversations, chromadb, profile, analytics...)
+        # Study Buddy data dir (conversations, chromadb, profile, analytics...)
         for name in ARIA_DATA_FILES:
             _safe_add(zf, aria_dir / name, f"aria_data/{name}")
         _safe_add(zf, aria_dir / "chromadb", "aria_data/chromadb")
@@ -222,7 +222,7 @@ async def restore_backup(file: UploadFile = File(...)):
         with zipfile.ZipFile(io_bytes(content)) as zf:
             names = zf.namelist()
             if "manifest.json" not in names:
-                raise HTTPException(400, "Not an ARIA backup (no manifest.json)")
+                raise HTTPException(400, "Not an Study Buddy backup (no manifest.json)")
             # Zip-slip-safe extraction
             for name in names:
                 target = (staging / name).resolve()
@@ -253,7 +253,7 @@ async def restore_backup(file: UploadFile = File(...)):
         return {
             "status": "ok",
             "restored": len(restored),
-            "note": "Restart ARIA so ChromaDB and the organizer index reload.",
+            "note": "Restart Study Buddy so ChromaDB and the organizer index reload.",
             "files": restored,
             "pre_restore_backup": pre_restore,
             "pre_restore_note": (
@@ -276,7 +276,7 @@ def io_bytes(data: bytes):
 
 
 def _is_safe_dest(dest: Path) -> bool:
-    """Only restore into ARIA's own data/storage dirs."""
+    """Only restore into Study Buddy's own data/storage dirs."""
     allowed = (BACKEND_DIR / "data", BACKEND_DIR / "storage", _aria_data_dir())
     return any(dest.is_relative_to(a) for a in allowed)
 

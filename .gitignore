@@ -27,6 +27,9 @@ node_modules/
 frontend/dist/
 dist/
 
+# Generated Mac app bundle — rebuild with `./build-app.sh`
+Study Buddy.app/
+
 # Misc
 .DS_Store
 *.log

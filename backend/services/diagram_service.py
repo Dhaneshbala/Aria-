@@ -1,4 +1,4 @@
-"""Diagram service — Napkin AI-style visual generation for ARIA.
+"""Diagram service — Napkin AI-style visual generation for Study Buddy.
 
 Napkin flow replicated locally (private, M4-friendly):
   text ──▶ detect visual type ──▶ heuristic spec (instant) ──▶ frontend renders SVG

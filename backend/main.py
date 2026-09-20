@@ -1,4 +1,4 @@
-"""ARIA Backend — FastAPI main entry point ($100k-grade hardened)."""
+"""Study Buddy Backend — FastAPI main entry point ($100k-grade hardened)."""
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -62,7 +62,7 @@ except Exception:
     except Exception as e:
         logging.getLogger(__name__).warning("Could not attach log file %s: %s", log_file, e)
 
-app = FastAPI(title="ARIA — AI Study Assistant", version="2.2.0")
+app = FastAPI(title="Study Buddy — AI Study Assistant", version="2.2.0")
 
 # Rate limiting — protects local Ollama from abuse / tight loops
 if Limiter:
@@ -77,7 +77,7 @@ if Limiter:
             content=error_envelope(
                 "Too many requests — please wait a moment and try again.",
                 type="rate_limited",
-                hint="ARIA throttles to protect your local AI model.",
+                hint="Study Buddy throttles to protect your local AI model.",
             ),
         )
 else:
@@ -241,7 +241,7 @@ async def friendly_errors(request: Request, call_next):
         return JSONResponse(
             status_code=500,
             content=error_envelope(
-                "Something went wrong on ARIA's side. Your data is safe — please try again.",
+                "Something went wrong on Study Buddy's side. Your data is safe — please try again.",
                 type="friendly",
                 hint="If this keeps happening, use Settings → Send logs to support.",
             ),
@@ -302,9 +302,46 @@ async def ready():
     return ReadyResponse(ready=bool(ok), checks=checks)
 
 
+# ── Single-server app mode: serve the built frontend from FastAPI ──────────
+# Registered LAST so every /api/* route matches first. When frontend/dist
+# exists (production `npm run build`), the UI is served from the same
+# origin+port as the API: no second process, no CORS, no vite needed.
+# Dev flow is untouched: `npm run dev` + reload still uses the vite proxy.
+# Disabled explicitly with ARIA_SERVE_FRONTEND=0.
+_BACKEND_DIR = Path(__file__).resolve().parent
+_DIST_DIR = _BACKEND_DIR.parent / "frontend" / "dist"
+_SERVE_FRONTEND = os.environ.get("ARIA_SERVE_FRONTEND", "1") == "1" and (_DIST_DIR / "index.html").exists()
+if _SERVE_FRONTEND:
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    _assets = _DIST_DIR / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    async def _spa_root():
+        return FileResponse(_DIST_DIR / "index.html")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def _spa_fallback(path: str):
+        # API + docs namespace stays JSON; everything else is the SPA or a file.
+        if path.startswith("api/") or path.startswith("openapi") or path.startswith("docs") or path.startswith("redoc"):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        candidate = (_DIST_DIR / path)
+        try:
+            resolved = candidate.resolve()
+            if resolved.is_file() and _DIST_DIR.resolve() in resolved.parents:
+                return FileResponse(resolved)
+        except Exception:
+            pass
+        return FileResponse(_DIST_DIR / "index.html")
+    logging.getLogger(__name__).info("Serving frontend from %s", _DIST_DIR)
+
+
 if __name__ == "__main__":
     import uvicorn
-    # Localhost only — never expose ARIA (which can run file/terminal
+    # Localhost only — never expose Study Buddy (which can run file/terminal
     # operations) to the local network.
     _reload = os.environ.get("ARIA_RELOAD", "0") == "1"
     uvicorn.run(

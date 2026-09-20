@@ -25,19 +25,19 @@ function Message({ msg, onSuggest }) {
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''} mb-6`}>
       {/* Avatar */}
-      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ring-1 ${
         isUser
-          ? 'bg-[#7c6af7]/20 text-[#a89bf8] border border-[#7c6af7]/20'
-          : 'bg-gradient-to-br from-[#7c6af7] to-[#4f46e5] shadow-lg shadow-[#7c6af7]/20'
+          ? 'bg-aria-accent/15 text-aria-accent-light border border-aria-accent/20 ring-aria-accent/10'
+          : 'bg-gradient-to-br from-aria-accent to-[#4f46e5] shadow-lg shadow-aria-accent/20 ring-white/10'
       }`}>
         {isUser ? 'You' : <Zap size={14} className="text-white" />}
       </div>
 
       <div className={`max-w-[85%] flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
 
-        {/* User bubble */}
+        {/* User bubble — $10B: subtle glass, premium radius */}
         {isUser && (
-          <div className="bg-[#7c6af7]/12 border border-[#7c6af7]/15 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-[#e8e8e8] whitespace-pre-wrap">
+          <div className="bg-aria-accent/10 border border-aria-accent/15 rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-aria-text whitespace-pre-wrap backdrop-blur-sm shadow-card">
             {msg.content}
           </div>
         )}
@@ -57,10 +57,10 @@ function Message({ msg, onSuggest }) {
           </div>
         )}
 
-        {/* AI markdown response */}
+        {/* AI markdown response — premium prose */}
         {!isUser && (
           <div className="relative group">
-            <div className={`prose text-sm text-[#d0d0d0] w-full ${msg.streaming ? 'cursor' : ''}`}>
+            <div className={`prose text-sm text-aria-text-soft w-full leading-relaxed ${msg.streaming ? 'cursor' : ''}`}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -124,7 +124,7 @@ function Message({ msg, onSuggest }) {
         {/* Generated image from Stable Diffusion */}
         {!isUser && msg.generatedImage && (
           <div className="w-full">
-            <img src={msg.generatedImage} alt="ARIA generated"
+            <img src={msg.generatedImage} alt="Study Buddy generated"
               className="max-w-sm rounded-2xl border border-[#2a2a2a] shadow-xl" />
             {isSafeUrl(msg.generatedImage) && (
               <a href={msg.generatedImage} download="aria-image.png"

@@ -108,7 +108,7 @@ class ResearchService:
 
     def _search_wikipedia(self, query: str, max_results: int) -> List[Dict]:
         base = "https://en.wikipedia.org/w/api.php"
-        headers = {"User-Agent": "ARIA-StudyAssistant/1.0 (educational; contact: local)"}
+        headers = {"User-Agent": "Study Buddy-StudyAssistant/1.0 (educational; contact: local)"}
 
         # 2a. Search for matching titles
         params = {
@@ -154,7 +154,7 @@ class ResearchService:
 
     def _search_ddg_instant(self, query: str, max_results: int) -> List[Dict]:
         url = f"https://api.duckduckgo.com/?q={quote_plus(query)}&format=json&no_html=1&skip_disambig=1"
-        resp = _get(url, headers={"User-Agent": "ARIA/1.0"}, timeout=10)
+        resp = _get(url, headers={"User-Agent": "Study Buddy/1.0"}, timeout=10)
         if resp.status_code != 200:
             return []
         try:

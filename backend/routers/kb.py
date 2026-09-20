@@ -145,7 +145,7 @@ async def ask_kb(
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     system = (
-        "You are ARIA, an AI study assistant. Answer the student's question using ONLY "
+        "You are Study Buddy, an AI study assistant. Answer the student's question using ONLY "
         "the document excerpts below. Quote the source document name for each fact "
         "(e.g. [Source: Science_Notes.pdf]). If the excerpts don't cover the question, say so.\n\n"
         f"DOCUMENTS:\n{context}"

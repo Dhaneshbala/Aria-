@@ -40,7 +40,7 @@ export default function Onboarding({ onComplete }) {
             <div className="w-16 h-16 rounded-full bg-[#8ab4f8]/15 flex items-center justify-center mx-auto mb-4">
               <GraduationCap size={32} className="text-[#8ab4f8]" />
             </div>
-            <h1 className="text-[28px] font-normal text-[#e3e3e3] mb-2">Welcome to ARIA</h1>
+            <h1 className="text-[28px] font-normal text-[#e3e3e3] mb-2">Welcome to Study Buddy</h1>
             <p className="text-sm text-[#9aa0a6] mb-8">Your personal AI learning coach. Let's get you set up.</p>
             <input
               type="text"

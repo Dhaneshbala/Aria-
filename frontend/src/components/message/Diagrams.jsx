@@ -34,7 +34,7 @@ export function SvgDiagram({ code }) {
         <div className="flex items-center justify-center overflow-auto p-2" style={{ maxHeight: expanded ? '70vh' : 'auto' }}>
           <div style={{ transform: `scale(${scale})`, transformOrigin: 'center center', transition: 'transform 0.15s ease' }} dangerouslySetInnerHTML={{ __html: sanitized }} className="[&>svg]:max-w-full [&>svg]:h-auto drop-shadow-[0_2px_8px_rgba(0,0,0,0.08)]" />
         </div>
-        <div className="absolute bottom-2 left-3 text-[10px] font-mono tracking-wider text-[#9aa0a6] bg-white/90 backdrop-blur px-2 py-1 rounded-full border border-[#e8eaed]">ARIA diagram · pinch to zoom · drag to pan</div>
+        <div className="absolute bottom-2 left-3 text-[10px] font-mono tracking-wider text-[#9aa0a6] bg-white/90 backdrop-blur px-2 py-1 rounded-full border border-[#e8eaed]">Study Buddy diagram · pinch to zoom · drag to pan</div>
       </div>
       {expanded && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20" onClick={() => setExpanded(false)} />}
       {expanded && (
@@ -322,7 +322,7 @@ export function MermaidDiagram({ code }) {
   return (
     <div className="bg-[#131314] rounded-b-xl border border-[#2a2a2a] border-t-0 p-3 relative group overflow-hidden">
       {repaired && (
-        <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-[#7c6af7]/15 border border-[#7c6af7]/30 text-[#a89bf8] z-10" title="The AI's diagram had invalid syntax — ARIA rebuilt it automatically">
+        <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-[#7c6af7]/15 border border-[#7c6af7]/30 text-[#a89bf8] z-10" title="The AI's diagram had invalid syntax — Study Buddy rebuilt it automatically">
           ✨ auto-fixed
         </span>
       )}

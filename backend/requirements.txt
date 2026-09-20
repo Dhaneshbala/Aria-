@@ -43,3 +43,7 @@ pytest-cov>=5.0.0
 # Reliability
 slowapi>=0.1.8,<1.0.0
 filelock>=3.0.0
+
+# Desktop app — native window shell (macOS WKWebView, no Terminal).
+# Only used by ARIA.app / backend/aria_window.py.
+pywebview>=5.0.0

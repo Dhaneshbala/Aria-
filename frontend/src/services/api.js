@@ -14,7 +14,7 @@ export class ApiError extends Error {
 function friendlyStatusMessage(status) {
   if (status === 429) return 'Too many requests — please wait a moment and try again.'
   if (status === 413) return 'That file is too large. Try a smaller file.'
-  if (status === 502 || status === 503) return 'ARIA backend is waking up — try again in a few seconds.'
+  if (status === 502 || status === 503) return 'Study Buddy backend is waking up — try again in a few seconds.'
   if (status === 401 || status === 403) return 'Not allowed. Check your session and try again.'
   return ''
 }
@@ -67,7 +67,7 @@ async function apiFetch(url, options = {}) {
   } catch (e) {
     if (e?.name === 'AbortError') throw e
     if (e?.name === 'TimeoutError') throw new ApiError(0, 'upstream', 'Request timed out — is the backend running?', 'Check http://localhost:8000/api/health')
-    throw new ApiError(0, 'upstream', 'Cannot reach ARIA backend. Is it running?', 'Run ./start.sh, then retry.')
+    throw new ApiError(0, 'upstream', 'Cannot reach Study Buddy backend. Is it running?', 'Run ./start.sh, then retry.')
   }
   if (resp.ok) return resp
   // Retry once for GET on bad-gateway (proxy cold start).

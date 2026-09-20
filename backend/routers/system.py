@@ -55,7 +55,7 @@ async def diagnostics():
     problems: list[str] = []
 
     # 1. Backend itself
-    report["checks"]["backend"] = {"ok": True, "message": "ARIA backend is running"}
+    report["checks"]["backend"] = {"ok": True, "message": "Study Buddy backend is running"}
 
     # 2. Ollama reachable?
     try:
@@ -154,14 +154,14 @@ async def diagnostics():
 def _friendly_message(problems: list[str]) -> str:
     msgs = {
         "ollama": "The AI engine (Ollama) isn't responding. Press 'Restart Ollama' below — "
-                  "ARIA will try to start it for you.",
+                  "Study Buddy will try to start it for you.",
         "models": "Some AI models aren't downloaded yet. Go to Admin → Models and pull the "
                   "missing ones (one time, a few GB).",
-        "storage": "ARIA can't write to its data folder. Check that the folder isn't read-only "
+        "storage": "Study Buddy can't write to its data folder. Check that the folder isn't read-only "
                    "or blocked by your antivirus.",
-        "disk": "Your disk is nearly full. Free some space so ARIA can save your chats.",
+        "disk": "Your disk is nearly full. Free some space so Study Buddy can save your chats.",
     }
-    return " ".join(msgs[p] for p in problems if p in msgs) or "ARIA needs attention."
+    return " ".join(msgs[p] for p in problems if p in msgs) or "Study Buddy needs attention."
 
 
 # ── Restart Ollama ──────────────────────────────────────────────────────────

@@ -176,16 +176,16 @@ const ChatInput = forwardRef(function ChatInput({ onSend, disabled, text: contro
         </div>
       )}
 
-      {/* Gemini pill container */}
-      <div className="gemini-pill-input px-4 pt-3 pb-2.5 flex flex-col gap-2">
+      {/* $10B pill — premium glass, soft shadow */}
+      <div className="gemini-pill-input px-4 pt-3 pb-2.5 flex flex-col gap-2 shadow-card hover:shadow-card-hover transition-shadow">
         {/* Textarea — Gemini single-line that expands */}
         <textarea
           ref={textareaRef}
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "ARIA is thinking..." : "Ask ARIA"}
-          aria-label="Ask ARIA"
+          placeholder={disabled ? "Study Buddy is thinking..." : "Ask Study Buddy"}
+          aria-label="Ask Study Buddy"
           rows={1}
           className="w-full bg-transparent text-[16px] leading-6 text-[#e3e3e3] placeholder-[#9aa0a6] resize-none outline-none max-h-40 py-1"
           style={{ height: 'auto', minHeight: '24px' }}

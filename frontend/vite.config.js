@@ -7,8 +7,8 @@ export default defineConfig({
     registerType: 'autoUpdate',
     includeAssets: ['favicon.ico'],
     manifest: {
-      name: 'ARIA - AI Study Assistant',
-      short_name: 'ARIA',
+      name: 'Study Buddy - AI Study Assistant',
+      short_name: 'Study Buddy',
       description: 'Your offline-friendly AI study companion',
       theme_color: '#7c6af7',
       background_color: '#0f0f0f',

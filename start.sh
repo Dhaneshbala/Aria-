@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-#  ARIA — AI Study Assistant  |  start.sh
+#  Study Buddy — AI Study Assistant  |  start.sh
 #  Optimised for MacBook Air M4 16 GB
 # ─────────────────────────────────────────────────────────────
 set -e
@@ -12,7 +12,7 @@ GRN='\033[0;32m'; YLW='\033[1;33m'; RED='\033[0;31m'; BLU='\033[0;34m'; NC='\033
 
 echo ""
 echo -e "${BLU}  ╔════════════════════════════════════╗${NC}"
-echo -e "${BLU}  ║   ARIA — AI Study Assistant v2.0   ║${NC}"
+echo -e "${BLU}  ║   Study Buddy — AI Study Assistant v2.0   ║${NC}"
 echo -e "${BLU}  ╚════════════════════════════════════╝${NC}"
 echo ""
 
@@ -113,7 +113,7 @@ pip install -q pdfminer.six 2>/dev/null || true
 
 # Optional neural TTS voices (~450 MB, one-time download). Opt-in so a fresh
 # start never surprises on network/time: ARIA_FETCH_VOICES=1 ./start.sh
-# Never fails the boot — without voices ARIA uses macOS `say`.
+# Never fails the boot — without voices Study Buddy uses macOS `say`.
 if [[ "${ARIA_FETCH_VOICES:-0}" == "1" ]]; then
   echo "       Fetching Piper TTS voices (~450 MB, first run only)..."
   python scripts/fetch_piper_voices.py 2>/dev/null || true
@@ -151,7 +151,7 @@ sleep 3
 # ── Done ──────────────────────────────────────────────────────
 echo ""
 echo -e "${GRN}  ╔════════════════════════════════════╗${NC}"
-echo -e "${GRN}  ║  ✅ ARIA is ready!                  ║${NC}"
+echo -e "${GRN}  ║  ✅ Study Buddy is ready!                  ║${NC}"
 echo -e "${GRN}  ║                                     ║${NC}"
 echo -e "${GRN}  ║  Open: http://localhost:5173         ║${NC}"
 echo -e "${GRN}  ║                                     ║${NC}"
@@ -168,5 +168,5 @@ sleep 1
 open http://localhost:5173 2>/dev/null || true
 
 # Keep running until Ctrl+C
-trap "echo ''; echo 'Stopping ARIA...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0" INT TERM
+trap "echo ''; echo 'Stopping Study Buddy...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0" INT TERM
 wait $BACKEND_PID $FRONTEND_PID

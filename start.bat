@@ -1,10 +1,10 @@
 @echo off
-title ARIA — AI Study Assistant
+title Study Buddy — AI Study Assistant
 color 0A
 
 echo.
 echo   ========================================
-echo     ARIA - AI Study Assistant v2.0
+echo     Study Buddy - AI Study Assistant v2.0
 echo   ========================================
 echo.
 
@@ -52,7 +52,7 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-start /min "ARIA Backend" python -m uvicorn main:app --host 127.0.0.1 --port 8000
+start /min "Study Buddy Backend" python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 timeout /t 5 /nobreak > nul
 
@@ -63,22 +63,22 @@ if not exist node_modules (
     echo       Installing npm packages (first run only)...
     npm install
 )
-start /min "ARIA Frontend" npm run dev
+start /min "Study Buddy Frontend" npm run dev
 
 timeout /t 4 /nobreak > nul
 
 :: Open browser
 echo.
 echo   ========================================
-echo     ARIA is ready!
+echo     Study Buddy is ready!
 echo     Opening: http://localhost:5173
 echo   ========================================
 echo.
 
 start http://localhost:5173
 
-echo   Press any key to stop ARIA...
+echo   Press any key to stop Study Buddy...
 pause > nul
 
 taskkill /f /fi "WINDOWTITLE eq Ollama*" > nul 2>&1
-taskkill /f /fi "WINDOWTITLE eq ARIA*" > nul 2>&1
+taskkill /f /fi "WINDOWTITLE eq Study Buddy*" > nul 2>&1

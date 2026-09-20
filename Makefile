@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────
-#  ARIA — AI Study Assistant  |  make targets
+#  Study Buddy — AI Study Assistant  |  make targets
 #  Test / verification convenience targets.
 # ─────────────────────────────────────────────────────────────
 

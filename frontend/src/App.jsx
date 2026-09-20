@@ -71,15 +71,15 @@ function GeminiHeader({ onToggleSidebar }) {
     }
   }
   return (
-    <header className="gemini-header flex items-center justify-between px-3 sm:px-4 shrink-0 sticky top-0 z-20 backdrop-blur-md safe-bottom" style={{ background: 'rgba(19,19,20,0.9)' }}>
+    <header className="gemini-header flex items-center justify-between px-3 sm:px-4 shrink-0 sticky top-0 z-20 backdrop-blur-xl safe-bottom border-b border-aria-border/60" style={{ background: 'rgba(15,15,16,0.82)' }}>
       <div className="flex items-center gap-3">
         <button onClick={onToggleSidebar} aria-label="Toggle menu"
-          className="touch-target p-2 rounded-full hover:bg-aria-variant text-aria-text transition-colors">
+          className="touch-target p-2 rounded-full hover:bg-aria-variant text-aria-text transition-colors focus-visible:ring-2 focus-visible:ring-aria-accent/30">
           <Menu size={20} />
         </button>
         <div className="flex items-center gap-2 select-none">
-          <span className="text-[22px] font-normal tracking-tight text-aria-text" style={{ fontFamily: "'Google Sans', Inter, sans-serif" }}>ARIA</span>
-          <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] text-white ml-1">2.5</span>
+          <span className="text-[22px] font-medium tracking-tight text-aria-text" style={{ fontFamily: "'Google Sans', Inter, sans-serif", letterSpacing: '-0.02em' }}>Study Buddy</span>
+          <span className="text-[10px] font-semibold tracking-widest px-2 py-0.5 rounded-full bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] text-white ml-1 shadow-sm">2.5 • $10B</span>
         </div>
       </div>
       <div className="flex items-center gap-1">

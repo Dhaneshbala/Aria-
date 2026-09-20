@@ -106,7 +106,7 @@ async def create_plan(exam_name: str, exam_date_str: str,
     """Create a plan + todos. Raises ValueError on bad input.
 
     assessment_text: raw text extracted from an assessment notification
-      (stored truncated so chat/ARIA can see what the assessment is about).
+      (stored truncated so chat/Study Buddy can see what the assessment is about).
     assessment_topics: specific topics parsed from the notification — these
       go first in the schedule, ahead of weak topics.
     assessment_summary: short human-readable summary of the notification.

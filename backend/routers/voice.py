@@ -100,7 +100,7 @@ async def transcribe(request: Request, audio: UploadFile = File(...), language: 
 
 @router.get("/languages")
 async def languages():
-    """All speech languages ARIA understands (Whisper 99).
+    """All speech languages Study Buddy understands (Whisper 99).
 
     Day 22: each entry flags whether spoken replies are available in that
     language (`tts_voice` set + installed on this Mac), so the UI can show

@@ -209,7 +209,7 @@ export default function AdminPage() {
           <h3 className="text-sm font-medium text-[#e8e8e8]">Display &amp; Accessibility</h3>
         </div>
         <p className="text-[10px] text-[#555] mb-3">
-          Adjust text size and contrast to make ARIA easier to read. Settings save automatically.
+          Adjust text size and contrast to make Study Buddy easier to read. Settings save automatically.
         </p>
         <div className="space-y-3">
           <div>

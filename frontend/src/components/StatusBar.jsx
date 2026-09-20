@@ -73,7 +73,7 @@ export default function StatusBar() {
         <button
           onClick={() => { if (!location.pathname.startsWith('/chat')) navigate('/chat') }}
           className="flex items-center gap-1.5 text-[#7c6af7] hover:text-[#a89bf8] transition-colors"
-          title={location.pathname.startsWith('/chat') ? 'ARIA is working...' : 'Click to return to chat — work continues in background'}>
+          title={location.pathname.startsWith('/chat') ? 'Study Buddy is working...' : 'Click to return to chat — work continues in background'}>
           <div className="flex gap-0.5 items-end h-3">
             {[0, 1, 2].map(i => (
               <div key={i}

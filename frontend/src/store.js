@@ -89,7 +89,7 @@ export const useStore = create((set, get) => ({
     flashcards: { cards: [], order: [], idx: 0, flipped: false, known: [], topic: '', count: 10 },
     youtube: { result: null, quiz: null, flashcards: null, url: '' },
     cheatsheet: { topic: '', subject: '', sheet: '' },
-    maths: { topicId: 'quadratics', tier: 'selective', count: 5, questions: [], revealed: {}, marks: {}, submitted: false },
+    maths: { topicId: 'algebra_foundations', tier: 'stage4', count: 5, questions: [], revealed: {}, marks: {}, submitted: false },
   },
   setStudyTool: (tool, data) => set(s => ({
     studyTools: { ...s.studyTools, [tool]: { ...s.studyTools[tool], ...data } },

@@ -75,4 +75,4 @@ export function CitationsPanel({ citations, sources }) {
   )
 }
 
-// ── Voice follow-up (STT) — Ask ARIA aloud without typing ───────────────────
+// ── Voice follow-up (STT) — Ask Study Buddy aloud without typing ───────────────────

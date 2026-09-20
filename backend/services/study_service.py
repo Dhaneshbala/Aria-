@@ -273,7 +273,7 @@ class StudyService:
         if not verify:
             for q in raw_questions:
                 q.setdefault("verified", "unverified")
-            # Background verify + learn while ARIA idle — don't block quiz return
+            # Background verify + learn while Study Buddy idle — don't block quiz return
             # Skip during pytest to keep tests deterministic and fast
             if not os.environ.get("PYTEST_CURRENT_TEST"):
                 try:
@@ -752,7 +752,7 @@ class StudyService:
         )
         return await ollama.complete(
             model, prompt,
-            system="You are ARIA, creating ultra-concise one-page exam cheat sheets.",
+            system="You are Study Buddy, creating ultra-concise one-page exam cheat sheets.",
             think=False, context_window=2048,
         )
 

@@ -1,5 +1,5 @@
 """
-Model selection logic for ARIA.
+Model selection logic for Study Buddy.
 ───────────────────────────────
 Extracted from orchestrator.py for maintainability.
 Determines which model handles which role based on intents and config.

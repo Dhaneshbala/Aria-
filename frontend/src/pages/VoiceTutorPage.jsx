@@ -47,7 +47,7 @@ export default function VoiceTutorPage() {
 
   useEffect(() => () => stopEverything(false), [])
 
-  // Day 4: Escape interrupts ARIA mid-answer; hiding the tab pauses audio
+  // Day 4: Escape interrupts Study Buddy mid-answer; hiding the tab pauses audio
   // so a background tab can't talk over class.
   useEffect(() => {
     const onKey = (e) => {
@@ -372,7 +372,7 @@ export default function VoiceTutorPage() {
     }
   }
 
-  // Barge-in: interrupt ARIA mid-answer and go straight back to listening.
+  // Barge-in: interrupt Study Buddy mid-answer and go straight back to listening.
   const interrupt = () => {
     queueAbortRef.current = true
     queueRef.current = []
@@ -456,8 +456,8 @@ export default function VoiceTutorPage() {
     idle: 'Tap the mic to start a spoken session',
     listening: 'Listening… pause 2.5s to auto-send, or tap Done',
     transcribing: 'Writing down what you said…',
-    thinking: 'ARIA is thinking… (streaming first sentence soon)',
-    speaking: pendingChunks > 0 ? `ARIA is answering… (${pendingChunks} queued)` : 'ARIA is answering…',
+    thinking: 'Study Buddy is thinking… (streaming first sentence soon)',
+    speaking: pendingChunks > 0 ? `Study Buddy is answering… (${pendingChunks} queued)` : 'Study Buddy is answering…',
   }
 
   // History panel
@@ -564,7 +564,7 @@ export default function VoiceTutorPage() {
       <div className="flex-1 overflow-y-auto space-y-3 mb-4 min-h-[200px]">
         {turns.length === 0 && (
           <div className="text-center text-xs text-[#555] py-10">
-            Hands-free revision: talk, ARIA answers out loud, then listens again.<br />Best for definitions, times tables, vocab, explain-backs.
+            Hands-free revision: talk, Study Buddy answers out loud, then listens again.<br />Best for definitions, times tables, vocab, explain-backs.
           </div>
         )}
         {turns.map((t, i) => (
@@ -613,13 +613,13 @@ export default function VoiceTutorPage() {
         {(phase === 'thinking' || phase === 'speaking') && loop && (
           <button onClick={interrupt}
             className="px-4 py-2 rounded-full bg-amber-500/15 border border-amber-500/30 text-xs text-amber-300 hover:bg-amber-500/25 transition-colors flex items-center gap-1.5"
-            title="Interrupt ARIA and talk now (barge-in, or press Esc)">
+            title="Interrupt Study Buddy and talk now (barge-in, or press Esc)">
             <Zap size={12} /> Interrupt
           </button>
         )}
         </div>
       </div>
-      <p className="text-center text-[11px] text-[#555]">ARIA can make mistakes — verify important work{loop && (phase === 'thinking' || phase === 'speaking') ? ' · Esc to interrupt' : ''}</p>
+      <p className="text-center text-[11px] text-[#555]">Study Buddy can make mistakes — verify important work{loop && (phase === 'thinking' || phase === 'speaking') ? ' · Esc to interrupt' : ''}</p>
       <ConfirmModal
         open={pendingDelete !== null}
         title="Delete this session?"

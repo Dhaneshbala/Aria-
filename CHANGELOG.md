@@ -1,4 +1,57 @@
-# ARIA Changelog
+# Study Buddy Changelog
+
+## Unreleased — renamed ARIA → Study Buddy
+- User-visible rename: app window, Study Buddy.app bundle, browser title,
+  header logo, onboarding, placeholders, toasts, AI self-intro
+  ("You are Study Buddy"), error messages, PWA manifest, new S icon.
+  Technical identifiers untouched on purpose: `ARIA_*` env vars, `~/.aria_data`,
+  `aria-backup-*` files (old backups still restore), CSS theme names.
+
+## Unreleased — Mac app
+- **ARIA.app, real window** (`backend/aria_window.py` + `./build-app.sh`):
+  double-click opens ARIA in a native WKWebView window (pywebview) — no
+  Terminal ever. Server runs in-process; closing the window stops it.
+  Single-instance: a second launch connects to the running server.
+  Ollama/model/UI problems render as in-window error pages.
+  Headless check: `ARIA_WINDOW_TEST=1` (no popup); pinned by
+  `tests/test_aria_window.py` (7 tests).
+- **App fix — false "install models" page:** model check used the `ollama` CLI,
+  invisible to double-clicked apps (no `/usr/local/bin` on GUI PATH), so it
+  reported missing models you already have. Now checked over HTTP `/api/tags`
+  (handles registry `:latest` suffix); `find_bin()` covers ollama/npm
+  fallbacks; bundle launcher exports a fuller PATH. Verified healthy under a
+  stripped GUI-like PATH.
+- **App fix — `{"detail":"Not Found"}` window:** the window reused any server
+  answering `/api/health`, including a stale pre-single-server backend (yours:
+  detached PID from this morning, no UI routes) — hence raw JSON. Reuse now
+  requires `/` to serve HTML; otherwise the app starts its own server on the
+  next free port (8001…). Verified healthy with :8000 stale-occupied.
+  Pinned by fake-server tests in `tests/test_aria_window.py` (13 tests).
+- **App fix — "Backend didn't start" page:** cold start measured ~14 s, so the
+  20 s budget was too tight on a busy machine. Budget is now 60 s; every phase
+  logs to `~/.aria_data/aria-app.log` (Finder apps have no console) and the
+  error page points at it.
+- **Jail fix:** agent file jail used `cwd` — Finder launches with `cwd=/`,
+  jailing nothing. Now anchored on the repo root (writes still DATA_DIR-only).
+- **App fix — Rosetta crash `(exited, code 1)`:** the venv Python is universal2
+  but its compiled wheels are arm64-only; the app had run translated, so every
+  child inherited x86_64 and died on import (byte-identical ImportError
+  reproduced with `arch -x86_64`). Triple guard now: `LSRequiresNativeExecution`
+  in Info.plist, `arch -arm64` on the bundle launcher, `arch -arm64` on the
+  sidecar argv (proven to recover to arm64 even from a translated parent).
+  Pinned by launcher/cmd tests (`test_aria_window.py`, 17 tests).
+- **App fix — silent server death:** the in-thread server died after ~10 healthy
+  minutes with zero traceback. Server now runs as a sidecar child process
+  (isolated from the Cocoa runloop) with stderr captured to
+  `~/.aria_data/aria-server.log`; a watchdog shows an in-window "Server
+  stopped" page with log paths if it ever exits, and window close terminates
+  it. Verified healthy via sidecar (`test_aria_window.py`, 16 tests).
+- **Single-server mode:** FastAPI serves `frontend/dist` on :8000
+  (`/` + SPA fallback; `/api/*` stays JSON, unknown → 404 JSON). No second
+  process, no vite in prod. Dev flow untouched (`./start.sh` + `npm run dev`).
+  Opt-out: `ARIA_SERVE_FRONTEND=0`. New `start-app.sh` (`ARIA_PORT` override).
+- App icons: `frontend/public/icon-192/512.png` (+ apple-touch-icon) generated
+  offline; wired as favicon. Verified on spare ports (200 UI + API, JSON 404s).
 
 ## Unreleased — all-features quality program (per `backend/docs/quality-bar.md`)
 - **Eval harness, first correctness baseline** (`backend/scripts/eval_bank_maths.py`):

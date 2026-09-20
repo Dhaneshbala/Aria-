@@ -3,7 +3,7 @@ Image generation service — How top models do it, made local.
 
 Top diffusion models (FLUX.1, SDXL, Sana) work by latent diffusion:
   text -> CLIP/T5 encoder -> latent noise -> iterative denoising (DiT/U-Net) -> VAE decode -> pixels.
-ARIA doesn't run that 12B param model locally on 16GB (would OOM). Instead:
+Study Buddy doesn't run that 12B param model locally on 16GB (would OOM). Instead:
 
   PRIMARY:  Pollinations.ai — free, no GPU, no install. Remote FLUX/Sana diffusion,
             same architecture as top models, just hosted remotely. Returns real AI images.
@@ -54,7 +54,7 @@ class ImageGenService:
         Same latent diffusion as top models, just hosted remotely.
         """
         try:
-            # Safe, educational prefix — keeps ARIA kid-friendly
+            # Safe, educational prefix — keeps Study Buddy kid-friendly
             safe_prompt = f"educational, child-friendly, colourful illustration: {prompt}"
             encoded = urllib.parse.quote(safe_prompt)
 

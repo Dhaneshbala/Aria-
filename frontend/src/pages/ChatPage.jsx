@@ -29,22 +29,22 @@ function ProgressBar() {
   if (!isStreaming || !progress) return null
   const pct = progress.pct || 0
   return (
-    <div className="sticky top-0 z-10 bg-[#131314]/90 backdrop-blur border-b border-[#2d2e30] px-4 py-2">
+    <div className="sticky top-0 z-10 bg-aria-elevated/90 backdrop-blur-xl border-b border-aria-border px-4 py-2.5" role="status" aria-live="polite">
       <div className="w-full">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-[#8ab4f8] font-medium flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#8ab4f8] animate-pulse" />
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs text-aria-accent-blue font-medium flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-aria-accent-blue animate-pulse shadow-glow" />
             {progress.label || 'Thinking...'}
           </span>
-          <span className="text-[10px] text-[#9aa0a6]">{pct}%</span>
+          <span className="text-[10px] font-medium tracking-widest text-aria-muted">{pct}%</span>
         </div>
-        <div className="w-full bg-[#1e1f20] rounded-full h-1.5 overflow-hidden">
-          <div className="bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] h-1.5 rounded-full transition-all duration-500 ease-out" style={{ width: `${pct}%` }} />
+        <div className="w-full bg-aria-bg rounded-full h-1.5 overflow-hidden p-0.5">
+          <div className="bg-gradient-to-r from-[#4285f4] via-[#8ab4f8] to-[#7c6af7] h-full rounded-full transition-all duration-700 ease-out shadow-glow" style={{ width: `${pct}%` }} />
         </div>
         {progressSteps.length > 1 && (
-          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+          <div className="flex gap-1.5 mt-2 flex-wrap">
             {progressSteps.map(s => (
-              <span key={s.step} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${s.status === 'done' ? 'bg-[#8ab4f8]/15 text-[#8ab4f8] border-[#8ab4f8]/20' : s.status === 'running' ? 'bg-[#1e1f20] text-[#9aa0a6] border-[#2d2e30] animate-pulse' : 'bg-[#1e1f20] text-[#5f6368] border-[#2d2e30]'}`}>
+              <span key={s.step} className={`text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors ${s.status === 'done' ? 'bg-aria-accent-blue/15 text-aria-accent-blue border-aria-accent-blue/20' : s.status === 'running' ? 'bg-aria-surface text-aria-muted border-aria-border animate-pulse' : 'bg-aria-surface text-aria-muted/60 border-aria-border'}`}>
                 {s.status === 'done' ? '✓' : s.status === 'running' ? '⏳' : '•'} {s.label || s.step}
               </span>
             ))}
@@ -120,7 +120,7 @@ export default function ChatPage() {
       {ollamaStatus === 'error' && (
         <div className="mx-4 mt-2 px-4 py-2.5 bg-[#3c1f1a] border border-[#5c2b22] rounded-xl text-center">
           <p className="text-xs text-[#f28b82]">
-            Ollama offline — ARIA can’t answer. Run <code className="px-1.5 py-0.5 rounded bg-[#5c2b22] text-[#f28b82] font-mono">ollama serve</code> then refresh.
+            Ollama offline — Study Buddy can’t answer. Run <code className="px-1.5 py-0.5 rounded bg-[#5c2b22] text-[#f28b82] font-mono">ollama serve</code> then refresh.
           </p>
         </div>
       )}
@@ -177,7 +177,7 @@ export default function ChatPage() {
         <div className="w-full px-6 lg:px-8 pb-4 pt-2 bg-gradient-to-t from-[#131314] via-[#131314] to-transparent">
           <ChatInput onSend={sendMessage} disabled={isStreaming} />
           <p className="text-center text-[11px] text-[#5f6368] mt-3">
-            ARIA can make mistakes. Check important info. · Private & on-device
+            Study Buddy can make mistakes. Check important info. · Private & on-device
           </p>
         </div>
       )}
@@ -213,7 +213,7 @@ function Welcome({ onSuggest, sendMessage, isStreaming }) {
         {/* Centered composer — Gemini puts input in the middle when empty */}
         <div className="w-full">
           <ChatInput onSend={handleSend} disabled={isStreaming} autoFocus text={draft} onTextChange={setDraft} />
-          <p className="text-center text-[11px] text-[#5f6368] mt-3">ARIA can make mistakes — verify important work</p>
+          <p className="text-center text-[11px] text-[#5f6368] mt-3">Study Buddy can make mistakes — verify important work</p>
         </div>
 
         {/* Quick chips — Gemini style horizontal pills */}

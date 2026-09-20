@@ -1,5 +1,5 @@
 """
-Image service — makes ARIA actually understand what's in a picture.
+Image service — makes Study Buddy actually understand what's in a picture.
 
 Pipeline (single local model, no extra RAM):
   1. PREPROCESS — normalise size for the vision model: downscale huge phone

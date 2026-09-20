@@ -15,16 +15,19 @@ class AgentService:
 
     def __init__(self):
         self._pending_confirmations = {}
-        # Jail: only allow file ops inside DATA_DIR or project root
+        # Jail: only allow file ops inside DATA_DIR or the Study Buddy project root.
+        # (Not cwd: Finder-launched apps start with cwd=/, which would jail
+        # nothing. Repo root is the stable equivalent of "the project".)
+        _repo_root = Path(__file__).resolve().parents[1]
         try:
             from models.database import DATA_DIR as _DD
-            self._allowed_roots = [Path(_DD).resolve(), Path.cwd().resolve()]
+            self._allowed_roots = [Path(_DD).resolve(), _repo_root.resolve()]
             # Writes are DATA_DIR-only — never backend code. A mistaken or
             # injected write to backend/*.py would survive restarts.
             self._writable_roots = [Path(_DD).resolve()]
         except Exception:
-            self._allowed_roots = [Path.cwd().resolve()]
-            self._writable_roots = [Path.cwd().resolve()]
+            self._allowed_roots = [_repo_root.resolve()]
+            self._writable_roots = [_repo_root.resolve()]
 
     def _is_jailed(self, path: str) -> bool:
         try:

@@ -1,4 +1,4 @@
-"""Opt-in anonymous telemetry for ARIA.
+"""Opt-in anonymous telemetry for Study Buddy.
 
 Records lightweight usage counters and crash events to a local JSONL file
 (never leaves the machine). The user enables it in Admin → Privacy, and can

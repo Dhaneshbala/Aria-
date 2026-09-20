@@ -152,13 +152,13 @@ export default function ExamPlanPage() {
   return (
     <div className="w-full max-w-2xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Exam Countdown</h1>
-      <p className="text-sm text-[#555] mb-8 text-center">Give an exam date. ARIA plans every day — weak topics first — as real todos.</p>
+      <p className="text-sm text-[#555] mb-8 text-center">Give an exam date. Study Buddy plans every day — weak topics first — as real todos.</p>
 
       {/* New plan form */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-6">
         {/* Assessment notification upload */}
         <div className="mb-3 p-3 rounded-xl bg-[#141414] border border-dashed border-[#3a3a3a]">
-          <p className="text-xs font-medium text-[#ccc] mb-1">Assessment notification <span className="text-[#666] font-normal">(optional — ARIA plans from what's actually in it)</span></p>
+          <p className="text-xs font-medium text-[#ccc] mb-1">Assessment notification <span className="text-[#666] font-normal">(optional — Study Buddy plans from what's actually in it)</span></p>
           <div className="flex items-center gap-2">
             <input
               ref={fileRef}

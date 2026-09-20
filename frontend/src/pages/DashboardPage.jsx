@@ -110,104 +110,102 @@ function DashboardWelcome({ onAction }) {
   return (
     <div className="flex flex-col items-center px-4 sm:px-6 lg:px-8 py-6 md:py-8">
 
-      {/* ── Hero ── */}
-      <h1 className="text-[32px] sm:text-[40px] md:text-[48px] font-normal leading-[1.05] tracking-tight text-center">
+      {/* ── Hero — $10B: tighter, premium gradient, subtle motion ── */}
+      <h1 className="text-[34px] sm:text-[42px] md:text-[52px] font-medium leading-[0.95] tracking-tight text-center" style={{ letterSpacing: '-0.03em' }}>
         <span className="gemini-gradient-text">{greet}{name ? `, ${name}` : ''}</span>
       </h1>
-      <h2 className="text-[32px] sm:text-[40px] md:text-[48px] font-normal leading-[1.05] tracking-tight text-[#5f6368] text-center -mt-1">
+      <h2 className="text-[34px] sm:text-[42px] md:text-[52px] font-normal leading-[0.95] tracking-tight text-aria-muted text-center -mt-1.5" style={{ letterSpacing: '-0.02em' }}>
         What to learn?
       </h2>
+      <p className="text-xs text-aria-muted/80 mt-3 tracking-wide uppercase">Private · Offline · Yours</p>
 
-      {/* ── Progress Bar (XP) ── */}
+      {/* ── Progress — premium track with glow ── */}
       {game && (
-        <div className="w-full max-w-xl mt-5 mb-4">
-          <div className="flex items-center justify-between mb-1.5">
+        <div className="w-full max-w-xl mt-6 mb-4 card-premium p-3.5">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-[#8ab4f8]">Level {level}</span>
-              <span className="text-[10px] text-[#5f6368]">· {xp} XP</span>
+              <span className="text-xs font-semibold tracking-widest uppercase text-aria-accent-blue">Level {level}</span>
+              <span className="text-[10px] text-aria-muted">· {xp.toLocaleString()} XP</span>
             </div>
-            <span className="text-[10px] text-[#5f6368]">{xp % 100}/100 to next level</span>
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-aria-accent/10 border border-aria-accent/20 text-aria-accent-light">{xp % 100}/100</span>
           </div>
-          <div className="w-full bg-[#1e1f20] rounded-full h-2 overflow-hidden">
-            <div className="bg-gradient-to-r from-[#4285f4] to-[#8b5cf6] h-2 rounded-full transition-all duration-500" style={{ width: `${(xp % 100)}%` }} />
+          <div className="w-full bg-aria-bg rounded-full h-2 overflow-hidden p-0.5">
+            <div className="bg-gradient-to-r from-[#4285f4] via-[#8b5cf6] to-[#7c6af7] h-full rounded-full transition-all duration-700 ease-out shadow-glow" style={{ width: `${(xp % 100)}%` }} />
           </div>
         </div>
       )}
 
-      {/* ── Daily Focus + Streak (horizontal row) ── */}
+      {/* ── Daily Focus + Streak — premium bento ── */}
       <div className="flex gap-3 w-full max-w-xl mb-4">
-        {/* Daily Focus */}
-        <div className="flex-1 p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl">
+        <div className="flex-1 p-4 card card-hover group">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-full bg-[#8ab4f8]/15 flex items-center justify-center">
-              <Target size={14} className="text-[#8ab4f8]" />
+            <div className="w-7 h-7 rounded-full bg-aria-accent-blue/15 border border-aria-accent-blue/20 flex items-center justify-center group-hover:bg-aria-accent-blue/20 transition-colors">
+              <Target size={14} className="text-aria-accent-blue" />
             </div>
-            <p className="text-xs font-medium text-[#9aa0a6]">Today's Focus</p>
+            <p className="text-xs font-medium tracking-wide uppercase text-aria-muted">Today's Focus</p>
           </div>
-          <p className="text-[15px] font-medium text-[#e3e3e3]">{dailyFocus()}</p>
+          <p className="text-[15px] font-semibold tracking-tight text-aria-text">{dailyFocus()}</p>
           <button onClick={() => onAction(`Help me with ${dailyFocus().toLowerCase()}`)}
-            className="text-xs text-[#8ab4f8] mt-2 hover:underline flex items-center gap-1">
+            className="text-xs font-medium text-aria-accent-blue mt-2 inline-flex items-center gap-1 hover:gap-1.5 transition-all">
             Start now <ChevronRight size={12} />
           </button>
         </div>
-
-        {/* Streak */}
-        <div className="p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl flex flex-col items-center justify-center min-w-[100px]">
-          <Flame size={24} className="text-orange-400 mb-1" />
-          <p className="text-[24px] font-semibold text-[#e3e3e3]">{streak}</p>
-          <p className="text-[10px] text-[#5f6368]">day streak</p>
+        <div className="p-4 card flex flex-col items-center justify-center min-w-[110px] relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-transparent to-transparent pointer-events-none" />
+          <Flame size={22} className="text-orange-400 mb-1 drop-shadow-[0_0_8px_rgba(251,146,60,0.3)]" />
+          <p className="text-[26px] font-semibold tracking-tight text-aria-text">{streak}</p>
+          <p className="text-[10px] tracking-widest uppercase text-aria-muted">day streak</p>
         </div>
       </div>
 
-      {/* ── Stats Row ── */}
+      {/* ── Stats — premium minimal ── */}
       <div className="flex gap-3 w-full max-w-xl mb-4">
-        <div className="flex-1 p-3 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl text-center">
-          <p className="text-[20px] font-semibold text-[#e3e3e3]">{totalQ}</p>
-          <p className="text-[10px] text-[#5f6368]">questions this week</p>
-        </div>
-        <div className="flex-1 p-3 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl text-center">
-          <p className="text-[20px] font-semibold text-[#8ab4f8]">{accuracy}%</p>
-          <p className="text-[10px] text-[#5f6368]">accuracy</p>
-        </div>
-        <div className="flex-1 p-3 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl text-center">
-          <p className="text-[20px] font-semibold text-green-400">{focus?.focus_score || '—'}</p>
-          <p className="text-[10px] text-[#5f6368]">focus score</p>
-        </div>
+        {[
+          { v: totalQ, l: 'questions this week', c: 'text-aria-text' },
+          { v: `${accuracy}%`, l: 'accuracy', c: 'text-aria-accent-blue' },
+          { v: focus?.focus_score || '—', l: 'focus score', c: 'text-green-400' },
+        ].map(s => (
+          <div key={s.l} className="flex-1 p-3 card text-center">
+            <p className={`text-[20px] font-semibold tracking-tight ${s.c}`}>{s.v}</p>
+            <p className="text-[10px] tracking-wide uppercase text-aria-muted mt-0.5">{s.l}</p>
+          </div>
+        ))}
       </div>
 
-      {/* ── Due Cards + Weak Topic ── */}
+      {/* ── Due + Weak — bento with hover depth ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl mb-4">
         <button onClick={() => due > 0 ? navigate('/spaced') : onAction('Show my due flashcards')}
-          className="group flex flex-col items-start gap-3 p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl hover:bg-[#2d2e30] hover:border-[#3c4043] transition-all text-left">
-          <div className="w-8 h-8 rounded-full bg-[#2d2e30] group-hover:bg-[#35363a] flex items-center justify-center"><Clock size={16} className="text-[#8ab4f8]" /></div>
+          className="group flex flex-col items-start gap-3 p-4 card card-hover text-left">
+          <div className="w-8 h-8 rounded-full bg-aria-variant group-hover:bg-aria-hover flex items-center justify-center transition-colors"><Clock size={16} className="text-aria-accent-blue" /></div>
           <div className="w-full">
-            <p className="text-xs font-medium tracking-wide text-[#9aa0a6] uppercase">Due Today</p>
-            <p className="text-[20px] font-normal text-[#e3e3e3] mt-1 leading-none">{due > 0 ? `${due} cards` : 'All caught up'}</p>
-            <p className="text-xs text-[#8ab4f8] mt-2 flex items-center gap-1">{due > 0 ? 'Review now →' : 'No cards due'}</p>
+            <p className="text-xs font-medium tracking-wide uppercase text-aria-muted">Due Today</p>
+            <p className="text-[20px] font-semibold tracking-tight text-aria-text mt-1 leading-none">{due > 0 ? `${due} cards` : 'All caught up'}</p>
+            <p className="text-xs font-medium text-aria-accent-blue mt-2">{due > 0 ? 'Review now →' : 'No cards due'}</p>
           </div>
         </button>
         <button onClick={() => weak && onAction(`Practice ${typeof weak === 'string' ? weak : weak?.topic || weak?.name || 'my weak topic'}`)}
-          className="group flex flex-col items-start gap-3 p-4 bg-[#1e1f20] border border-[#2d2e30] rounded-2xl hover:bg-[#2d2e30] hover:border-[#3c4043] transition-all text-left">
-          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center"><AlertTriangle size={16} className="text-amber-400" /></div>
+          className="group flex flex-col items-start gap-3 p-4 card card-hover text-left">
+          <div className="w-8 h-8 rounded-full bg-amber-500/15 border border-amber-500/20 flex items-center justify-center"><AlertTriangle size={16} className="text-amber-400" /></div>
           <div className="w-full">
-            <p className="text-xs font-medium tracking-wide text-[#9aa0a6] uppercase">Weakest Topic</p>
-            <p className="text-[16px] font-medium text-[#e3e3e3] mt-1 truncate max-w-[220px]">{weak ? (typeof weak === 'string' ? weak : weak?.topic || weak?.name || 'Algebra') : 'No data yet'}</p>
-            <p className="text-xs text-[#9aa0a6] group-hover:text-amber-400 mt-2">Practice →</p>
+            <p className="text-xs font-medium tracking-wide uppercase text-aria-muted">Weakest Topic</p>
+            <p className="text-[16px] font-semibold tracking-tight text-aria-text mt-1 truncate max-w-[220px]">{weak ? (typeof weak === 'string' ? weak : weak?.topic || weak?.name || 'Algebra') : 'No data yet'}</p>
+            <p className="text-xs font-medium text-aria-muted group-hover:text-amber-400 mt-2 transition-colors">Practice →</p>
           </div>
         </button>
       </div>
 
-      {/* ── Challenge Card ── */}
+      {/* ── Challenge — premium gradient border ── */}
       {challenge && (
-        <div className="w-full max-w-xl mb-4 p-4 bg-gradient-to-r from-[#4285f4]/10 to-[#8b5cf6]/10 border border-[#4285f4]/20 rounded-2xl">
-          <div className="flex items-center gap-2 mb-1">
-            <Trophy size={16} className="text-amber-400" />
-            <p className="text-xs font-semibold text-amber-400">Daily Challenge</p>
+        <div className="w-full max-w-xl mb-4 p-4 card-premium relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#4285f4]/08 to-[#8b5cf6]/08 pointer-events-none" />
+          <div className="relative flex items-center gap-2 mb-1">
+            <Trophy size={16} className="text-amber-400 drop-shadow-[0_0_6px_rgba(251,146,60,0.4)]" />
+            <p className="text-xs font-semibold tracking-widest uppercase text-amber-400">Daily Challenge</p>
           </div>
-          <p className="text-sm text-[#e3e3e3] font-medium">{challenge.name}</p>
-          <p className="text-xs text-[#9aa0a6] mt-1">{challenge.desc}</p>
+          <p className="relative text-sm text-aria-text font-semibold tracking-tight">{challenge.name}</p>
+          <p className="relative text-xs text-aria-muted mt-1 leading-relaxed">{challenge.desc}</p>
           <button onClick={() => onAction(challenge.name)}
-            className="mt-2 text-xs px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition-colors">
+            className="relative mt-3 text-xs font-medium px-4 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">
             Accept →
           </button>
         </div>

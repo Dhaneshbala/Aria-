@@ -12,14 +12,14 @@ export default function ExportButton({ messages, conversationId }) {
   if (!messages?.length) return null
 
   const buildMarkdown = () => {
-    const lines = [`# ARIA Conversation\n`, `**ID:** ${conversationId || 'new'}\n`, `**Date:** ${new Date().toLocaleString()}\n\n---\n`]
+    const lines = [`# Study Buddy Conversation\n`, `**ID:** ${conversationId || 'new'}\n`, `**Date:** ${new Date().toLocaleString()}\n\n---\n`]
     for (const msg of messages) {
       if (msg.role === 'user') {
         lines.push(`## You\n\n${msg.content}\n`)
         if (msg.docName) lines.push(`*[Document: ${msg.docName}]*\n`)
         if (msg.docNames?.length) msg.docNames.forEach(n => lines.push(`*[Document: ${n}]*\n`))
       } else if (msg.role === 'assistant') {
-        lines.push(`## ARIA\n\n${msg.content}\n`)
+        lines.push(`## Study Buddy\n\n${msg.content}\n`)
         if (msg.extras?.quiz?.length) {
           lines.push(`\n### Quiz\n`)
           msg.extras.quiz.forEach((q, i) => {

@@ -1,5 +1,5 @@
 """
-ARIA Orchestrator — The Brain (refactored)
+Study Buddy Orchestrator — The Brain (refactored)
 ──────────────────────────────────────────
 Thin coordinator that imports from focused modules.
 The orchestrate() function is the main pipeline that ties everything together.
@@ -494,10 +494,10 @@ async def orchestrate(
                     pass
                 yield _sse({"type": "error",
                     "content": (
-                        "ARIA's AI engine isn't responding.\n\n"
+                        "Study Buddy's AI engine isn't responding.\n\n"
                         "Click the status dot in the top bar to retry, or run:\n"
                         f"  ollama pull {reasoning_model}\n\n"
-                        "then restart ARIA. Your chats are safe."
+                        "then restart Study Buddy. Your chats are safe."
                     )})
                 yield _sse({"type": "done"})
                 return

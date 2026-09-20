@@ -1,4 +1,4 @@
-# ARIA — AI Study Assistant v2.5
+# Study Buddy — AI Study Assistant v2.5
 ### Built for MacBook Air M4 · 16 GB RAM
 
 A fully local, private AI study workspace. All AI runs on your Mac.
@@ -11,13 +11,24 @@ No subscriptions. No data sent anywhere. Everything stays on your computer.
 ### 1. Install Ollama (one time only)
 Go to **https://ollama.com** → download the Mac app → install it like any app.
 
-### 2. Start ARIA
+### 2. Start Study Buddy
 Open Terminal and run:
 ```bash
 cd ~/Downloads/aria-2
 chmod +x start.sh    # first time only
 ./start.sh
 ```
+
+### Or run it as a Mac app (no Terminal)
+```bash
+./build-app.sh   # one time — creates Study Buddy.app
+```
+Then drag **Study Buddy.app** to your Dock and double-click it any time.
+Study Buddy opens in its own window (native app, no Terminal). Closing the window
+stops Study Buddy; if it's already running, a new window just connects to it.
+First run needs Ollama + models — the app tells you if anything's missing
+(run `./start-app.sh` once to fetch models).
+`./start.sh` remains the dev path (hot-reload + separate frontend).
 
 That's it. The script handles everything:
 - Starts Ollama if it's not running
@@ -27,7 +38,7 @@ That's it. The script handles everything:
 - Starts backend (port 8000) and frontend (port 5173)
 - Opens your browser automatically
 
-### 3. Stop ARIA
+### 3. Stop Study Buddy
 Press **Ctrl+C** in the Terminal window.
 
 ---
@@ -69,9 +80,9 @@ Single generation model avoids RAM pressure. Env: `OLLAMA_URL=http://localhost:1
 
 ## What You Can Do
 
-Just type naturally — ARIA figures out what you need:
+Just type naturally — Study Buddy figures out what you need:
 
-| What you type | What ARIA does (all via Chat brain) |
+| What you type | What Study Buddy does (all via Chat brain) |
 |---|---|
 | *"Explain photosynthesis"* | Full explanation + auto-generates flashcards |
 | *"Quiz me on World War 2"* | Interactive multiple-choice quiz |
@@ -202,7 +213,7 @@ aria-2/
 ### "Ollama offline" in the status bar
 Ollama isn't running. Either:
 - Run `ollama serve` in a separate Terminal window, OR
-- Restart ARIA with `./start.sh` (it auto-starts Ollama)
+- Restart Study Buddy with `./start.sh` (it auto-starts Ollama)
 
 ### Port already in use
 ```bash
@@ -216,7 +227,7 @@ Then run `./start.sh` again.
 Go to **Admin** → change Reasoning Model to `qwen3:4b` (faster, still good).
 
 ### Out of RAM / app freezes
-Close other apps (Chrome tabs, etc.) before using ARIA. ARIA + macOS needs ~13 GB for the main model.
+Close other apps (Chrome tabs, etc.) before using Study Buddy. Study Buddy + macOS needs ~13 GB for the main model.
 
 ### Image generation not working
 Needs internet. Check your Wi-Fi connection.
@@ -227,7 +238,7 @@ Allow microphone access in Safari/Chrome when prompted.
 ### Voice Tutor slow or robotic
 - First spoken reply takes ~10 s (the AI thinking, not the voice) — replies after that stream sentence by sentence.
 - English/Hindi/Telugu/Bengali/Malayalam/Marathi/Urdu use neural voices; other languages use macOS voices. To install all neural voices once: `ARIA_FETCH_VOICES=1 ./start.sh` (~450 MB).
-- Tamil answers need the Vani voice (macOS Settings → Accessibility → Spoken Content → System Voice → Manage Voices); without it ARIA falls back to the default voice automatically.
+- Tamil answers need the Vani voice (macOS Settings → Accessibility → Spoken Content → System Voice → Manage Voices); without it Study Buddy falls back to the default voice automatically.
 
 ### Backend won't start
 ```bash

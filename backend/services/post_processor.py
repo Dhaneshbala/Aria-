@@ -1,5 +1,5 @@
 """
-Post-processing utilities for ARIA responses.
+Post-processing utilities for Study Buddy responses.
 ──────────────────────────────────────────────
 Extracted from orchestrator.py for maintainability.
 Includes: extras generation, answer verification, math code exec,

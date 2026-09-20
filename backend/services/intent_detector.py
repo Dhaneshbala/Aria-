@@ -1,5 +1,5 @@
 """
-Intent detection and language identification for ARIA.
+Intent detection and language identification for Study Buddy.
 ──────────────────────────────────────────────────────
 Extracted from orchestrator.py for maintainability.
 Every user message passes through detect_intents() — the front door.
@@ -200,7 +200,7 @@ def detect_message_language(message: str) -> str | None:
 def detect_intents(message: str, has_image: bool = False, has_doc: bool = False) -> list[str]:
     """Classify user message into one or more intents.
 
-    This is ARIA's front door — every message is classified here.
+    This is Study Buddy's front door — every message is classified here.
     Returns at least one intent (defaults to "chat").
     """
     msg = message.lower()

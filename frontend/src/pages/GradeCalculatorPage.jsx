@@ -91,7 +91,7 @@ export default function GradeCalculatorPage() {
         <Flame size={20} className="text-orange-400" />
         <h1 className="text-2xl font-bold text-[#e8e8e8]">Am I Cooked?</h1>
       </div>
-      <p className="text-sm text-[#888] mb-6">Plug in your marks + weightings. ARIA tells you exactly what you need on the final to hit your target.</p>
+      <p className="text-sm text-[#888] mb-6">Plug in your marks + weightings. Study Buddy tells you exactly what you need on the final to hit your target.</p>
 
       {/* Completed assessments */}
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-4">

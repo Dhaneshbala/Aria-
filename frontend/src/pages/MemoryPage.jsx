@@ -203,7 +203,7 @@ export default function MemoryPage() {
             <div className="text-center">
               <Brain size={48} className="text-[#2d2e30] mx-auto mb-3" />
               <p className="text-sm text-[#5f6368]">Select a conversation to browse</p>
-              <p className="text-xs text-[#3c4043] mt-1">ARIA remembers everything you've discussed</p>
+              <p className="text-xs text-[#3c4043] mt-1">Study Buddy remembers everything you've discussed</p>
             </div>
           </div>
         )}
