@@ -1,11 +1,12 @@
 """
 Analytics Dashboard — Study activity analytics with heatmap, trends, predicted grades, focus score.
 """
+
 import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -31,21 +32,20 @@ def _save_json(path, data):
 
 
 class AnalyticsService:
-
     def get_heatmap(self, months: int = 6) -> dict:
         """Generate GitHub-style study activity heatmap data."""
         convs = _load_json(CONVERSATIONS_FILE, {})
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now - timedelta(days=months * 30)
 
         # Count activity per day
         daily = defaultdict(int)
-        for cid, turns in convs.items():
+        for turns in convs.values():
             for turn in turns:
                 try:
                     ts = turn.get("timestamp", "")
                     if ts:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = datetime.fromisoformat(ts)
                         if dt >= cutoff:
                             day = dt.strftime("%Y-%m-%d")
                             daily[day] += 1
@@ -57,16 +57,20 @@ class AnalyticsService:
         current = cutoff
         while current <= now:
             day = current.strftime("%Y-%m-%d")
-            heatmap.append({
-                "date": day,
-                "count": daily.get(day, 0),
-                "day_of_week": current.strftime("%a"),
-            })
+            heatmap.append(
+                {
+                    "date": day,
+                    "count": daily.get(day, 0),
+                    "day_of_week": current.strftime("%a"),
+                }
+            )
             current += timedelta(days=1)
 
         max_count = max((h["count"] for h in heatmap), default=1) or 1
         for h in heatmap:
-            h["level"] = min(4, int(h["count"] / max_count * 4)) if h["count"] > 0 else 0
+            h["level"] = (
+                min(4, int(h["count"] / max_count * 4)) if h["count"] > 0 else 0
+            )
 
         return {
             "heatmap": heatmap,
@@ -80,19 +84,19 @@ class AnalyticsService:
         """Performance trends over time."""
         profile = _load_json(PROFILE_FILE, {})
         convs = _load_json(CONVERSATIONS_FILE, {})
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now - timedelta(days=days)
 
         # Daily activity counts
         daily_activity = defaultdict(int)
-        daily_questions = defaultdict(lambda: {"correct": 0, "total": 0})
+        defaultdict(lambda: {"correct": 0, "total": 0})
 
-        for cid, turns in convs.items():
+        for turns in convs.values():
             for turn in turns:
                 try:
                     ts = turn.get("timestamp", "")
                     if ts:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = datetime.fromisoformat(ts)
                         if dt >= cutoff:
                             day = dt.strftime("%Y-%m-%d")
                             daily_activity[day] += 1
@@ -157,7 +161,11 @@ class AnalyticsService:
                 "questions_attempted": total,
                 "predicted_band": band,
                 "band_number": band_num,
-                "confidence": "high" if total >= 20 else "medium" if total >= 10 else "low",
+                "confidence": "high"
+                if total >= 20
+                else "medium"
+                if total >= 10
+                else "low",
             }
 
         return predictions
@@ -165,8 +173,8 @@ class AnalyticsService:
     def get_focus_score(self) -> dict:
         """Measure study session quality."""
         convs = _load_json(CONVERSATIONS_FILE, {})
-        profile = _load_json(PROFILE_FILE, {})
-        now = datetime.now(timezone.utc)
+        _load_json(PROFILE_FILE, {})
+        now = datetime.now(UTC)
 
         # Analyse last 7 days
         cutoff = now - timedelta(days=7)
@@ -174,18 +182,24 @@ class AnalyticsService:
         total_turns = 0
         unique_days = set()
 
-        for cid, turns in convs.items():
+        for turns in convs.values():
             for turn in turns:
                 try:
                     ts = turn.get("timestamp", "")
                     if ts:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = datetime.fromisoformat(ts)
                         if dt >= cutoff:
                             total_turns += 1
                             unique_days.add(dt.strftime("%Y-%m-%d"))
                             # Detect subject from message
                             msg = turn.get("user", "").lower()
-                            for subj in ["math", "science", "english", "history", "geography"]:
+                            for subj in [
+                                "math",
+                                "science",
+                                "english",
+                                "history",
+                                "geography",
+                            ]:
                                 if subj in msg:
                                     subjects_seen.add(subj)
                 except Exception:
@@ -196,7 +210,7 @@ class AnalyticsService:
         consistency_score = min(len(unique_days) / 5, 1.0) * 100  # Max at 5 days
         volume_score = min(total_turns / 20, 1.0) * 100  # Max at 20 turns
 
-        focus_score = (variety_score * 0.3 + consistency_score * 0.4 + volume_score * 0.3)
+        focus_score = variety_score * 0.3 + consistency_score * 0.4 + volume_score * 0.3
 
         return {
             "focus_score": round(focus_score),
@@ -206,7 +220,13 @@ class AnalyticsService:
             "subjects_practiced": list(subjects_seen),
             "days_active_this_week": len(unique_days),
             "total_interactions_week": total_turns,
-            "assessment": "Excellent" if focus_score >= 80 else "Good" if focus_score >= 60 else "Needs improvement" if focus_score >= 40 else "Low activity",
+            "assessment": "Excellent"
+            if focus_score >= 80
+            else "Good"
+            if focus_score >= 60
+            else "Needs improvement"
+            if focus_score >= 40
+            else "Low activity",
         }
 
     def get_weekly_summary(self) -> dict:
@@ -222,25 +242,29 @@ class AnalyticsService:
         for subj, stats in subjects.items():
             t = stats.get("total", 0)
             c = stats.get("correct", 0)
-            subjects_summary.append({
-                "subject": subj,
-                "questions": t,
-                "correct": c,
-                "accuracy": round(c / t * 100) if t > 0 else 0,
-            })
+            subjects_summary.append(
+                {
+                    "subject": subj,
+                    "questions": t,
+                    "correct": c,
+                    "accuracy": round(c / t * 100) if t > 0 else 0,
+                }
+            )
 
         return {
             "total_questions": total_q,
             "total_correct": total_correct,
             "overall_accuracy": round(accuracy * 100),
-            "subjects": sorted(subjects_summary, key=lambda x: x["questions"], reverse=True),
+            "subjects": sorted(
+                subjects_summary, key=lambda x: x["questions"], reverse=True
+            ),
             "strong_areas": profile.get("strong_areas", []),
             "weak_areas": profile.get("weak_areas", []),
         }
 
     def _calculate_streak(self, daily: dict, now: datetime | None = None) -> int:
         """Calculate current consecutive study days."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         streak = 0
         current = now
         while True:

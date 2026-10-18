@@ -1,14 +1,17 @@
 import asyncio
 import json as _json
 
-from fastapi import APIRouter, UploadFile, File, Form, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+from models.database import MODELS, get_config
 from services.study_service import StudyService
-from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/study", tags=["study"])
 study_svc = StudyService()
+
+MAX_NOTIFICATION_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 class StudyRequest(BaseModel):
@@ -16,14 +19,17 @@ class StudyRequest(BaseModel):
     level: str = "medium"
     count: int = 5
     days: int = 7
-    verify: bool = True  # cross-check (second model + Google) — on by default, as requested
+    verify: bool = (
+        True  # cross-check (second model + Google) — on by default, as requested
+    )
 
 
 # ── Response schemas (the contract the frontend depends on) ──────────────────
 
+
 class QuizQuestion(BaseModel):
     question: str = "Question text"
-    options: list[str] = "Exactly 4 options, indexed A) B) C) D)"
+    options: list[str] = []
     correct: str = "Answer letter ('A'-'D'); may be '' when verification could not run"
     explanation: str = "Brief explanation of the correct answer"
     verified: str = "verification status: triple_verified | majority_verified | disputed | original | no_data | unverified"
@@ -35,6 +41,7 @@ class QuizResponse(BaseModel):
 
     The frontend must render questions by this shape only.
     """
+
     questions: list[QuizQuestion]
     mode: str | None = None
 
@@ -59,7 +66,9 @@ async def generate_quiz(req: StudyRequest):
         verify = True
     else:
         verify = config.get("quiz_verify", True)
-    questions = await study_svc.generate_quiz(req.topic, req.level, req.count, model, verify=verify)
+    questions = await study_svc.generate_quiz(
+        req.topic, req.level, req.count, model, verify=verify
+    )
     return {"questions": questions}
 
 
@@ -91,7 +100,9 @@ async def stream_quiz(req: StudyRequest, request: Request):
                     questions.append(payload[0])
                     yield _sse({"type": "question", "question": payload[0]})
                 elif kind == "progress":
-                    yield _sse({"type": "progress", "done": payload[0], "total": payload[1]})
+                    yield _sse(
+                        {"type": "progress", "done": payload[0], "total": payload[1]}
+                    )
                 elif kind == "error":
                     yield _sse({"type": "error", "content": str(payload[0])[:300]})
             yield _sse({"type": "done", "questions": questions})
@@ -118,13 +129,31 @@ async def generate_summary(req: StudyRequest):
     summary = await study_svc.generate_summary(req.topic, model)
     return {"summary": summary}
 
+
 @router.post("/quiz/check")
 async def check_answer(data: dict):
     from services.memory_service import MemoryService
+
     mem = MemoryService()
     subject = data.get("subject", "general")
     correct = data.get("correct", False)
     profile = await mem.update_profile(subject, correct)
+    # Auto-file wrong answers in the mistake book (needs question text)
+    question = (data.get("question") or "").strip()
+    if not correct and question:
+        try:
+            from services import mistake_service
+
+            mistake_service.record(
+                question=question,
+                correct_answer=data.get("correct_answer", ""),
+                given_answer=data.get("given_answer", ""),
+                subject=subject,
+                topic=data.get("topic", ""),
+                source="quiz",
+            )
+        except Exception:
+            pass
     return {"profile": profile}
 
 
@@ -167,7 +196,9 @@ async def adaptive_difficulty(data: dict):
     elif current == "hard":
         if accuracy <= 0.4 and total >= 3:
             suggested = "medium"
-            reason = f"Let's review — {accuracy:.0%} recent accuracy, reinforcing concepts"
+            reason = (
+                f"Let's review — {accuracy:.0%} recent accuracy, reinforcing concepts"
+            )
         elif accuracy >= 0.8:
             reason = f"Excellent! {accuracy:.0%} at hard level — keep pushing!"
         else:
@@ -197,7 +228,7 @@ class CheatsheetRequest(BaseModel):
 
 @router.post("/cheatsheet")
 async def generate_cheatsheet(req: CheatsheetRequest):
-    from fastapi import HTTPException
+
     topic = (req.topic or "").strip()
     if not topic:
         raise HTTPException(400, "Topic cannot be empty")
@@ -205,11 +236,14 @@ async def generate_cheatsheet(req: CheatsheetRequest):
         raise HTTPException(400, "Topic too long (max 300 chars)")
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
-    sheet = await study_svc.generate_cheatsheet(topic[:300], (req.subject or "")[:80], model)
+    sheet = await study_svc.generate_cheatsheet(
+        topic[:300], (req.subject or "")[:80], model
+    )
     return {"topic": topic, "subject": req.subject or "", "cheatsheet": sheet}
 
 
 # ── Exam countdown plans ────────────────────────────────────────────────────
+
 
 class ExamPlanRequest(BaseModel):
     exam_name: str = "Exam"
@@ -225,11 +259,14 @@ class ExamPlanRequest(BaseModel):
 
 @router.post("/exam-plan")
 async def create_exam_plan(req: ExamPlanRequest):
-    from fastapi import HTTPException
     from services.exam_plan_service import create_plan
+
     try:
         return await create_plan(
-            req.exam_name, req.exam_date, req.subjects, req.mins_per_day,
+            req.exam_name,
+            req.exam_date,
+            req.subjects,
+            req.mins_per_day,
             assessment_text=req.assessment_text,
             assessment_topics=req.assessment_topics,
             assessment_summary=req.assessment_summary,
@@ -245,18 +282,21 @@ async def parse_exam_notification(file: UploadFile = File(...)):
     """Upload an assessment notification (PDF/DOCX/TXT/image) so ARIA knows
     what the assessment is about. Returns extracted text + parsed fields
     (exam_name, exam_date, subjects, topics, summary) to prefill the plan form."""
-    from fastapi import HTTPException
     from services.document_service import DocumentService
     from services.exam_plan_service import parse_notification
-    data = await file.read()
+
+    data = await file.read(MAX_NOTIFICATION_SIZE + 1)
+    if len(data) > MAX_NOTIFICATION_SIZE:
+        raise HTTPException(413, "File too large (max 50MB)")
     if not data:
         raise HTTPException(400, "Empty file")
     fname = file.filename or "notification"
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     try:
         if ext in ("png", "jpg", "jpeg", "webp", "heic", "bmp"):
+            from models.database import MODELS, get_config
             from services.image_service import ImageService
-            from models.database import get_config, MODELS
+
             cfg = get_config()
             model = cfg.get("model", cfg.get("reasoning_model", MODELS["main"]))
             mime = file.content_type or "image/jpeg"
@@ -280,6 +320,7 @@ async def parse_exam_notification(file: UploadFile = File(...)):
 @router.get("/exam-plans")
 async def get_exam_plans():
     from services.exam_plan_service import list_plans
+
     return list_plans()
 
 
@@ -291,8 +332,8 @@ async def exam_plan_readiness(plan_id: str):
     unfinished day, extra loss for unfinished weak-hit days, bonus for
     high completion on high-weighting tasks.
     """
-    from fastapi import HTTPException
     from services.exam_plan_service import list_plans
+
     plan = next((p for p in list_plans() if p.get("id") == plan_id), None)
     if plan is None:
         raise HTTPException(404, "Plan not found")
@@ -316,10 +357,13 @@ async def exam_plan_readiness(plan_id: str):
         "days_left": plan.get("days_left", 0),
         "weighting": plan.get("weighting"),
         "verdict": (
-            "Exam-ready — light review only" if score >= 85 else
-            "On track — clear weak days next" if score >= 60 else
-            "Behind — hit notification topics first" if score >= 30 else
-            "Urgent — start with the first weak topic today"
+            "Exam-ready — light review only"
+            if score >= 85
+            else "On track — clear weak days next"
+            if score >= 60
+            else "Behind — hit notification topics first"
+            if score >= 30
+            else "Urgent — start with the first weak topic today"
         ),
     }
 
@@ -337,8 +381,8 @@ async def exam_plan_practice_set(plan_id: str, req: PracticeSetRequest):
     checked the same way as Create → Quiz. Falls back to subjects when
     the notification had no topics.
     """
-    from fastapi import HTTPException
     from services.exam_plan_service import list_plans
+
     plan = next((p for p in list_plans() if p.get("id") == plan_id), None)
     if plan is None:
         raise HTTPException(404, "Plan not found")
@@ -360,8 +404,8 @@ async def exam_plan_practice_set(plan_id: str, req: PracticeSetRequest):
 
 @router.delete("/exam-plans/{plan_id}")
 async def remove_exam_plan(plan_id: str):
-    from fastapi import HTTPException
     from services.exam_plan_service import delete_plan
+
     if not delete_plan(plan_id):
         raise HTTPException(404, "Plan not found")
     return {"deleted": True}

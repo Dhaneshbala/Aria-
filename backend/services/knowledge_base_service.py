@@ -5,14 +5,14 @@ Stores documents in ChromaDB with nomic-embed-text embeddings.
 Supports: PDF, DOCX, PPTX, XLSX, TXT, MD, HTML, CSV, JSON, images (OCR).
 Collections: education_au, general, coding, research, math, science, history, geography, literature, productivity, user_docs.
 """
-import os
-import json
+
 import hashlib
+import json
 import logging
-import time
-from pathlib import Path
+import os
+import shutil
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
 
 import chromadb
 from chromadb.config import Settings
@@ -21,37 +21,45 @@ logger = logging.getLogger(__name__)
 
 try:
     from models.database import DATA_DIR as _CENTRAL_DATA_DIR
+
     DATA_DIR = _CENTRAL_DATA_DIR
 except Exception:
     DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 KB_DIR = DATA_DIR / "knowledge_base"
 KB_DIR.mkdir(parents=True, exist_ok=True)
+# Permanent originals — uploads arrive as temp files the router deletes after
+# ingest, and rebuild_index needs the files to still exist on disk.
+KB_FILES_DIR = KB_DIR / "files"
+KB_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 try:
     from models.database import MODELS
+
     EMBEDDING_MODEL = MODELS["embedding"]
 except Exception:
     EMBEDDING_MODEL = "nomic-embed-text"
-CHUNK_SIZE = 800       # Phase 2 free win: larger chunks for science/history (was 600)
-CHUNK_OVERLAP = 120    # was 100 — better context retention
+CHUNK_SIZE = 800  # Phase 2 free win: larger chunks for science/history (was 600)
+CHUNK_OVERLAP = 120  # was 100 — better context retention
 
 COLLECTIONS = {
-    "education_au":  "Australian education — NSW syllabus, ACARA, textbooks",
-    "general":       "General knowledge — Wikipedia, encyclopedias",
-    "coding":        "Programming — official docs, MDN, frameworks",
-    "research":      "Academic — arXiv, PubMed, open-access papers",
-    "math":          "Mathematics — formulas, proofs, competition problems",
-    "science":       "Science — physics, chemistry, biology",
-    "history":       "History — events, timelines, civilisations",
-    "geography":     "Geography — maps, climate, countries",
-    "literature":    "Literature — books, analysis, literary devices",
-    "productivity":  "Productivity — study techniques, time management",
-    "user_docs":     "User-uploaded documents — personal study materials",
+    "education_au": "Australian education — NSW syllabus, ACARA, textbooks",
+    "general": "General knowledge — Wikipedia, encyclopedias",
+    "coding": "Programming — official docs, MDN, frameworks",
+    "research": "Academic — arXiv, PubMed, open-access papers",
+    "math": "Mathematics — formulas, proofs, competition problems",
+    "science": "Science — physics, chemistry, biology",
+    "history": "History — events, timelines, civilisations",
+    "geography": "Geography — maps, climate, countries",
+    "literature": "Literature — books, analysis, literary devices",
+    "productivity": "Productivity — study techniques, time management",
+    "user_docs": "User-uploaded documents — personal study materials",
 }
 
 
-def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+def _chunk_text(
+    text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP
+) -> list[str]:
     """Split text into overlapping chunks by character count (approx token count)."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
@@ -84,52 +92,153 @@ def _detect_collection(filepath: str, text: str) -> str:
     name = Path(filepath).name.lower()
 
     # Education (Australian)
-    au_keywords = ["australia", "nsw", "nesa", "acara", "syllabus", "stage 4", "stage 5",
-                   "year 7", "year 8", "year 9", "year 10", "hsc", "australian curriculum"]
+    au_keywords = [
+        "australia",
+        "nsw",
+        "nesa",
+        "acara",
+        "syllabus",
+        "stage 4",
+        "stage 5",
+        "year 7",
+        "year 8",
+        "year 9",
+        "year 10",
+        "hsc",
+        "australian curriculum",
+    ]
     if any(k in lower for k in au_keywords) or "australia" in name:
         return "education_au"
 
     # Coding
-    code_keywords = ["def ", "function ", "class ", "import ", "const ", "let ",
-                     "python", "javascript", "docker", "api",
-                     "return ", "async ", "await ", "console.log"]
-    code_exts = [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".rs", ".go", ".html", ".css"]
-    if any(k in lower for k in code_keywords) or any(name.endswith(e) for e in code_exts):
+    code_keywords = [
+        "def ",
+        "function ",
+        "class ",
+        "import ",
+        "const ",
+        "let ",
+        "python",
+        "javascript",
+        "docker",
+        "api",
+        "return ",
+        "async ",
+        "await ",
+        "console.log",
+    ]
+    code_exts = [
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".cpp",
+        ".rs",
+        ".go",
+        ".html",
+        ".css",
+    ]
+    if any(k in lower for k in code_keywords) or any(
+        name.endswith(e) for e in code_exts
+    ):
         return "coding"
 
     # Research
-    research_keywords = ["abstract", "methodology", "conclusion", "doi:", "arxiv",
-                         "references", "citation", "peer-reviewed", "hypothesis"]
+    research_keywords = [
+        "abstract",
+        "methodology",
+        "conclusion",
+        "doi:",
+        "arxiv",
+        "references",
+        "citation",
+        "peer-reviewed",
+        "hypothesis",
+    ]
     if sum(1 for k in research_keywords if k in lower) >= 2:
         return "research"
 
     # Math
-    math_keywords = ["equation", "theorem", "proof", "formula", "integral", "derivative",
-                     "matrix", "vector", "algebra", "geometry", "calculus", "probability"]
+    math_keywords = [
+        "equation",
+        "theorem",
+        "proof",
+        "formula",
+        "integral",
+        "derivative",
+        "matrix",
+        "vector",
+        "algebra",
+        "geometry",
+        "calculus",
+        "probability",
+    ]
     if sum(1 for k in math_keywords if k in lower) >= 2:
         return "math"
 
     # Science
-    science_keywords = ["experiment", "hypothesis", "molecule", "cell", "atom",
-                        "physics", "chemistry", "biology", "organism", "reaction"]
+    science_keywords = [
+        "experiment",
+        "hypothesis",
+        "molecule",
+        "cell",
+        "atom",
+        "physics",
+        "chemistry",
+        "biology",
+        "organism",
+        "reaction",
+    ]
     if sum(1 for k in science_keywords if k in lower) >= 2:
         return "science"
 
     # History
-    history_keywords = ["war", "revolution", "century", "empire", "civilisation",
-                        "dynasty", "treaty", "colonial", "ancient", "medieval"]
+    history_keywords = [
+        "war",
+        "revolution",
+        "century",
+        "empire",
+        "civilisation",
+        "dynasty",
+        "treaty",
+        "colonial",
+        "ancient",
+        "medieval",
+    ]
     if sum(1 for k in history_keywords if k in lower) >= 2:
         return "history"
 
     # Geography
-    geo_keywords = ["continent", "climate", "latitude", "longitude", "river",
-                    "mountain", "ocean", "country", "population", "ecosystem"]
+    geo_keywords = [
+        "continent",
+        "climate",
+        "latitude",
+        "longitude",
+        "river",
+        "mountain",
+        "ocean",
+        "country",
+        "population",
+        "ecosystem",
+    ]
     if sum(1 for k in geo_keywords if k in lower) >= 2:
         return "geography"
 
     # Literature
-    lit_keywords = ["novel", "poem", "author", "narrative", "metaphor",
-                    "character", "theme", "symbolism", "literary", "prose"]
+    lit_keywords = [
+        "novel",
+        "poem",
+        "author",
+        "narrative",
+        "metaphor",
+        "character",
+        "theme",
+        "symbolism",
+        "literary",
+        "prose",
+    ]
     if sum(1 for k in lit_keywords if k in lower) >= 2:
         return "literature"
 
@@ -215,10 +324,15 @@ class KnowledgeBaseService:
         # Filter out failed embeddings
         valid = [(i, emb) for i, emb in enumerate(embeddings) if emb]
         if not valid:
-            return {"status": "error", "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?"}
+            return {
+                "status": "error",
+                "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?",
+            }
 
         # Generate a hash for dedup
-        content_hash = hashlib.md5(text[:500].encode()).hexdigest()[:12]
+        content_hash = hashlib.md5(
+            text[:500].encode(), usedforsecurity=False
+        ).hexdigest()[:12]
 
         # Store in ChromaDB
         col = self.get_collection(collection)
@@ -227,7 +341,9 @@ class KnowledgeBaseService:
         embs = [e for _, e in valid]
         metas = [
             {
-                "source": metadata.get("source", "text_ingest") if metadata else "text_ingest",
+                "source": metadata.get("source", "text_ingest")
+                if metadata
+                else "text_ingest",
                 "chunk_index": i,
                 "total_chunks": len(chunks),
                 "collection": collection,
@@ -255,15 +371,23 @@ class KnowledgeBaseService:
         collection: str | None = None,
         metadata: dict | None = None,
         embedding_model: str = EMBEDDING_MODEL,
+        original_name: str | None = None,
     ) -> dict:
-        """Ingest a file into the knowledge base. Returns ingestion stats."""
+        """Ingest a file into the knowledge base. Returns ingestion stats.
+
+        A permanent copy of the file is stored under KB_FILES_DIR (keyed by
+        content hash) so delete/rebuild flows keep working after the caller's
+        temp file is gone. `original_name` preserves the human-facing title
+        when re-ingesting a persisted copy.
+        """
         from services.document_service import DocumentService
         from services.ollama_service import OllamaService
 
         doc_svc = DocumentService()
         ollama = OllamaService()
 
-        filename = Path(filepath).name
+        original_suffix = Path(filepath).suffix.lower()
+        filename = original_name or Path(filepath).name
         file_hash = _file_hash(filepath)
 
         # Dedup check
@@ -271,9 +395,19 @@ class KnowledgeBaseService:
             existing = self._documents[file_hash]
             return {"status": "duplicate", "document": existing["title"], "chunks": 0}
 
+        # Persist a permanent copy. If the caller passed one of our own
+        # persisted copies (rebuild path), re-use it as-is.
+        persistent = KB_FILES_DIR / f"{file_hash}{original_suffix}"
+        if Path(filepath) != persistent and not persistent.exists():
+            try:
+                shutil.copyfile(filepath, persistent)
+            except Exception as e:
+                logger.warning("Could not persist original for %s: %s", filename, e)
+        filepath = str(persistent)
+
         # Extract text
         try:
-            with open(filepath, "rb") as fh:
+            with open(filepath, "rb") as fh:  # noqa: ASYNC230 — small local read (<ms); to_thread adds complexity for no benefit
                 file_bytes = fh.read()
             pages = await doc_svc.extract_pages(file_bytes, filename)
             full_text = "\n\n".join(p.get("text", "") for p in pages)
@@ -293,13 +427,16 @@ class KnowledgeBaseService:
             return {"status": "error", "error": "Document too short to chunk"}
 
         # Generate embeddings
-        yield_msg = f"Embedding {len(chunks)} chunks..."
+        logger.info("Embedding %d chunks of %s...", len(chunks), filename)
         embeddings = await ollama.embed_batch(embedding_model, chunks)
 
         # Filter out failed embeddings
         valid = [(i, emb) for i, emb in enumerate(embeddings) if emb]
         if not valid:
-            return {"status": "error", "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?"}
+            return {
+                "status": "error",
+                "error": f"Embedding generation failed — is {EMBEDDING_MODEL} installed?",
+            }
 
         # Store in ChromaDB
         col = self.get_collection(collection)
@@ -383,13 +520,15 @@ class KnowledgeBaseService:
                         results["metadatas"][0],
                         results["distances"][0],
                     ):
-                        all_results.append({
-                            "text": doc,
-                            "metadata": meta,
-                            "distance": dist,
-                            "score": 1 - dist,  # cosine distance -> similarity
-                            "collection": col_name,
-                        })
+                        all_results.append(
+                            {
+                                "text": doc,
+                                "metadata": meta,
+                                "distance": dist,
+                                "score": 1 - dist,  # cosine distance -> similarity
+                                "collection": col_name,
+                            }
+                        )
             except Exception as e:
                 logger.warning("Search failed on collection %s: %s", col_name, e)
 
@@ -408,6 +547,7 @@ class KnowledgeBaseService:
         # Phase 3 free reranker — local cross-encoder if available
         try:
             from services.memory_service import _rerank_local
+
             texts = [r["text"] for r in all_results[:20]]
             ranked = _rerank_local(query, texts, top_k=n_results)
             # Reorder by reranked texts
@@ -429,8 +569,12 @@ class KnowledgeBaseService:
             docs = [d for d in docs if d.get("collection") == collection]
         return sorted(docs, key=lambda d: d.get("ingested_at", ""), reverse=True)
 
-    def delete_document(self, file_hash: str) -> bool:
-        """Delete a document and its chunks from the knowledge base."""
+    def delete_document(self, file_hash: str, delete_file: bool = True) -> bool:
+        """Delete a document and its chunks from the knowledge base.
+
+        `delete_file=False` removes the doc + vectors but keeps the persisted
+        original on disk (used by rebuild_index, which re-ingests immediately).
+        """
         if file_hash not in self._documents:
             return False
 
@@ -448,6 +592,17 @@ class KnowledgeBaseService:
 
         del self._documents[file_hash]
         self._save_meta()
+
+        # Remove the persisted original only when it lives in our files dir
+        # (never delete paths we didn't create).
+        if delete_file:
+            try:
+                fp = Path(str(doc.get("file_path", "")))
+                if fp and fp.parent == KB_FILES_DIR:
+                    fp.unlink(missing_ok=True)
+            except Exception as e:
+                logger.debug("Could not remove persisted copy %s: %s", file_hash, e)
+
         return True
 
     def get_stats(self) -> dict:
@@ -459,7 +614,9 @@ class KnowledgeBaseService:
         for name, desc in COLLECTIONS.items():
             col = self.get_collection(name)
             count = col.count()
-            doc_count = sum(1 for d in self._documents.values() if d.get("collection") == name)
+            doc_count = sum(
+                1 for d in self._documents.values() if d.get("collection") == name
+            )
             stats["collections"][name] = {
                 "description": desc,
                 "chunks": count,
@@ -475,12 +632,22 @@ class KnowledgeBaseService:
         for doc in docs:
             filepath = doc.get("file_path")
             if not filepath or not os.path.exists(filepath):
+                # Legacy/one-off ingests whose source is gone — keep their
+                # existing chunks rather than silently destroying the doc.
                 results["skipped"] += 1
                 continue
-            self.delete_document(doc["file_hash"])
+            self.delete_document(doc["file_hash"], delete_file=False)
             try:
-                await self.ingest_file(filepath, doc.get("collection"), embedding_model=embedding_model)
+                await self.ingest_file(
+                    filepath,
+                    doc.get("collection"),
+                    embedding_model=embedding_model,
+                    original_name=doc.get("title"),
+                )
                 results["rebuilt"] += 1
-            except Exception:
+            except Exception as e:
+                logger.warning(
+                    "Rebuild failed for %s (%s): %s", doc.get("title"), filepath, e
+                )
                 results["failed"] += 1
         return results

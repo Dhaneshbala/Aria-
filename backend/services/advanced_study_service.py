@@ -6,17 +6,20 @@ Extends the base StudyIntelligence with:
   • Learning Style Detector
   • Knowledge Gap Finder (maps against NSW syllabus)
 """
+
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+
 from services.ollama_service import OllamaService
+
 try:
     from models.database import MODELS
 except Exception:
-    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
+    MODELS = {"main": "gemma3:12b", "embedding": "nomic-embed-text"}
 from services.memory_service import MemoryService
-from services.nsw_curriculum_service import NSWCurriculumService, NSW_KLAS, NSW_STAGES
+from services.nsw_curriculum_service import NSW_KLAS, NSW_STAGES, NSWCurriculumService
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +28,23 @@ memory_svc = MemoryService()
 curriculum = NSWCurriculumService()
 
 # Spaced Repetition file
-DATA_DIR = __import__('pathlib').Path(__import__('os').environ.get("ARIA_DATA_DIR", __import__('pathlib').Path.home() / ".aria_data"))
+DATA_DIR = __import__("pathlib").Path(
+    __import__("os").environ.get(
+        "ARIA_DATA_DIR", __import__("pathlib").Path.home() / ".aria_data"
+    )
+)
 SR_FILE = DATA_DIR / "spaced_repetition.json"
 LEARNING_STYLE_FILE = DATA_DIR / "learning_style.json"
 KNOWLEDGE_MAP_FILE = DATA_DIR / "knowledge_map.json"
 
 
-import threading
-import tempfile
 import os
+import tempfile
+import threading
+
 _JSON_LOCKS: dict[str, threading.RLock] = {}
 _JSON_LOCKS_LOCK = threading.Lock()
+
 
 def _lock_for(path) -> threading.RLock:
     key = str(path)
@@ -43,6 +52,7 @@ def _lock_for(path) -> threading.RLock:
         if key not in _JSON_LOCKS:
             _JSON_LOCKS[key] = threading.RLock()
         return _JSON_LOCKS[key]
+
 
 def _load_json(path, default):
     with _lock_for(path):
@@ -59,7 +69,9 @@ def _save_json(path, data):
     with lock:
         text = json.dumps(data, indent=2, ensure_ascii=False)
         # atomic write
-        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp.")
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(path.parent), prefix=f".{path.name}.tmp."
+        )
         try:
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -76,12 +88,13 @@ def _save_json(path, data):
 
 
 class AdvancedStudyIntelligence:
-
     # ═══════════════════════════════════════════════════════════════════════════
     # Exam Readiness Score
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def calculate_exam_readiness(self, subject: str, days_until_exam: int = 14) -> dict:
+    async def calculate_exam_readiness(
+        self, subject: str, days_until_exam: int = 14
+    ) -> dict:
         """Calculate how ready a student is for an exam, using NSW curriculum mapping."""
         profile = await memory_svc.get_profile()
         subjects = profile.get("subjects", {})
@@ -120,8 +133,8 @@ class AdvancedStudyIntelligence:
         last_active = profile.get("last_active")
         if last_active:
             try:
-                la = datetime.fromisoformat(last_active.replace("Z", "+00:00"))
-                days_since = (datetime.now(timezone.utc) - la).days
+                la = datetime.fromisoformat(last_active)
+                days_since = (datetime.now(UTC) - la).days
                 consistency = max(0, 1 - (days_since / 7))  # Decay over 7 days
             except Exception:
                 consistency = 0.5
@@ -140,20 +153,22 @@ class AdvancedStudyIntelligence:
             covered_outcomes = round(coverage * len(outcomes))
         elif total > 0:
             coverage = 0.15
-            covered_outcomes = max(1, round(coverage * len(outcomes))) if outcomes else 0
+            covered_outcomes = (
+                max(1, round(coverage * len(outcomes))) if outcomes else 0
+            )
         else:
             coverage = 0.0
             covered_outcomes = 0
         factors["curriculum_coverage"] = {
             "score": round(coverage * 100),
             "weight": 0.15,
-            "detail": f"~{covered_outcomes}/{len(outcomes)} outcomes covered" if outcomes else "No NSW curriculum data",
+            "detail": f"~{covered_outcomes}/{len(outcomes)} outcomes covered"
+            if outcomes
+            else "No NSW curriculum data",
         }
 
         # Calculate weighted readiness score
-        readiness_score = sum(
-            f["score"] * f["weight"] for f in factors.values()
-        )
+        readiness_score = sum(f["score"] * f["weight"] for f in factors.values())
 
         # Predicted grade (NESA-style)
         if readiness_score >= 90:
@@ -196,12 +211,24 @@ class AdvancedStudyIntelligence:
         """Map a subject name to a NSW KLA key."""
         subject_lower = subject.lower()
         mapping = {
-            "english": "english", "maths": "mathematics", "math": "mathematics",
-            "mathematics": "mathematics", "science": "science", "biology": "science",
-            "chemistry": "science", "physics": "science", "history": "history",
-            "geography": "geography", "pdhpe": "pdhpe", "health": "pdhpe",
-            "pe": "pdhpe", "ict": "technologies", "technology": "technologies",
-            "art": "creative_arts", "music": "creative_arts", "drama": "creative_arts",
+            "english": "english",
+            "maths": "mathematics",
+            "math": "mathematics",
+            "mathematics": "mathematics",
+            "science": "science",
+            "biology": "science",
+            "chemistry": "science",
+            "physics": "science",
+            "history": "history",
+            "geography": "geography",
+            "pdhpe": "pdhpe",
+            "health": "pdhpe",
+            "pe": "pdhpe",
+            "ict": "technologies",
+            "technology": "technologies",
+            "art": "creative_arts",
+            "music": "creative_arts",
+            "drama": "creative_arts",
         }
         return mapping.get(subject_lower)
 
@@ -209,20 +236,22 @@ class AdvancedStudyIntelligence:
     # Spaced Repetition Engine (SM-2 Algorithm)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    async def add_flashcard(self, front: str, back: str, subject: str = "general") -> dict:
+    async def add_flashcard(
+        self, front: str, back: str, subject: str = "general"
+    ) -> dict:
         """Add a flashcard to the spaced repetition system."""
         cards = _load_json(SR_FILE, [])
         card = {
-            "id": f"card_{int(datetime.now().timestamp()*1000)}",
+            "id": f"card_{int(datetime.now().timestamp() * 1000)}",
             "front": front,
             "back": back,
             "subject": subject,
             "ease_factor": 2.5,
             "interval": 1,
             "repetitions": 0,
-            "next_review": datetime.now(timezone.utc).isoformat(),
+            "next_review": datetime.now(UTC).isoformat(),
             "last_review": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         cards.append(card)
         _save_json(SR_FILE, cards)
@@ -254,20 +283,23 @@ class AdvancedStudyIntelligence:
                 # Update ease factor
                 card["ease_factor"] = max(
                     1.3,
-                    card["ease_factor"] + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+                    card["ease_factor"]
+                    + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)),
                 )
 
                 # Calculate next review
-                next_review = datetime.now(timezone.utc) + timedelta(days=card["interval"])
+                next_review = datetime.now(UTC) + timedelta(days=card["interval"])
                 card["next_review"] = next_review.isoformat()
-                card["last_review"] = datetime.now(timezone.utc).isoformat()
+                card["last_review"] = datetime.now(UTC).isoformat()
 
                 # Record review in history (for streak tracking)
                 history = card.setdefault("review_history", [])
-                history.append({
-                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                    "quality": quality,
-                })
+                history.append(
+                    {
+                        "date": datetime.now(UTC).strftime("%Y-%m-%d"),
+                        "quality": quality,
+                    }
+                )
                 if len(history) > 200:
                     card["review_history"] = history[-200:]
 
@@ -276,16 +308,18 @@ class AdvancedStudyIntelligence:
 
         return {"error": "Card not found"}
 
-    async def get_due_cards(self, subject: str | None = None, limit: int = 20) -> list[dict]:
+    async def get_due_cards(
+        self, subject: str | None = None, limit: int = 20
+    ) -> list[dict]:
         """Get cards due for review."""
         cards = _load_json(SR_FILE, [])
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         due = []
         for card in cards:
             if subject and card.get("subject") != subject:
                 continue
             try:
-                next_rev = datetime.fromisoformat(card["next_review"].replace("Z", "+00:00"))
+                next_rev = datetime.fromisoformat(card["next_review"])
                 if next_rev <= now:
                     due.append(card)
             except Exception:
@@ -298,7 +332,7 @@ class AdvancedStudyIntelligence:
     async def get_sr_stats(self) -> dict:
         """Get spaced repetition statistics."""
         cards = _load_json(SR_FILE, [])
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         due = 0
         learning = 0
@@ -306,7 +340,7 @@ class AdvancedStudyIntelligence:
         review_days = set()
         for card in cards:
             try:
-                next_rev = datetime.fromisoformat(card["next_review"].replace("Z", "+00:00"))
+                next_rev = datetime.fromisoformat(card["next_review"])
                 if next_rev <= now:
                     due += 1
                 elif card["repetitions"] >= 5:
@@ -320,7 +354,7 @@ class AdvancedStudyIntelligence:
 
         # Streak: consecutive days (ending today or yesterday) with a review
         streak = 0
-        d = datetime.now(timezone.utc).date()
+        d = datetime.now(UTC).date()
         if d.strftime("%Y-%m-%d") not in review_days:
             d -= timedelta(days=1)
         while d.strftime("%Y-%m-%d") in review_days:
@@ -345,22 +379,24 @@ class AdvancedStudyIntelligence:
             return {"status": "deleted", "id": card_id}
         return {"error": "Card not found"}
 
-    async def add_flashcards_bulk(self, flashcards: list[dict], subject: str = "general") -> list[dict]:
+    async def add_flashcards_bulk(
+        self, flashcards: list[dict], subject: str = "general"
+    ) -> list[dict]:
         """Add multiple flashcards at once (e.g. from generated flashcard set)."""
         cards = _load_json(SR_FILE, [])
         added = []
         for fc in flashcards:
             card = {
-                "id": f"card_{int(datetime.now().timestamp()*1000)}_{len(cards)}",
+                "id": f"card_{int(datetime.now().timestamp() * 1000)}_{len(cards)}",
                 "front": fc.get("front", ""),
                 "back": fc.get("back", ""),
                 "subject": subject,
                 "ease_factor": 2.5,
                 "interval": 1,
                 "repetitions": 0,
-                "next_review": datetime.now(timezone.utc).isoformat(),
+                "next_review": datetime.now(UTC).isoformat(),
                 "last_review": None,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }
             cards.append(card)
             added.append(card)
@@ -380,33 +416,78 @@ class AdvancedStudyIntelligence:
 
     async def detect_learning_style(self) -> dict:
         """Analyse student's interaction patterns to detect learning style."""
-        profile = await memory_svc.get_profile()
+        await memory_svc.get_profile()
         convs_data = _load_json(DATA_DIR / "conversations.json", {})
 
         # Analyse patterns
-        visual_count = 0      # Image uploads, mind maps, diagrams
-        reading_count = 0     # Long text questions, summaries
-        practice_count = 0    # Quiz attempts, worksheet solving
-        social_count = 0      # Questions about others, collaboration
+        visual_count = 0  # Image uploads, mind maps, diagrams
+        reading_count = 0  # Long text questions, summaries
+        practice_count = 0  # Quiz attempts, worksheet solving
+        social_count = 0  # Questions about others, collaboration
 
-        for cid, turns in convs_data.items():
+        for turns in convs_data.values():
             for turn in turns:
                 user_msg = turn.get("user", "").lower()
-                if any(w in user_msg for w in ["image", "diagram", "picture", "visual", "mind map", "chart"]):
+                if any(
+                    w in user_msg
+                    for w in [
+                        "image",
+                        "diagram",
+                        "picture",
+                        "visual",
+                        "mind map",
+                        "chart",
+                    ]
+                ):
                     visual_count += 1
-                if any(w in user_msg for w in ["explain", "what is", "tell me", "read", "notes", "summary"]):
+                if any(
+                    w in user_msg
+                    for w in [
+                        "explain",
+                        "what is",
+                        "tell me",
+                        "read",
+                        "notes",
+                        "summary",
+                    ]
+                ):
                     reading_count += 1
-                if any(w in user_msg for w in ["quiz", "test", "practice", "solve", "worksheet", "calculate"]):
+                if any(
+                    w in user_msg
+                    for w in [
+                        "quiz",
+                        "test",
+                        "practice",
+                        "solve",
+                        "worksheet",
+                        "calculate",
+                    ]
+                ):
                     practice_count += 1
-                if any(w in user_msg for w in ["how do", "method", "approach", "compare", "debate"]):
+                if any(
+                    w in user_msg
+                    for w in ["how do", "method", "approach", "compare", "debate"]
+                ):
                     social_count += 1
 
         total = max(visual_count + reading_count + practice_count + social_count, 1)
         styles = {
-            "visual": {"count": visual_count, "percentage": round(visual_count / total * 100)},
-            "reading": {"count": reading_count, "percentage": round(reading_count / total * 100)},
-            "practice": {"count": practice_count, "percentage": round(practice_count / total * 100)},
-            "social": {"count": social_count, "percentage": round(social_count / total * 100)},
+            "visual": {
+                "count": visual_count,
+                "percentage": round(visual_count / total * 100),
+            },
+            "reading": {
+                "count": reading_count,
+                "percentage": round(reading_count / total * 100),
+            },
+            "practice": {
+                "count": practice_count,
+                "percentage": round(practice_count / total * 100),
+            },
+            "social": {
+                "count": social_count,
+                "percentage": round(social_count / total * 100),
+            },
         }
 
         # Determine dominant style
@@ -473,7 +554,9 @@ class AdvancedStudyIntelligence:
             "covered": covered,
             "gaps": gaps,
             "coverage_percentage": round(len(covered) / max(len(content), 1) * 100),
-            "recommendation": f"You've covered {len(covered)}/{len(content)} content areas. Focus on the gaps above." if gaps else "Great coverage! Keep practising to maintain mastery.",
+            "recommendation": f"You've covered {len(covered)}/{len(content)} content areas. Focus on the gaps above."
+            if gaps
+            else "Great coverage! Keep practising to maintain mastery.",
         }
 
     # ═══════════════════════════════════════════════════════════════════════════

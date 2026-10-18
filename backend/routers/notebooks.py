@@ -1,33 +1,37 @@
 """Notebook API router — Source-grounded AI notebooks (NotebookLM-style)."""
-from fastapi import APIRouter, HTTPException, UploadFile, File
+
+import json
+import re
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List
-import json
 
-from services.notebook_service import NotebookService
+from models.database import MODELS, get_config
 from services.document_service import DocumentService
+from services.notebook_service import NotebookService
 from services.ollama_service import OllamaService
-from models.database import get_config, MODELS
 
 router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
 svc = NotebookService()
 doc_svc = DocumentService()
 ollama = OllamaService()
 
+MAX_NOTEBOOK_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
 
 class CreateNotebookRequest(BaseModel):
     name: str
     description: str = ""
-    tags: List[str] = []
-    cover_color: Optional[str] = None
+    tags: list[str] = []
+    cover_color: str | None = None
 
 
 class UpdateNotebookRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    persona: Optional[str] = None
-    tags: Optional[List[str]] = None
+    name: str | None = None
+    description: str | None = None
+    persona: str | None = None
+    tags: list[str] | None = None
 
 
 class AddSourceRequest(BaseModel):
@@ -43,6 +47,7 @@ class ChatRequest(BaseModel):
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
+
 
 @router.get("")
 async def list_notebooks():
@@ -80,9 +85,12 @@ async def delete_notebook(notebook_id: str):
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 
+
 @router.post("/{notebook_id}/sources")
 async def add_source(notebook_id: str, req: AddSourceRequest):
-    result = svc.add_source(notebook_id, req.source_type, req.content, req.title, req.metadata)
+    result = svc.add_source(
+        notebook_id, req.source_type, req.content, req.title, req.metadata
+    )
     if not result:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return result
@@ -94,14 +102,19 @@ async def upload_source(notebook_id: str, file: UploadFile = File(...)):
     nb = svc.get_notebook(notebook_id)
     if not nb:
         raise HTTPException(status_code=404, detail="Notebook not found")
-    data = await file.read()
+    data = await file.read(MAX_NOTEBOOK_UPLOAD_SIZE + 1)
+    if len(data) > MAX_NOTEBOOK_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
     filename = file.filename or "uploaded_file"
     pages = await doc_svc.extract_pages(data, filename)
     full_text = "\n\n".join(f"[Page {p['page']}]\n{p['text']}" for p in pages)
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "text"
     result = svc.add_source(
-        notebook_id, ext, full_text, filename,
-        {"pages": len(pages), "original_size": len(data)}
+        notebook_id,
+        ext,
+        full_text,
+        filename,
+        {"pages": len(pages), "original_size": len(data)},
     )
     if not result:
         raise HTTPException(status_code=500, detail="Failed to add source")
@@ -124,6 +137,7 @@ async def list_sources(notebook_id: str):
 
 
 # ── Context & Chat ────────────────────────────────────────────────────────────
+
 
 @router.get("/{notebook_id}/context")
 async def get_context(notebook_id: str, query: str = ""):
@@ -155,6 +169,7 @@ async def notebook_chat(notebook_id: str, req: ChatRequest):
 
 # ── AI Study Material Generation ─────────────────────────────────────────────
 
+
 @router.get("/{notebook_id}/generate/summary")
 async def generate_summary(notebook_id: str):
     """Generate a summary of all notebook sources."""
@@ -166,8 +181,14 @@ async def generate_summary(notebook_id: str):
         config = get_config()
         model = config.get("model", config.get("reasoning_model", MODELS["main"]))
         messages = [
-            {"role": "system", "content": "You are a study assistant. Create a clear, structured summary of the following content. Use headings, bullet points, and key takeaways. Be comprehensive but concise."},
-            {"role": "user", "content": f"Summarize the following study material:\n\n{content[:15000]}"},
+            {
+                "role": "system",
+                "content": "You are a study assistant. Create a clear, structured summary of the following content. Use headings, bullet points, and key takeaways. Be comprehensive but concise.",
+            },
+            {
+                "role": "user",
+                "content": f"Summarize the following study material:\n\n{content[:15000]}",
+            },
         ]
         full = ""
         async for chunk in ollama.stream_chat(messages, model):
@@ -189,14 +210,20 @@ async def generate_study_guide(notebook_id: str):
         config = get_config()
         model = config.get("model", config.get("reasoning_model", MODELS["main"]))
         messages = [
-            {"role": "system", "content": """Create a comprehensive study guide with these sections:
+            {
+                "role": "system",
+                "content": """Create a comprehensive study guide with these sections:
 1. **Key Concepts** — List and explain the main concepts
 2. **Important Definitions** — Key terms and their meanings
 3. **Key Formulas/Rules** — If applicable
 4. **Common Misconceptions** — Things students often get wrong
 5. **Review Questions** — 5-10 questions to test understanding
-6. **Quick Reference** — A condensed cheat-sheet style summary"""},
-            {"role": "user", "content": f"Create a study guide from:\n\n{content[:15000]}"},
+6. **Quick Reference** — A condensed cheat-sheet style summary""",
+            },
+            {
+                "role": "user",
+                "content": f"Create a study guide from:\n\n{content[:15000]}",
+            },
         ]
         full = ""
         async for chunk in ollama.stream_chat(messages, model):
@@ -218,9 +245,12 @@ async def generate_quiz(notebook_id: str, num_questions: int = 5):
         config = get_config()
         model = config.get("model", config.get("reasoning_model", MODELS["main"]))
         messages = [
-            {"role": "system", "content": f"""Generate exactly {num_questions} quiz questions from the content.
+            {
+                "role": "system",
+                "content": f"""Generate exactly {num_questions} quiz questions from the content.
 Format as JSON array with objects: {{"question": "...", "options": ["A", "B", "C", "D"], "correct": 0, "explanation": "..."}}
-Return ONLY the JSON array, no other text."""},
+Return ONLY the JSON array, no other text.""",
+            },
             {"role": "user", "content": f"Generate quiz from:\n\n{content[:15000]}"},
         ]
         full = ""
@@ -243,10 +273,16 @@ async def generate_flashcards(notebook_id: str, num_cards: int = 10):
         config = get_config()
         model = config.get("model", config.get("reasoning_model", MODELS["main"]))
         messages = [
-            {"role": "system", "content": f"""Generate exactly {num_cards} flashcards from the content.
+            {
+                "role": "system",
+                "content": f"""Generate exactly {num_cards} flashcards from the content.
 Format as JSON array with objects: {{"front": "question/term", "back": "answer/definition"}}
-Return ONLY the JSON array, no other text."""},
-            {"role": "user", "content": f"Generate flashcards from:\n\n{content[:15000]}"},
+Return ONLY the JSON array, no other text.""",
+            },
+            {
+                "role": "user",
+                "content": f"Generate flashcards from:\n\n{content[:15000]}",
+            },
         ]
         full = ""
         async for chunk in ollama.stream_chat(messages, model):
@@ -268,9 +304,12 @@ async def generate_timeline(notebook_id: str):
         config = get_config()
         model = config.get("model", config.get("reasoning_model", MODELS["main"]))
         messages = [
-            {"role": "system", "content": """Extract or create a timeline from the content.
+            {
+                "role": "system",
+                "content": """Extract or create a timeline from the content.
 Format as JSON array: [{{"date": "year or period", "event": "what happened", "significance": "why it matters"}}]
-Include at least 5 events. Return ONLY the JSON array."""},
+Include at least 5 events. Return ONLY the JSON array.""",
+            },
             {"role": "user", "content": f"Extract timeline from:\n\n{content[:15000]}"},
         ]
         full = ""
@@ -283,6 +322,7 @@ Include at least 5 events. Return ONLY the JSON array."""},
 
 
 # ── File Organizer ────────────────────────────────────────────────────────────
+
 
 @router.get("/{notebook_id}/organizer")
 async def get_organizer(notebook_id: str):
@@ -350,8 +390,14 @@ async def ai_rename_source(notebook_id: str, source_id: str):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     messages = [
-        {"role": "system", "content": "You are a file naming assistant. Given a file's content and current name, suggest a clear, descriptive, concise name (max 60 chars). Return ONLY the new name, nothing else."},
-        {"role": "user", "content": f"Current name: {old_title}\n\nContent:\n{content}"},
+        {
+            "role": "system",
+            "content": "You are a file naming assistant. Given a file's content and current name, suggest a clear, descriptive, concise name (max 60 chars). Return ONLY the new name, nothing else.",
+        },
+        {
+            "role": "user",
+            "content": f"Current name: {old_title}\n\nContent:\n{content}",
+        },
     ]
     suggested = ""
     async for chunk in ollama.stream_chat(messages, model):
@@ -374,12 +420,20 @@ async def ai_suggest_folder(notebook_id: str, source_id: str):
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     content = source.get("content", "")[:2000]
-    existing_folders = list(set(s.get("folder", "Uncategorized") for s in notebook.get("sources", [])))
+    existing_folders = list(
+        {s.get("folder", "Uncategorized") for s in notebook.get("sources", [])}
+    )
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     messages = [
-        {"role": "system", "content": f"You are a file organizer. Given a file's content, suggest which folder it belongs to. Available folders: {existing_folders}. If none fit, suggest a new folder name. Return ONLY the folder name, nothing else."},
-        {"role": "user", "content": f"File title: {source.get('title', 'untitled')}\n\nContent:\n{content}"},
+        {
+            "role": "system",
+            "content": f"You are a file organizer. Given a file's content, suggest which folder it belongs to. Available folders: {existing_folders}. If none fit, suggest a new folder name. Return ONLY the folder name, nothing else.",
+        },
+        {
+            "role": "user",
+            "content": f"File title: {source.get('title', 'untitled')}\n\nContent:\n{content}",
+        },
     ]
     suggested = ""
     async for chunk in ollama.stream_chat(messages, model):
@@ -405,17 +459,25 @@ async def ai_autofolder_all(notebook_id: str):
     config = get_config()
     model = config.get("model", config.get("reasoning_model", MODELS["main"]))
     messages = [
-        {"role": "system", "content": """You are a file organizer. Given a list of files with their content, assign each to a logical folder.
+        {
+            "role": "system",
+            "content": """You are a file organizer. Given a list of files with their content, assign each to a logical folder.
 Return ONLY a JSON array of objects like: [{"index": 0, "folder": "Science"}, {"index": 1, "folder": "History"}]
-Use clear, descriptive folder names. Group related files together. No explanation."""},
+Use clear, descriptive folder names. Group related files together. No explanation.""",
+        },
         {"role": "user", "content": f"Files:\n\n{all_text[:12000]}"},
     ]
     result = ""
     async for chunk in ollama.stream_chat(messages, model):
         result += chunk
     import json as _json
+
     try:
-        assignments = _json.loads(result.strip().strip("```json").strip("```"))
+        # NB: .strip() takes a CHARACTER SET, not a substring — strip("```json")
+        # would also eat leading 'n's from "null". Remove fences properly:
+        fence_free = re.sub(r"^```(?:json)?\s*", "", result.strip())
+        fence_free = re.sub(r"\s*```$", "", fence_free)
+        assignments = _json.loads(fence_free)
         count = 0
         for a in assignments:
             idx = a.get("index", -1)
@@ -424,6 +486,9 @@ Use clear, descriptive folder names. Group related files together. No explanatio
                 sources[idx]["folder"] = folder
                 count += 1
         svc._save_notebooks()
-        return {"organized": count, "folders": list(set(s.get("folder", "Uncategorized") for s in sources))}
+        return {
+            "organized": count,
+            "folders": list({s.get("folder", "Uncategorized") for s in sources}),
+        }
     except Exception:
         return {"organized": 0, "error": "Failed to parse AI response", "raw": result}

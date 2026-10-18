@@ -17,7 +17,6 @@ from pathlib import Path
 
 
 class DocumentService:
-
     # ── Public API ────────────────────────────────────────────────────────────
 
     async def extract_text(self, file_bytes: bytes, filename: str) -> str:
@@ -72,7 +71,10 @@ class DocumentService:
             return full_text
 
         if not pages:
-            return full_text
+            # Empty extraction: return "" so callers can be HONEST about it
+            # (scanned/corrupt PDFs used to surface the literal string
+            # "No text found in PDF." — which then flowed into tutor prompts).
+            return ""
 
         # Score pages by relevance to query keywords
         keywords = self._extract_keywords(query)
@@ -116,16 +118,26 @@ class DocumentService:
         try:
             if ext == ".pdf":
                 pages = self._pdf_pages(data)
-                return "\n\n".join(f"[Page {p['page']}]\n{p['text']}" for p in pages) if pages else "No text found in PDF."
+                return (
+                    "\n\n".join(f"[Page {p['page']}]\n{p['text']}" for p in pages)
+                    if pages
+                    else "No text found in PDF."
+                )
             elif ext in (".docx", ".doc"):
                 return self._docx(data)
             elif ext in (".pptx", ".ppt"):
                 return self._pptx(data)
             elif ext in (".xlsx", ".xls"):
                 return self._xlsx(data)
-            elif ext == ".csv":
-                return data.decode("utf-8", errors="replace")
-            elif ext in (".txt", ".md", ".py", ".js", ".json", ".html", ".xml"):
+            elif ext == ".csv" or ext in (
+                ".txt",
+                ".md",
+                ".py",
+                ".js",
+                ".json",
+                ".html",
+                ".xml",
+            ):
                 return data.decode("utf-8", errors="replace")
             elif ext == ".zip":
                 return self._zip(data)
@@ -145,24 +157,29 @@ class DocumentService:
                 pages = []
                 chunk_size = 500
                 for i in range(0, len(words), chunk_size):
-                    pages.append({
-                        "page": len(pages) + 1,
-                        "text": " ".join(words[i:i + chunk_size])
-                    })
+                    pages.append(
+                        {
+                            "page": len(pages) + 1,
+                            "text": " ".join(words[i : i + chunk_size]),
+                        }
+                    )
                 return pages or [{"page": 1, "text": text}]
         except Exception as e:
             return [{"page": 1, "text": f"Error reading file: {e}"}]
 
     def _pdf_pages(self, data: bytes) -> list[dict]:
-        """Extract PDF with page numbers — tries pdfminer first, falls back to PyPDF2."""
+        """Extract PDF with page numbers — tries pdfminer first, falls back to pypdf."""
         from io import BytesIO
 
         # Try pdfminer (better quality)
         try:
             from pdfminer.high_level import extract_pages as pm_extract_pages
             from pdfminer.layout import LTTextContainer
+
             pages = []
-            for page_num, page_layout in enumerate(pm_extract_pages(BytesIO(data)), start=1):
+            for page_num, page_layout in enumerate(
+                pm_extract_pages(BytesIO(data)), start=1
+            ):
                 page_text = ""
                 for element in page_layout:
                     if isinstance(element, LTTextContainer):
@@ -176,10 +193,15 @@ class DocumentService:
         except Exception:
             pass
 
-        # Fallback: PyPDF2
+        # Fallback: pypdf (PyPDF2's successor; PyPDF2<=3.0.1 has a
+        # crafted-PDF infinite-loop CVE, fixed in pypdf>=3.9.0)
         try:
-            import PyPDF2
-            reader = PyPDF2.PdfReader(BytesIO(data))
+            try:
+                from pypdf import PdfReader
+            except ImportError:
+                from PyPDF2 import PdfReader  # last resort, unpatched
+
+            reader = PdfReader(BytesIO(data))
             pages = []
             for i, page in enumerate(reader.pages, start=1):
                 text = page.extract_text() or ""
@@ -191,7 +213,9 @@ class DocumentService:
 
     def _docx(self, data: bytes) -> str:
         from io import BytesIO
+
         from docx import Document
+
         doc = Document(BytesIO(data))
         parts = []
         for para in doc.paragraphs:
@@ -212,7 +236,9 @@ class DocumentService:
 
     def _pptx(self, data: bytes) -> str:
         from io import BytesIO
+
         from pptx import Presentation
+
         prs = Presentation(BytesIO(data))
         slides = []
         for i, slide in enumerate(prs.slides, 1):
@@ -226,7 +252,9 @@ class DocumentService:
 
     def _xlsx(self, data: bytes) -> str:
         from io import BytesIO
+
         import openpyxl
+
         wb = openpyxl.load_workbook(BytesIO(data), read_only=True, data_only=True)
         output = []
         for sheet in wb.sheetnames:
@@ -240,6 +268,7 @@ class DocumentService:
 
     def _zip(self, data: bytes) -> str:
         from io import BytesIO
+
         texts = []
         with zipfile.ZipFile(BytesIO(data)) as zf:
             for name in zf.namelist():
@@ -261,12 +290,12 @@ class DocumentService:
         Returns sorted list of (quote, page, relevance_score).
         """
         keywords = self._extract_keywords(theme)
-        theme_words = set(theme.lower().split())
+        set(theme.lower().split())
         quotes = []
 
         for page in pages:
             # Split into sentences
-            sentences = re.split(r'(?<=[.!?])\s+', page["text"])
+            sentences = re.split(r"(?<=[.!?])\s+", page["text"])
             for sent in sentences:
                 sent = sent.strip()
                 # Filter: must be quote-worthy length (15-300 words)
@@ -276,12 +305,14 @@ class DocumentService:
                 # Score by keyword overlap
                 score = self._keyword_score(sent, keywords)
                 if score > 0:
-                    quotes.append({
-                        "quote": sent,
-                        "page": page["page"],
-                        "relevance": round(score, 3),
-                        "word_count": word_count,
-                    })
+                    quotes.append(
+                        {
+                            "quote": sent,
+                            "page": page["page"],
+                            "relevance": round(score, 3),
+                            "word_count": word_count,
+                        }
+                    )
 
         # Sort by relevance, deduplicate very similar quotes
         quotes.sort(key=lambda q: q["relevance"], reverse=True)
@@ -298,13 +329,51 @@ class DocumentService:
     def _extract_keywords(self, query: str) -> list[str]:
         """Extract meaningful keywords from a query, removing stopwords."""
         stopwords = {
-            "a", "an", "the", "is", "it", "in", "on", "at", "to", "for",
-            "of", "and", "or", "but", "with", "this", "that", "from", "are",
-            "be", "was", "were", "can", "could", "would", "should", "what",
-            "how", "why", "when", "who", "which", "my", "me", "i", "some",
-            "use", "could", "find", "get", "give", "show", "tell", "about",
+            "a",
+            "an",
+            "the",
+            "is",
+            "it",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "and",
+            "or",
+            "but",
+            "with",
+            "this",
+            "that",
+            "from",
+            "are",
+            "be",
+            "was",
+            "were",
+            "can",
+            "could",
+            "would",
+            "should",
+            "what",
+            "how",
+            "why",
+            "when",
+            "who",
+            "which",
+            "my",
+            "me",
+            "i",
+            "some",
+            "use",
+            "find",
+            "get",
+            "give",
+            "show",
+            "tell",
+            "about",
         }
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', query.lower())
+        words = re.findall(r"\b[a-zA-Z]{3,}\b", query.lower())
         return [w for w in words if w not in stopwords]
 
     def _keyword_score(self, text: str, keywords: list[str]) -> float:
@@ -315,7 +384,7 @@ class DocumentService:
         hits = 0
         for kw in keywords:
             # Exact word match
-            if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+            if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
                 hits += 1
             # Partial match (for stemming-like behaviour)
             elif len(kw) > 5 and kw[:5] in text_lower:
@@ -333,14 +402,22 @@ class DocumentService:
             page_text = f"[Page {page['page']}]\n{page['text']}"
             if len(current_text) + len(page_text) > max_chars and current_text:
                 # Save current chunk
-                page_range = f"{current_pages[0]}-{current_pages[-1]}" if len(current_pages) > 1 else str(current_pages[0])
-                chunks.append({
-                    "chunk": len(chunks) + 1,
-                    "text": current_text,
-                    "pages": page_range,
-                })
+                page_range = (
+                    f"{current_pages[0]}-{current_pages[-1]}"
+                    if len(current_pages) > 1
+                    else str(current_pages[0])
+                )
+                chunks.append(
+                    {
+                        "chunk": len(chunks) + 1,
+                        "text": current_text,
+                        "pages": page_range,
+                    }
+                )
                 # Overlap: keep last ~500 chars
-                overlap_text = current_text[-500:] if len(current_text) > 500 else current_text
+                overlap_text = (
+                    current_text[-500:] if len(current_text) > 500 else current_text
+                )
                 current_text = overlap_text + "\n\n" + page_text
                 current_pages = [page["page"]]
             else:
@@ -348,11 +425,17 @@ class DocumentService:
                 current_pages.append(page["page"])
 
         if current_text:
-            page_range = f"{current_pages[0]}-{current_pages[-1]}" if len(current_pages) > 1 else str(current_pages[0])
-            chunks.append({
-                "chunk": len(chunks) + 1,
-                "text": current_text,
-                "pages": page_range,
-            })
+            page_range = (
+                f"{current_pages[0]}-{current_pages[-1]}"
+                if len(current_pages) > 1
+                else str(current_pages[0])
+            )
+            chunks.append(
+                {
+                    "chunk": len(chunks) + 1,
+                    "text": current_text,
+                    "pages": page_range,
+                }
+            )
 
         return chunks

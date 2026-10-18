@@ -4,7 +4,6 @@ Regression test for the flashcards 0-card bug — a cold model returned "",
 it was cached for the full TTL, and every identical prompt kept getting "".
 No network/model needed (httpx is faked).
 """
-import json
 
 import services.ollama_service as oll
 
@@ -71,14 +70,18 @@ async def test_good_reply_cached_and_served(monkeypatch):
 
 async def test_stale_blank_in_cache_is_ignored(monkeypatch):
     import time as _t
+
     oll._CACHE.clear()
     oll._CACHE["k"] = ("", _t.time())  # simulate pre-fix poison
     _patch(monkeypatch, "fresh answer")
     svc = oll.OllamaService()
     # complete() computes its own key, so emulate via direct guard check:
     from services.ollama_service import _CACHE, CACHE_TTL_SEC
+
     key = next(iter(_CACHE))
     cached = _CACHE.get(key)
-    fresh = cached and (_t.time() - cached[1] < CACHE_TTL_SEC) and str(cached[0]).strip()
+    fresh = (
+        cached and (_t.time() - cached[1] < CACHE_TTL_SEC) and str(cached[0]).strip()
+    )
     assert not fresh, "blank cache entries must be treated as misses"
     assert await svc.complete("m", "other-prompt", max_tokens=8) == "fresh answer"

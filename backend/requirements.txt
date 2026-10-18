@@ -4,25 +4,31 @@ uvicorn[standard]>=0.20.0
 httpx>=0.24.0
 python-multipart>=0.0.5
 pydantic>=2.0.0
-aiofiles>=23.0.0
 
 # Document processing
-PyPDF2>=3.0.0
+pypdf>=3.9.0
 pdfminer.six
 python-docx
 python-pptx
 openpyxl
+sympy>=1.12
 
 # Vision / OCR
-pillow>=10.0.0
+pillow>=12.3.0
 pytesseract>=0.3.10
 opencv-python-headless
 
+# Voice (STT/TTS — imported in voice_service.py, youtube fallback)
+faster-whisper>=1.0.0
+pyttsx3>=2.90
+
 # Memory / RAG
+# NOTE (pip-audit): chromadb shows tenant/RBAC CVEs, but they target the
+# Chroma HTTP server (/api/v2/...). ARIA uses embedded PersistentClient
+# (local files only, no server/tenants/remote code) — not exploitable here.
 chromadb>=0.4.0
 
-# Research
-duckduckgo-search>=5.0.0
+# Research (HTTP APIs via requests — no extra SDK needed)
 youtube-transcript-api>=0.6.0
 
 # Utils
@@ -32,7 +38,27 @@ numpy>=1.24.0
 # Tests
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+pytest-cov>=6.0.0
+pytest-xdist>=3.0.0
+respx>=0.22.0
+hypothesis>=6.100.0
+
+# Dev / quality gates (not needed at runtime)
+ruff>=0.8.0
+pip-audit>=2.7.0
+pre-commit>=4.0.0
+vulture>=2.0.0
+bandit>=1.7.0
+freezegun>=1.5.0
+syrupy>=4.0.0
 
 # Reliability
 slowapi>=0.1.8
 filelock>=3.0.0
+tenacity>=9.0.0
+
+# Config
+pydantic-settings>=2.0.0
+
+# Observability (Oracle box)
+prometheus-client>=0.20.0

@@ -11,6 +11,7 @@ Design decisions:
   • Crash events are always captured locally so the "send logs" / support
     flow works even with telemetry disabled (nothing is shared).
 """
+
 import json
 import logging
 import os
@@ -32,6 +33,7 @@ _lock = threading.Lock()
 def _enabled() -> bool:
     try:
         from models.database import get_config
+
         return bool(get_config().get("telemetry_enabled", False))
     except Exception:
         return False
@@ -59,24 +61,30 @@ def record_event(name: str, **props) -> None:
             safe[k] = v
         else:
             safe[k] = type(v).__name__
-    _append({
-        "type": "event",
-        "name": name[:80],
-        "ts": time.time(),
-        **safe,
-    })
+    _append(
+        {
+            "type": "event",
+            "name": name[:80],
+            "ts": time.time(),
+            **safe,
+        }
+    )
 
 
 def record_crash(component: str, error: Exception | str) -> None:
     """Record a crash/error locally (always — supports the send-logs flow)."""
-    msg = str(error) if isinstance(error, Exception) else str(error)
-    _append({
-        "type": "crash",
-        "component": component[:60],
-        "error": msg[:300],
-        "error_class": type(error).__name__ if isinstance(error, Exception) else "str",
-        "ts": time.time(),
-    })
+    msg = str(error)
+    _append(
+        {
+            "type": "crash",
+            "component": component[:60],
+            "error": msg[:300],
+            "error_class": type(error).__name__
+            if isinstance(error, Exception)
+            else "str",
+            "ts": time.time(),
+        }
+    )
 
 
 def get_events(limit: int = 500) -> list[dict]:

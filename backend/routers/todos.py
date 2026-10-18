@@ -1,29 +1,43 @@
 """Todos / Assignment Inbox — solo student organization."""
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from services.todo_service import list_todos, add_todo, update_todo, delete_todo, cushion, parse_due_date, parse_estimate, parse_priority
+
+from services.todo_service import (
+    add_todo,
+    cushion,
+    delete_todo,
+    list_todos,
+    parse_due_date,
+    parse_estimate,
+    parse_priority,
+    update_todo,
+)
 
 router = APIRouter(prefix="/api/todos", tags=["todos"])
+
 
 class TodoCreate(BaseModel):
     subject: str = "General"
     task: str
-    due_date: Optional[str] = None
+    due_date: str | None = None
     estimated_mins: int = 30
     priority: str = "medium"
 
+
 class TodoUpdate(BaseModel):
-    subject: Optional[str] = None
-    task: Optional[str] = None
-    due_date: Optional[str] = None
-    estimated_mins: Optional[int] = None
-    priority: Optional[str] = None
-    completed: Optional[bool] = None
+    subject: str | None = None
+    task: str | None = None
+    due_date: str | None = None
+    estimated_mins: int | None = None
+    priority: str | None = None
+    completed: bool | None = None
+
 
 @router.get("")
 async def get_todos():
     return {"todos": list_todos(), "cushion": cushion()}
+
 
 @router.post("")
 async def create_todo(req: TodoCreate):
@@ -43,6 +57,7 @@ async def create_todo(req: TodoCreate):
     todo = add_todo(req.subject, req.task, due, est, prio)
     return todo
 
+
 @router.patch("/{todo_id}")
 async def patch_todo(todo_id: str, req: TodoUpdate):
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
@@ -51,6 +66,7 @@ async def patch_todo(todo_id: str, req: TodoUpdate):
         raise HTTPException(404, "Todo not found")
     return todo
 
+
 @router.delete("/{todo_id}")
 async def remove_todo(todo_id: str):
     ok = delete_todo(todo_id)
@@ -58,9 +74,11 @@ async def remove_todo(todo_id: str):
         raise HTTPException(404, "Todo not found")
     return {"deleted": True}
 
+
 @router.get("/cushion")
 async def get_cushion():
     return cushion()
+
 
 @router.post("/from-chat")
 async def create_from_chat(data: dict):
@@ -71,16 +89,33 @@ async def create_from_chat(data: dict):
     # Simple parsing: subject is first word before task, or "General"
     # Try to extract subject: look for known subjects
     import re
-    subjects = ["maths", "mathematics", "english", "science", "biology", "chemistry", "physics", "history", "geography", "pdhpe", "technology", "art", "music", "commerce", "economics"]
+
+    subjects = [
+        "maths",
+        "mathematics",
+        "english",
+        "science",
+        "biology",
+        "chemistry",
+        "physics",
+        "history",
+        "geography",
+        "pdhpe",
+        "technology",
+        "art",
+        "music",
+        "commerce",
+        "economics",
+    ]
     subject = "General"
     task = text
     # Remove leading "add" / "todo"
-    task = re.sub(r"^\s*(add|create|new)\s+(todo\s+)?", "", task, flags=re.I)
+    task = re.sub(r"^\s*(add|create|new)\s+(todo\s+)?", "", task, flags=re.IGNORECASE)
     # Try to find subject at start
     for subj in subjects:
-        if re.match(rf"^{subj}\b", task, re.I):
+        if re.match(rf"^{subj}\b", task, re.IGNORECASE):
             subject = subj.capitalize()
-            task = re.sub(rf"^{subj}\b\s*[:\-]?\s*", "", task, flags=re.I)
+            task = re.sub(rf"^{subj}\b\s*[:\-]?\s*", "", task, flags=re.IGNORECASE)
             break
     # Parse due, estimate, priority from remaining text
     due = parse_due_date(text)

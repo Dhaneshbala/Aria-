@@ -1,11 +1,24 @@
 """YouTube service — extracts transcripts and video metadata, generates summaries."""
+
 import asyncio
 import re
-from typing import Optional
+
+import httpx
+
+from services.retry import TRANSIENT_HTTP_RETRY
+
+
+@TRANSIENT_HTTP_RETRY
+def _get_page(url: str, **kwargs) -> httpx.Response:
+    """Sync GET with retries on timeouts/disconnects/5xx (same policy object
+    works for sync and async — tenacity detects the style)."""
+    r = httpx.get(url, **kwargs)
+    if r.status_code >= 500:
+        raise httpx.HTTPStatusError("server error", request=r.request, response=r)
+    return r
 
 
 class YouTubeService:
-
     async def process(self, url: str) -> dict:
         video_id = self._extract_id(url)
         if not video_id:
@@ -13,7 +26,7 @@ class YouTubeService:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._fetch_sync, video_id)
 
-    def _extract_id(self, url: str) -> Optional[str]:
+    def _extract_id(self, url: str) -> str | None:
         patterns = [
             r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})",
             r"embed/([A-Za-z0-9_-]{11})",
@@ -25,7 +38,6 @@ class YouTubeService:
         return None
 
     def _fetch_sync(self, video_id: str) -> dict:
-        import httpx
 
         # Step 1: Get video metadata from page (always works)
         metadata = self._scrape_metadata(video_id)
@@ -65,7 +77,11 @@ class YouTubeService:
             result["transcript"] = transcript_text
             # Generate AI summary even with transcript for quick overview
             try:
-                result["ai_summary"] = self._llm_summary_sync(result["title"], transcript_text[:4000], metadata.get("description","")[:800])
+                result["ai_summary"] = self._llm_summary_sync(
+                    result["title"],
+                    transcript_text[:4000],
+                    metadata.get("description", "")[:800],
+                )
             except Exception:
                 result["ai_summary"] = ""
         else:
@@ -73,19 +89,24 @@ class YouTubeService:
             result["transcript"] = ""
             # Try LLM to create a useful analysis from metadata
             try:
-                ai_analysis = self._llm_summary_sync(result["title"], "", metadata.get("description",""), metadata.get("tags",[]))
+                ai_analysis = self._llm_summary_sync(
+                    result["title"],
+                    "",
+                    metadata.get("description", ""),
+                    metadata.get("tags", []),
+                )
                 result["ai_summary"] = ai_analysis
                 # Treat AI analysis as transcript-like content so quiz/flashcards still work
                 result["transcript"] = ai_analysis
-                result["has_transcript"] = True if ai_analysis else False
+                result["has_transcript"] = bool(ai_analysis)
                 result["fallback"] = "audio"
             except Exception:
                 result["ai_summary"] = ""
                 result["fallback"] = "metadata"
             result["note"] = (
                 "No captions found — analysed via audio transcription and AI inference from title/description."
-                if result.get("has_transcript") else
-                "This video has no captions. Analysis is based on title, description and tags."
+                if result.get("has_transcript")
+                else "This video has no captions. Analysis is based on title, description and tags."
             )
 
         return result
@@ -96,6 +117,7 @@ class YouTubeService:
         import subprocess
         import tempfile
         from pathlib import Path
+
         if not shutil.which("yt-dlp"):
             return ""
         try:
@@ -104,14 +126,21 @@ class YouTubeService:
                 url = f"https://www.youtube.com/watch?v={video_id}"
                 # Download best audio, limit to 8 minutes to avoid huge files
                 cmd = [
-                    "yt-dlp", "-f", "bestaudio/best",
-                    "--extract-audio", "--audio-format", "mp3",
-                    "--audio-quality", "5",
-                    "-o", tmpl,
-                    "--no-playlist", "--quiet",
+                    "yt-dlp",
+                    "-f",
+                    "bestaudio/best",
+                    "--extract-audio",
+                    "--audio-format",
+                    "mp3",
+                    "--audio-quality",
+                    "5",
+                    "-o",
+                    tmpl,
+                    "--no-playlist",
+                    "--quiet",
                     url,
                 ]
-                subprocess.run(cmd, timeout=60, capture_output=True)
+                subprocess.run(cmd, timeout=60, capture_output=True, check=False)
                 # Find downloaded file
                 files = list(Path(td).glob(f"{video_id}.*"))
                 if not files:
@@ -122,6 +151,7 @@ class YouTubeService:
                 # Transcribe with VoiceService
                 try:
                     from services.voice_service import VoiceService
+
                     vs = VoiceService()
                     # Run sync transcribe in thread
                     text = vs._transcribe_sync(audio_file.read_bytes(), "audio/mp3")
@@ -132,6 +162,7 @@ class YouTubeService:
                 # Fallback: try faster-whisper directly
                 try:
                     from faster_whisper import WhisperModel
+
                     model = WhisperModel("base", device="cpu", compute_type="int8")
                     segs, _ = model.transcribe(str(audio_file))
                     return " ".join(s.text for s in segs)[:8000]
@@ -141,17 +172,27 @@ class YouTubeService:
             pass
         return ""
 
-    def _llm_summary_sync(self, title: str, transcript: str, description: str, tags: list | None = None) -> str:
+    def _llm_summary_sync(
+        self, title: str, transcript: str, description: str, tags: list | None = None
+    ) -> str:
         """Generate an AI summary via Ollama for videos without transcript."""
-        import httpx
         import os
+
+        import httpx
+
         try:
-            from models.database import MODELS as _MODELS, OLLAMA_URL as _OURL
+            from models.database import MODELS as _MODELS
+            from models.database import OLLAMA_URL as _OURL
+
             ollama_url = _OURL
-            model = _MODELS.get("main", "gemma4:e4b-mlx")
+            model = _MODELS.get("main", "gemma3:12b")
         except Exception:
-            ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/").split("/api")[0]
-            model = os.environ.get("ARIA_MAIN_MODEL", "gemma4:e4b-mlx")
+            ollama_url = (
+                os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+                .rstrip("/")
+                .split("/api")[0]
+            )
+            model = os.environ.get("ARIA_MAIN_MODEL", "gemma3:12b")
         tags_str = ", ".join((tags or [])[:10])
         # Build prompt
         if transcript:
@@ -165,7 +206,11 @@ class YouTubeService:
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "stream": False,
-                    "options": {"num_ctx": 4096, "num_predict": 400, "temperature": 0.6},
+                    "options": {
+                        "num_ctx": 4096,
+                        "num_predict": 400,
+                        "temperature": 0.6,
+                    },
                 },
                 timeout=25,
             )
@@ -197,7 +242,6 @@ class YouTubeService:
                     continue
             else:
                 transcript = None
-
             if not transcript:
                 # Try listing available transcripts and pick any (including auto)
                 try:
@@ -221,12 +265,16 @@ class YouTubeService:
                 lines = []
                 for entry in transcript:
                     try:
-                        text = entry.text.strip() if hasattr(entry, 'text') else str(entry).strip()
+                        text = (
+                            entry.text.strip()
+                            if hasattr(entry, "text")
+                            else str(entry).strip()
+                        )
                     except Exception:
                         text = ""
                     if text:
-                        text = re.sub(r'\[.*?\]', '', text)
-                        text = re.sub(r'♪.*?♪', '', text)
+                        text = re.sub(r"\[.*?\]", "", text)
+                        text = re.sub(r"♪.*?♪", "", text)
                         text = text.strip()
                         if text:
                             lines.append(text)
@@ -237,6 +285,7 @@ class YouTubeService:
         # Fallback old API (0.6): static methods get_transcript / list_transcripts
         try:
             from youtube_transcript_api import YouTubeTranscriptApi as OldAPI
+
             # Try old static API
             for langs in (["en"], ["en", "en-US"], None):
                 try:
@@ -247,10 +296,14 @@ class YouTubeService:
                     if transcript:
                         lines = []
                         for entry in transcript:
-                            text = entry.get("text","").strip() if isinstance(entry, dict) else str(entry).strip()
+                            text = (
+                                entry.get("text", "").strip()
+                                if isinstance(entry, dict)
+                                else str(entry).strip()
+                            )
                             if text:
-                                text = re.sub(r'\[.*?\]', '', text)
-                                text = re.sub(r'♪.*?♪', '', text)
+                                text = re.sub(r"\[.*?\]", "", text)
+                                text = re.sub(r"♪.*?♪", "", text)
                                 text = text.strip()
                                 if text:
                                     lines.append(text)
@@ -266,7 +319,11 @@ class YouTubeService:
                         data = t.fetch()
                         lines = []
                         for entry in data:
-                            text = entry.get("text","").strip() if isinstance(entry, dict) else str(entry).strip()
+                            text = (
+                                entry.get("text", "").strip()
+                                if isinstance(entry, dict)
+                                else str(entry).strip()
+                            )
                             if text:
                                 lines.append(text)
                         if lines:
@@ -279,34 +336,16 @@ class YouTubeService:
             pass
         return ""
 
-        if not transcript:
-            return ""
-
-        # Combine all entries into full text
-        lines = []
-        for entry in transcript:
-            text = entry.text.strip()
-            if text:
-                # Clean up common transcript artifacts
-                text = re.sub(r'\[.*?\]', '', text)  # Remove [Music], [Applause], etc.
-                text = re.sub(r'♪.*?♪', '', text)    # Remove music notes
-                text = text.strip()
-                if text:
-                    lines.append(text)
-
-        return " ".join(lines)
-
     def _scrape_metadata(self, video_id: str) -> dict:
         """Scrape video metadata from the YouTube page."""
-        import httpx
 
         result = {}
 
         # Title + channel from oEmbed (fast, reliable)
         try:
-            r = httpx.get(
+            r = _get_page(
                 f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
-                timeout=5
+                timeout=5,
             )
             if r.status_code == 200:
                 data = r.json()
@@ -317,16 +356,20 @@ class YouTubeService:
 
         # Description + duration + tags from page scraping
         try:
-            r = httpx.get(
+            r = _get_page(
                 f"https://www.youtube.com/watch?v={video_id}",
                 timeout=10,
-                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+                },
             )
             if r.status_code == 200:
                 html = r.text
 
                 # Description from meta tag
-                desc_match = re.search(r'<meta name="description" content="([^"]+)"', html)
+                desc_match = re.search(
+                    r'<meta name="description" content="([^"]+)"', html
+                )
                 if desc_match:
                     result["description"] = desc_match.group(1)
 
@@ -334,7 +377,7 @@ class YouTubeService:
                 desc_match2 = re.search(r'"shortDescription":"(.*?)"', html)
                 if desc_match2:
                     desc = desc_match2.group(1)
-                    desc = desc.replace('\\n', '\n').replace('\\"', '"')
+                    desc = desc.replace("\\n", "\n").replace('\\"', '"')
                     if len(desc) > len(result.get("description", "")):
                         result["description"] = desc[:2000]
 
@@ -343,6 +386,7 @@ class YouTubeService:
                 if tags_match:
                     try:
                         import json as _js
+
                         tags = _js.loads(f"[{tags_match.group(1)}]")
                         result["tags"] = [t for t in tags if isinstance(t, str)][:12]
                     except Exception:

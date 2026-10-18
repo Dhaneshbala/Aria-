@@ -3,42 +3,38 @@ Chat router — main SSE streaming endpoint.
 Handles text + optional image + optional document.
 For large documents, uses smart chunking to pass only relevant pages.
 """
+
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from typing import Optional, List
-from services.orchestrator import orchestrate
+
+from models.database import get_config
 from services.document_service import DocumentService
 from services.memory_service import MemoryService
-from models.database import get_config
+from services.orchestrator import orchestrate
+from services.rate_limit import chat_limit
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 doc_svc = DocumentService()
 mem_svc = MemoryService()
 
-try:
-    from slowapi import Limiter
-    from slowapi.util import get_remote_address
-    _chat_limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
-    _chat_limit = _chat_limiter.limit("30/minute")
-except Exception:
-    _chat_limiter = None
-    _chat_limit = lambda f: f  # no-op
+_chat_limit = chat_limit
 
-MAX_IMAGE_SIZE = 20 * 1024 * 1024   # 20 MB
-MAX_DOC_SIZE = 50 * 1024 * 1024     # 50 MB
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+MAX_DOC_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @router.post("")
 @_chat_limit
 async def chat(
-    request:        Request,
-    message:         str           = Form(...),
-    conversation_id: str           = Form(default=""),
-    image:           Optional[UploadFile] = File(default=None),
-    document:        Optional[UploadFile] = File(default=None),
-    documents:       Optional[List[UploadFile]] = File(default=None),
-    mode:            str           = Form(default="normal"),
+    request: Request,
+    message: str = Form(...),
+    conversation_id: str = Form(default=""),
+    image: UploadFile | None = File(default=None),
+    document: UploadFile | None = File(default=None),
+    documents: list[UploadFile] | None = File(default=None),
+    mode: str = Form(default="normal"),
 ):
     # Input validation — prevent abuse / prompt injection via huge payloads
     if len(message) > 8000:
@@ -63,11 +59,14 @@ async def chat(
     if image:
         image_data = await image.read()
         if len(image_data) > MAX_IMAGE_SIZE:
-            raise HTTPException(413, f"Image too large. Maximum size: {MAX_IMAGE_SIZE // (1024*1024)} MB")
+            raise HTTPException(
+                413,
+                f"Image too large. Maximum size: {MAX_IMAGE_SIZE // (1024 * 1024)} MB",
+            )
         image_mime = image.content_type or "image/jpeg"
 
     # Normalize to list — supports 1 or up to 10 PDFs
-    all_docs: List[UploadFile] = []
+    all_docs: list[UploadFile] = []
     if document:
         all_docs.append(document)
     if documents:
@@ -82,7 +81,7 @@ async def chat(
     seen = set()
     uniq_docs = []
     for d in all_docs:
-        size = getattr(d, 'size', None)
+        size = getattr(d, "size", None)
         if size is None:
             uniq_docs.append(d)
             continue
@@ -93,8 +92,14 @@ async def chat(
     all_docs = uniq_docs[:10]  # cap at 10
 
     from services.telemetry_service import record_event
-    record_event("chat_message", mode=mode, has_image=image_data is not None,
-                 has_doc=len(all_docs) > 0, doc_count=len(all_docs))
+
+    record_event(
+        "chat_message",
+        mode=mode,
+        has_image=image_data is not None,
+        has_doc=len(all_docs) > 0,
+        doc_count=len(all_docs),
+    )
 
     # ── Read and smart-chunk documents (multiple PDFs) ────────────────────────
     doc_text = None
@@ -103,24 +108,38 @@ async def chat(
         total_budget = config.get("doc_context_chars", 8000)
         # If many docs, give more budget but cap at 15000 to avoid context blowout
         if len(all_docs) > 1:
-            total_budget = min(15000, total_budget + (len(all_docs)-1)*2000)
+            total_budget = min(15000, total_budget + (len(all_docs) - 1) * 2000)
         per_doc_budget = max(1500, total_budget // len(all_docs))
         parts = []
         for doc_file in all_docs:
             doc_bytes = await doc_file.read()
             if len(doc_bytes) > MAX_DOC_SIZE:
-                raise HTTPException(413, f"Document {doc_file.filename} too large. Maximum size: {MAX_DOC_SIZE // (1024*1024)} MB")
+                raise HTTPException(
+                    413,
+                    f"Document {doc_file.filename} too large. Maximum size: {MAX_DOC_SIZE // (1024 * 1024)} MB",
+                )
             filename = doc_file.filename or "document"
             ctx = await doc_svc.get_context_for_query(
-                doc_bytes, filename, message,
-                max_chars=per_doc_budget
+                doc_bytes, filename, message, max_chars=per_doc_budget
             )
-            parts.append(f"[File: {filename}]\n\n{ctx}")
+            if not ctx or not ctx.strip():
+                # Honest notice instead of silent empty context — the tutor
+                # must tell the student the truth, never invent page contents.
+                parts.append(
+                    f"[File: {filename}]\n\n"
+                    f"ARIA DOCUMENT NOTICE: no readable text could be extracted from this file. "
+                    f"It is likely a scanned/image-only PDF or a corrupted/unsupported file. "
+                    f"Tell the student you couldn't read the document (and that photo uploads in "
+                    f"Chat CAN be read via camera/vision). Never invent the document's contents."
+                )
+            else:
+                parts.append(f"[File: {filename}]\n\n{ctx}")
         doc_text = "\n\n---\n\n".join(parts)
 
     # ── Stream via orchestrator — respects client Stop (AbortError) ─────────
     import asyncio
     import logging
+
     _log = logging.getLogger(__name__)
 
     async def event_stream():
@@ -136,7 +155,9 @@ async def chat(
             ):
                 # If user pressed Stop (AbortError), client disconnects
                 if await request.is_disconnected():
-                    _log.info("Client disconnected (%s), aborting stream", conversation_id[:8])
+                    _log.info(
+                        "Client disconnected (%s), aborting stream", conversation_id[:8]
+                    )
                     break
                 yield chunk
         except asyncio.CancelledError:

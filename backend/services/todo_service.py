@@ -4,13 +4,14 @@ Todo / Assignment Inbox — solo student organization.
 Stores personal todos in ~/.aria_data/todos.json with atomic writes + RLock.
 Used by chat brain ("add maths HW due Fri") and Dashboard ring.
 """
+
 import json
 import os
 import re
-import threading
 import tempfile
+import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
@@ -18,6 +19,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 TODO_FILE = DATA_DIR / "todos.json"
 
 _LOCK = threading.RLock()
+
 
 def _load() -> list[dict]:
     with _LOCK:
@@ -27,6 +29,7 @@ def _load() -> list[dict]:
             except Exception:
                 return []
         return []
+
 
 def _save(todos: list[dict]):
     with _LOCK:
@@ -46,8 +49,10 @@ def _save(todos: list[dict]):
                 except Exception:
                     pass
 
+
 def list_todos() -> list[dict]:
     todos = _load()
+
     # sort: incomplete first, then due date, then priority — handle None due_date
     def sort_key(t):
         prio = {"high": 0, "medium": 1, "low": 2}.get(t.get("priority", "medium"), 1)
@@ -57,9 +62,17 @@ def list_todos() -> list[dict]:
             due = str(due)
         completed = 1 if t.get("completed") else 0
         return (completed, due, prio)
+
     return sorted(todos, key=sort_key)
 
-def add_todo(subject: str, task: str, due_date: str | None = None, estimated_mins: int = 30, priority: str = "medium") -> dict:
+
+def add_todo(
+    subject: str,
+    task: str,
+    due_date: str | None = None,
+    estimated_mins: int = 30,
+    priority: str = "medium",
+) -> dict:
     todos = _load()
     todo = {
         "id": str(uuid.uuid4())[:8],
@@ -69,18 +82,26 @@ def add_todo(subject: str, task: str, due_date: str | None = None, estimated_min
         "estimated_mins": max(5, min(240, int(estimated_mins))),
         "priority": priority if priority in ("low", "medium", "high") else "medium",
         "completed": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     todos.append(todo)
     _save(todos)
     return todo
+
 
 def update_todo(todo_id: str, updates: dict) -> dict | None:
     todos = _load()
     for t in todos:
         if t["id"] == todo_id:
             # only allow safe fields
-            for k in ("subject", "task", "due_date", "estimated_mins", "priority", "completed"):
+            for k in (
+                "subject",
+                "task",
+                "due_date",
+                "estimated_mins",
+                "priority",
+                "completed",
+            ):
                 if k in updates:
                     if k == "estimated_mins":
                         t[k] = max(5, min(240, int(updates[k])))
@@ -90,6 +111,7 @@ def update_todo(todo_id: str, updates: dict) -> dict | None:
             return t
     return None
 
+
 def delete_todo(todo_id: str) -> bool:
     todos = _load()
     before = len(todos)
@@ -98,6 +120,7 @@ def delete_todo(todo_id: str) -> bool:
         _save(todos)
         return True
     return False
+
 
 def parse_due_date(text: str) -> str | None:
     """Parse 'due Fri', 'due 2026-09-10', 'due tomorrow', 'due in 3 days' -> YYYY-MM-DD or None."""
@@ -125,9 +148,19 @@ def parse_due_date(text: str) -> str | None:
         except Exception:
             pass
     # Weekday: Mon, Tue, Fri, etc.
-    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    weekdays = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
     for i, wd in enumerate(weekdays):
-        if re.search(rf"\b{wd[:3]}\b", text_lower) or re.search(rf"\b{wd}\b", text_lower):
+        if re.search(rf"\b{wd[:3]}\b", text_lower) or re.search(
+            rf"\b{wd}\b", text_lower
+        ):
             # Find next occurrence of that weekday
             today_wd = today.weekday()  # 0 Mon
             target_wd = i
@@ -143,6 +176,7 @@ def parse_due_date(text: str) -> str | None:
     if re.search(r"\bnext week\b", text_lower):
         return (today + timedelta(days=7)).isoformat()
     return None
+
 
 def parse_estimate(text: str) -> int | None:
     m = re.search(r"(\d+)\s*(?:min|mins|minutes|m)\b", text.lower())
@@ -160,6 +194,7 @@ def parse_estimate(text: str) -> int | None:
             pass
     return None
 
+
 def parse_priority(text: str) -> str | None:
     tl = text.lower()
     if re.search(r"\bhigh\b|\b urg", tl):
@@ -169,6 +204,7 @@ def parse_priority(text: str) -> str | None:
     if re.search(r"\bmedium\b|\bmid\b", tl):
         return "medium"
     return None
+
 
 def cushion(todos: list[dict] | None = None) -> dict:
     """Simple overload check: total estimated mins vs. available study time.

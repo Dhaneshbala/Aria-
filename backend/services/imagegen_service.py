@@ -11,24 +11,40 @@ ARIA doesn't run that 12B param model locally on 16GB (would OOM). Instead:
 
 Pollinations is completely free, needs no API key, and uses FLUX/Sana models.
 """
-import asyncio
-import httpx
-import urllib.parse
+
 import base64
 import logging
+import urllib.parse
+
+import httpx
+
+from services.retry import TRANSIENT_HTTP_RETRY
 
 logger = logging.getLogger(__name__)
 
 
-class ImageGenService:
+@TRANSIENT_HTTP_RETRY
+async def _fetch_pollinations(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """GET with retries on timeouts/disconnects/5xx. 402/429 rate-limit
+    JSON is returned (not raised) so the caller falls back to local SD."""
+    r = await client.get(url, follow_redirects=True)
+    if r.status_code >= 500:
+        raise httpx.HTTPStatusError(
+            f"Pollinations server error {r.status_code}",
+            request=r.request,
+            response=r,
+        )
+    return r
 
+
+class ImageGenService:
     async def generate(
         self,
         prompt: str,
         negative: str = "",
         width: int = 512,
         height: int = 512,
-        model: str = "flux",          # "flux" | "turbo" | "sana"
+        model: str = "flux",  # "flux" | "turbo" | "sana"
     ) -> dict:
         """
         Generate an image. Returns {"image": "data:image/...", "source": "pollinations"|"sd"}.
@@ -44,7 +60,9 @@ class ImageGenService:
         if result:
             return {"image": result, "source": "stable_diffusion"}
 
-        return {"error": "Image generation unavailable. Check your internet connection. Pollinations.ai may be rate-limited — try again in 30 seconds."}
+        return {
+            "error": "Image generation unavailable. Check your internet connection. Pollinations.ai may be rate-limited — try again in 30 seconds."
+        }
 
     async def _pollinations(
         self, prompt: str, width: int, height: int, model: str
@@ -55,7 +73,9 @@ class ImageGenService:
         """
         try:
             # Safe, educational prefix — keeps ARIA kid-friendly
-            safe_prompt = f"educational, child-friendly, colourful illustration: {prompt}"
+            safe_prompt = (
+                f"educational, child-friendly, colourful illustration: {prompt}"
+            )
             encoded = urllib.parse.quote(safe_prompt)
 
             # Pollinations direct image URL — supports flux, turbo, sana
@@ -66,8 +86,8 @@ class ImageGenService:
                 f"&nologo=true&enhance=true"
             )
 
-            async with httpx.AsyncClient(timeout=60, follow_redirects=True, verify=False) as client:
-                r = await client.get(url, follow_redirects=True)
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                r = await _fetch_pollinations(client, url)
                 ct = r.headers.get("content-type", "")
                 # Success: image/*
                 if r.status_code == 200 and ct.startswith("image/"):
@@ -78,12 +98,18 @@ class ImageGenService:
                 if r.status_code in (402, 429) or "application/json" in ct:
                     try:
                         j = r.json()
-                        if j.get("x402Version") or "Queue full" in str(j.get("error", "")):
-                            logger.warning("Pollinations rate-limited: %s", j.get("error"))
+                        if j.get("x402Version") or "Queue full" in str(
+                            j.get("error", "")
+                        ):
+                            logger.warning(
+                                "Pollinations rate-limited: %s", j.get("error")
+                            )
                             return None
                     except Exception:
                         pass
-                    logger.warning("Pollinations returned %s: %s", r.status_code, r.text[:300])
+                    logger.warning(
+                        "Pollinations returned %s: %s", r.status_code, r.text[:300]
+                    )
         except Exception as e:
             logger.debug("Pollinations failed: %s", e)
         return None
@@ -95,11 +121,14 @@ class ImageGenService:
         try:
             # Allow env override for SD URL
             import os
+
             sd_url = os.environ.get("SD_URL", "http://127.0.0.1:7860")
             payload = {
                 "prompt": f"educational, child-friendly, colourful: {prompt}",
                 "negative_prompt": f"nsfw, violent, adult, {negative}",
-                "steps": 20, "width": width, "height": height,
+                "steps": 20,
+                "width": width,
+                "height": height,
                 "cfg_scale": 7,
             }
             async with httpx.AsyncClient(timeout=90) as client:
@@ -118,8 +147,10 @@ class ImageGenService:
 
         # Check Pollinations (needs internet) — HEAD is lighter than GET
         try:
-            async with httpx.AsyncClient(timeout=8, verify=False) as client:
-                r = await client.get("https://image.pollinations.ai/", timeout=8, follow_redirects=True)
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(
+                    "https://image.pollinations.ai/", timeout=8, follow_redirects=True
+                )
                 # Pollinations returns HTML on root; 200 means reachable
                 status["pollinations"] = r.status_code < 500
         except Exception:
@@ -128,6 +159,7 @@ class ImageGenService:
         # Check local SD
         try:
             import os
+
             sd_url = os.environ.get("SD_URL", "http://127.0.0.1:7860")
             async with httpx.AsyncClient(timeout=3) as client:
                 r = await client.get(f"{sd_url}/sdapi/v1/sd-models")

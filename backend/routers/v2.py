@@ -2,9 +2,9 @@
 Extended Intelligence router — Analytics, Gamification, Automation,
 NSW Curriculum, Advanced Study Intelligence.
 """
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from typing import Optional
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
@@ -21,26 +21,31 @@ def _svc(name):
     if name == "analytics":
         if _analytics is None:
             from services.analytics_service import AnalyticsService
+
             _analytics = AnalyticsService()
         return _analytics
     if name == "gamification":
         if _gamification is None:
             from services.gamification_service import GamificationService
+
             _gamification = GamificationService()
         return _gamification
     if name == "automation":
         if _automation is None:
             from services.automation_service import AutomationService
+
             _automation = AutomationService()
         return _automation
     if name == "curriculum":
         if _curriculum is None:
             from services.nsw_curriculum_service import NSWCurriculumService
+
             _curriculum = NSWCurriculumService()
         return _curriculum
     if name == "advanced_study":
         if _advanced_study is None:
             from services.advanced_study_service import AdvancedStudyIntelligence
+
             _advanced_study = AdvancedStudyIntelligence()
         return _advanced_study
 
@@ -48,6 +53,7 @@ def _svc(name):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Analytics Dashboard
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/analytics/heatmap")
 async def get_heatmap(months: int = 6):
@@ -78,6 +84,7 @@ async def get_weekly_summary():
 # Gamification
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/game/progress")
 async def get_game_progress():
     return _svc("gamification").get_progress()
@@ -97,12 +104,15 @@ async def get_leaderboard():
 # Automation
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @router.post("/auto/flashcards-from-pdf")
 async def auto_flashcards(file: UploadFile = File(...), count: int = Form(default=10)):
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 50MB)")
-    return await _svc("automation").auto_flashcards_from_pdf(content, file.filename or "document", count)
+    return await _svc("automation").auto_flashcards_from_pdf(
+        content, file.filename or "document", count
+    )
 
 
 @router.post("/auto/quiz-from-notes")
@@ -110,7 +120,9 @@ async def auto_quiz(file: UploadFile = File(...), count: int = Form(default=5)):
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 50MB)")
-    return await _svc("automation").quiz_from_notes(content, file.filename or "notes", count)
+    return await _svc("automation").quiz_from_notes(
+        content, file.filename or "notes", count
+    )
 
 
 @router.post("/auto/summarise-paper")
@@ -118,12 +130,15 @@ async def summarise_paper(file: UploadFile = File(...)):
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(413, "File too large (max 50MB)")
-    return await _svc("automation").summarise_paper_pipeline(content, file.filename or "paper")
+    return await _svc("automation").summarise_paper_pipeline(
+        content, file.filename or "paper"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NSW Curriculum
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/curriculum/stages")
 async def get_stages():
@@ -171,6 +186,7 @@ async def get_progression(kla: str):
 # Advanced Study Intelligence (NSW-aware)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/study/exam-readiness/{subject}")
 async def exam_readiness(subject: str, days: int = 14):
     return await _svc("advanced_study").calculate_exam_readiness(subject, days)
@@ -201,9 +217,11 @@ class AddCardRequest(BaseModel):
     back: str
     subject: str = "general"
 
+
 class ReviewCardRequest(BaseModel):
     card_id: str
     quality: int  # 0-5
+
 
 @router.post("/study/add-card")
 async def add_card(req: AddCardRequest):
@@ -218,6 +236,7 @@ async def review_card(req: ReviewCardRequest):
 class DeleteCardRequest(BaseModel):
     card_id: str
 
+
 @router.post("/study/delete-card")
 async def delete_card(req: DeleteCardRequest):
     return await _svc("advanced_study").delete_flashcard(req.card_id)
@@ -226,6 +245,7 @@ async def delete_card(req: DeleteCardRequest):
 class BulkAddCardsRequest(BaseModel):
     cards: list[dict]
     subject: str = "general"
+
 
 @router.post("/study/bulk-add-cards")
 async def bulk_add_cards(req: BulkAddCardsRequest):
@@ -238,12 +258,17 @@ async def all_cards(subject: str | None = None):
 
 
 @router.post("/study/import-csv")
-async def import_csv(file: UploadFile = File(...), subject: str = Form(default="general")):
+async def import_csv(
+    file: UploadFile = File(...), subject: str = Form(default="general")
+):
     """Import flashcards from a CSV file (columns: front,back[,subject])."""
-    content = await file.read()
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "CSV too large (max 10MB)")
     text = content.decode("utf-8-sig", errors="replace")
     import csv as csv_mod
     import io
+
     cards = []
     reader = csv_mod.reader(io.StringIO(text))
     for i, row in enumerate(reader):
@@ -256,7 +281,11 @@ async def import_csv(file: UploadFile = File(...), subject: str = Form(default="
         if front and back:
             cards.append({"front": front, "back": back})
     if not cards:
-        return {"status": "error", "error": "No valid rows found. Expected: front,back", "count": 0}
+        return {
+            "status": "error",
+            "error": "No valid rows found. Expected: front,back",
+            "count": 0,
+        }
     added = await _svc("advanced_study").add_flashcards_bulk(cards, subject)
     return {"status": "imported", "count": len(added)}
 
@@ -266,6 +295,7 @@ async def export_csv(subject: str | None = None):
     """Export all flashcards as CSV (front,back,subject)."""
     import csv as csv_mod
     import io
+
     cards = await _svc("advanced_study").get_all_cards(subject)
     buf = io.StringIO()
     writer = csv_mod.writer(buf)
@@ -273,8 +303,40 @@ async def export_csv(subject: str | None = None):
     for c in cards:
         writer.writerow([c.get("front", ""), c.get("back", ""), c.get("subject", "")])
     from fastapi.responses import Response
+
     return Response(
         content=buf.getvalue(),
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="aria_flashcards.csv"'},
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AI Usage Ledger — server-side accounting (services/usage_service.py)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/usage/summary")
+async def usage_summary(days: int = 30):
+    """Aggregate AI usage for the last N days (tokens, requests, est. cost).
+
+    Token counts are provider-reported (exact). Cost figures are estimates
+    from config/pricing.py — Ollama is $0 unless a cloud provider is enabled.
+    """
+    from services.usage_service import get_summary
+
+    return get_summary(days)
+
+
+@router.get("/usage/today")
+async def usage_today():
+    """Today's per-provider/model AI usage rollup."""
+    from services.usage_service import get_today
+
+    return {"date": _today_iso(), "usage": get_today()}
+
+
+def _today_iso():
+    import datetime
+
+    return datetime.date.today().isoformat()

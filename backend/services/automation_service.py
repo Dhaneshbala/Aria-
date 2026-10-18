@@ -1,16 +1,18 @@
 """
 Automation — Auto flashcards from PDFs, quiz from notes, paper summariser pipeline.
 """
+
 import logging
 
 from services.ollama_service import OllamaService
+
 try:
     from models.database import MODELS
 except Exception:
-    MODELS = {"main": "gemma4:e4b-mlx", "embedding": "nomic-embed-text"}
+    MODELS = {"main": "gemma3:12b", "embedding": "nomic-embed-text"}
 from services.document_service import DocumentService
-from services.study_service import StudyService
 from services.memory_service import MemoryService
+from services.study_service import StudyService
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +23,9 @@ memory_svc = MemoryService()
 
 
 class AutomationService:
-
-    async def auto_flashcards_from_pdf(self, file_bytes: bytes, filename: str, count: int = 10) -> dict:
+    async def auto_flashcards_from_pdf(
+        self, file_bytes: bytes, filename: str, count: int = 10
+    ) -> dict:
         """Upload a PDF → auto-extract text → generate flashcards."""
         try:
             text = await doc_svc.extract_text(file_bytes, filename)
@@ -37,7 +40,9 @@ class AutomationService:
                 "Make flashcards suitable for a 13-year-old student."
             )
             prompt = text[:4000]
-            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(
+                MODELS["main"], prompt, system=system, max_tokens=2000
+            )
 
             # Parse flashcards
             cards = []
@@ -45,8 +50,12 @@ class AutomationService:
                 if "|" in line and "front:" in line.lower():
                     parts = line.split("|", 1)
                     if len(parts) == 2:
-                        front = parts[0].replace("FRONT:", "").replace("front:", "").strip()
-                        back = parts[1].replace("BACK:", "").replace("back:", "").strip()
+                        front = (
+                            parts[0].replace("FRONT:", "").replace("front:", "").strip()
+                        )
+                        back = (
+                            parts[1].replace("BACK:", "").replace("back:", "").strip()
+                        )
                         if front and back:
                             cards.append({"front": front, "back": back})
 
@@ -58,7 +67,9 @@ class AutomationService:
         except Exception as e:
             return {"error": str(e)}
 
-    async def quiz_from_notes(self, file_bytes: bytes, filename: str, count: int = 5) -> dict:
+    async def quiz_from_notes(
+        self, file_bytes: bytes, filename: str, count: int = 5
+    ) -> dict:
         """Upload notes → auto-generate quiz questions."""
         try:
             text = await doc_svc.extract_text(file_bytes, filename)
@@ -76,25 +87,37 @@ class AutomationService:
                 "Make questions test understanding, not just recall."
             )
             prompt = text[:4000]
-            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(
+                MODELS["main"], prompt, system=system, max_tokens=2000
+            )
 
             # Parse quiz
             import re
+
             questions = []
             blocks = re.split(r"\bQ\d+[:.)\s]", result)
             for block in blocks[1:]:
                 lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
                 if not lines:
                     continue
-                q = {"question": lines[0], "options": [], "correct": "", "explanation": ""}
+                q = {
+                    "question": lines[0],
+                    "options": [],
+                    "correct": "",
+                    "explanation": "",
+                }
                 for line in lines[1:]:
                     if re.match(r"^[A-D][.)]\s*", line):
                         q["options"].append(re.sub(r"^[A-D][.)]\s*", "", line).strip())
                     elif re.match(r"(?i)^correct[:\s]", line):
-                        m = re.search(r"correct\s*[):.\s]+([A-Da-d])", line, re.I)
+                        m = re.search(
+                            r"correct\s*[):.\s]+([A-Da-d])", line, re.IGNORECASE
+                        )
                         if m:
                             q["correct"] = m.group(1).upper()
-                    elif re.match(r"(?i)^explanation[:\s]", line) or (q["correct"] and len(line) > 15):
+                    elif re.match(r"(?i)^explanation[:\s]", line) or (
+                        q["correct"] and len(line) > 15
+                    ):
                         q["explanation"] = (q["explanation"] + " " + line).strip()
                 if len(q["options"]) >= 2:
                     questions.append(q)
@@ -125,7 +148,9 @@ class AutomationService:
                 "Format with clear headings."
             )
             prompt = text[:5000]
-            result = await ollama.complete(MODELS["main"], prompt, system=system, max_tokens=2000)
+            result = await ollama.complete(
+                MODELS["main"], prompt, system=system, max_tokens=2000
+            )
 
             # NOTE: No auto flashcards here — cards are only made when the
             # user explicitly asks (Flashcards page, chat flashcard intent,
@@ -139,7 +164,9 @@ class AutomationService:
         except Exception as e:
             return {"error": str(e)}
 
-    async def batch_process(self, files: list[dict], operation: str = "summarise") -> dict:
+    async def batch_process(
+        self, files: list[dict], operation: str = "summarise"
+    ) -> dict:
         """Process multiple files at once."""
         results = []
         for f in files:
@@ -152,9 +179,17 @@ class AutomationService:
                     result = await self.quiz_from_notes(file_bytes, filename)
                 else:
                     result = await self.summarise_paper_pipeline(file_bytes, filename)
-                results.append({"filename": filename, "result": result, "success": "error" not in result})
+                results.append(
+                    {
+                        "filename": filename,
+                        "result": result,
+                        "success": "error" not in result,
+                    }
+                )
             except Exception as e:
-                results.append({"filename": f.get("name", "?"), "error": str(e), "success": False})
+                results.append(
+                    {"filename": f.get("name", "?"), "error": str(e), "success": False}
+                )
 
         return {
             "total": len(files),

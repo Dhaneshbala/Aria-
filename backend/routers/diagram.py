@@ -1,6 +1,8 @@
 """Diagram router — Napkin AI-style visuals (inline in chat, no separate page)."""
+
 from fastapi import APIRouter
 from pydantic import BaseModel
+
 from services.diagram_service import DiagramService
 
 router = APIRouter(prefix="/api/diagram", tags=["diagram"])
@@ -41,12 +43,17 @@ async def suggest_diagram(req: SuggestRequest):
 @router.get("/status")
 async def diagram_status():
     try:
-        from services.ollama_service import OllamaService
         from models.database import MODELS, get_config
+        from services.ollama_service import OllamaService
+
         cfg = get_config()
         model = cfg.get("model") or cfg.get("reasoning_model") or MODELS["main"]
         health = await OllamaService().health()
-        return {"ok": True, "model": model, "ollama": health.get("ok", False),
-                "mode": "spec-json (no LoRA needed)"}
+        return {
+            "ok": True,
+            "model": model,
+            "ollama": health.get("ok", False),
+            "mode": "spec-json (no LoRA needed)",
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)[:120]}

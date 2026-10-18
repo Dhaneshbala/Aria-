@@ -2,6 +2,7 @@
 
 Uses fakes for generation + verification — no model needed.
 """
+
 import pytest
 
 from services.study_service import StudyService

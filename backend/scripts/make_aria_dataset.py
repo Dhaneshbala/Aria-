@@ -18,6 +18,7 @@ Run from the backend directory:
     source venv/bin/activate
     python scripts/make_aria_dataset.py
 """
+
 import json
 import random
 from pathlib import Path
@@ -37,17 +38,20 @@ records: list[dict] = []
 
 
 def add(system: str, user: str, assistant: str) -> None:
-    records.append({
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-            {"role": "assistant", "content": assistant},
-        ]
-    })
+    records.append(
+        {
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+                {"role": "assistant", "content": assistant},
+            ]
+        }
+    )
 
 
 # ── 1. Tutor chat ────────────────────────────────────────────────────────────
-add(CHAT_SYSTEM,
+add(
+    CHAT_SYSTEM,
     "Can you explain fractions to me? I never get them.",
     "Sure! A fraction is a part of a whole. The top number (numerator) tells you "
     "how many parts you have. The bottom number (denominator) tells you how many "
@@ -55,9 +59,11 @@ add(CHAT_SYSTEM,
     "Think of a pizza cut into 8 slices:\n"
     "- 3/8 means you have 3 slices out of 8\n"
     "- 1/2 means half the pizza\n\n"
-    "Try this: what is bigger, 1/2 or 3/8? Hint: 1/2 is the same as 4/8.")
+    "Try this: what is bigger, 1/2 or 3/8? Hint: 1/2 is the same as 4/8.",
+)
 
-add(CHAT_SYSTEM,
+add(
+    CHAT_SYSTEM,
     "I don't understand photosynthesis. Can you explain it simply?",
     "Photosynthesis is how plants make their own food using sunlight.\n\n"
     "It happens in the leaves, in tiny parts called chloroplasts. The recipe is:\n\n"
@@ -65,9 +71,11 @@ add(CHAT_SYSTEM,
     "So the plant takes water from its roots, carbon dioxide from the air, and "
     "uses sunlight as the energy source. The glucose feeds the plant and the "
     "oxygen is released for us to breathe.\n\n"
-    "Fun fact: almost all the oxygen on Earth comes from photosynthesis!")
+    "Fun fact: almost all the oxygen on Earth comes from photosynthesis!",
+)
 
-add(CHAT_SYSTEM,
+add(
+    CHAT_SYSTEM,
     "What is the difference between weather and climate?",
     "Weather is what's happening right now, or today — like 'it's raining' or "
     "'it's hot outside'. It changes quickly.\n\n"
@@ -76,17 +84,21 @@ add(CHAT_SYSTEM,
     "weather today might be cold and rainy.\n\n"
     "Short version:\n"
     "- Weather = what you wear today\n"
-    "- Climate = what you pack in your suitcase for the season")
+    "- Climate = what you pack in your suitcase for the season",
+)
 
-add(CHAT_SYSTEM,
+add(
+    CHAT_SYSTEM,
     "Why does a balloon shrink in the fridge?",
     "Great question! It's because of the particles in the gas.\n\n"
     "When you cool a gas, the particles slow down and get closer together. This "
     "means the gas takes up less space, so the balloon gets smaller.\n\n"
     "It's the opposite when you warm it up — the particles speed up and spread "
-    "out, so the balloon expands. This is called thermal expansion.")
+    "out, so the balloon expands. This is called thermal expansion.",
+)
 
-add(CHAT_SYSTEM,
+add(
+    CHAT_SYSTEM,
     "Can you help me remember the order of operations in maths?",
     "Of course! Use this fun memory trick: BODMAS (or BEDMAS):\n\n"
     "B - Brackets first\n"
@@ -94,12 +106,14 @@ add(CHAT_SYSTEM,
     "D/M - Division and Multiplication (left to right)\n"
     "A/S - Addition and Subtraction (left to right)\n\n"
     "Example: 3 + 4 × 2 = 3 + 8 = 11 (you multiply first, NOT left to right!)\n\n"
-    "Quiz: what is (3 + 4) × 2? Answer: 14 — the brackets change everything!")
+    "Quiz: what is (3 + 4) × 2? Answer: 14 — the brackets change everything!",
+)
 
 # ── 2. Flashcards ────────────────────────────────────────────────────────────
 FLASHCARD_SYS = "You are an expert study assistant for a 13-year-old student."
 
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Generate 5 flashcards for studying: Photosynthesis",
     "FRONT: What is photosynthesis? | BACK: The process plants use to make food "
     "from sunlight, water and carbon dioxide.\n"
@@ -110,9 +124,11 @@ add(FLASHCARD_SYS,
     "FRONT: What are the outputs of photosynthesis? | BACK: Glucose (food) and "
     "oxygen.\n"
     "FRONT: Why do plants need photosynthesis? | BACK: To make their own food and "
-    "release oxygen for animals to breathe.")
+    "release oxygen for animals to breathe.",
+)
 
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Generate 4 flashcards for studying: The French Revolution",
     "FRONT: When did the French Revolution start? | BACK: 1789.\n"
     "FRONT: What was the Bastille? | BACK: A prison in Paris that was stormed on "
@@ -120,33 +136,41 @@ add(FLASHCARD_SYS,
     "FRONT: What was the slogan of the revolution? | BACK: Liberté, Égalité, "
     "Fraternité (Freedom, Equality, Brotherhood).\n"
     "FRONT: What happened to King Louis XVI? | BACK: He was executed by guillotine "
-    "in 1793.")
+    "in 1793.",
+)
 
 # ── 3. Mind map (JSON) ───────────────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Create a mind map for the topic: Water Cycle\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"center": "Water Cycle", "branches": [{"label": "Branch 1", "children": ["subtopic 1", "subtopic 2"]}, {"label": "Branch 2", "children": ["subtopic 3", "subtopic 4"]}]}\n'
     "Include 4-6 main branches, each with 2-4 children. No extra text.",
-    '{"center": "Water Cycle", "branches": [{"label": "Evaporation", "children": ["Sun heats water", "Liquid to gas", "Oceans and lakes"]}, {"label": "Condensation", "children": ["Water vapour cools", "Clouds form", "Gas to liquid"]}, {"label": "Precipitation", "children": ["Rain", "Snow", "Hail"]}, {"label": "Collection", "children": ["Rivers and streams", "Oceans", "Groundwater", "Lakes"]}, {"label": "Transpiration", "children": ["Water from plants", "Leaves release vapour", "Part of the cycle"]}]}')
+    '{"center": "Water Cycle", "branches": [{"label": "Evaporation", "children": ["Sun heats water", "Liquid to gas", "Oceans and lakes"]}, {"label": "Condensation", "children": ["Water vapour cools", "Clouds form", "Gas to liquid"]}, {"label": "Precipitation", "children": ["Rain", "Snow", "Hail"]}, {"label": "Collection", "children": ["Rivers and streams", "Oceans", "Groundwater", "Lakes"]}, {"label": "Transpiration", "children": ["Water from plants", "Leaves release vapour", "Part of the cycle"]}]}',
+)
 
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Create a mind map for the topic: Ancient Egypt\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"center": "Ancient Egypt", "branches": [{"label": "Branch 1", "children": ["subtopic 1", "subtopic 2"]}, {"label": "Branch 2", "children": ["subtopic 3", "subtopic 4"]}]}\n'
     "Include 4-6 main branches, each with 2-4 children. No extra text.",
-    '{"center": "Ancient Egypt", "branches": [{"label": "Geography", "children": ["Nile River", "Deserts", "Fertile soil", "Mediterranean Sea"]}, {"label": "Pharaohs", "children": ["King Tutankhamun", "Ramesses II", "God-kings"]}, {"label": "Pyramids", "children": ["Giza", "Tombs for pharaohs", "Built by workers"]}, {"label": "Writing", "children": ["Hieroglyphics", "Papyrus", "Rosetta Stone"]}, {"label": "Religion", "children": ["Many gods", "Afterlife", "Mummification", "Book of the Dead"]}]}')
+    '{"center": "Ancient Egypt", "branches": [{"label": "Geography", "children": ["Nile River", "Deserts", "Fertile soil", "Mediterranean Sea"]}, {"label": "Pharaohs", "children": ["King Tutankhamun", "Ramesses II", "God-kings"]}, {"label": "Pyramids", "children": ["Giza", "Tombs for pharaohs", "Built by workers"]}, {"label": "Writing", "children": ["Hieroglyphics", "Papyrus", "Rosetta Stone"]}, {"label": "Religion", "children": ["Many gods", "Afterlife", "Mummification", "Book of the Dead"]}]}',
+)
 
 # ── 4. Study plan (JSON array) ───────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Create a 5-day study plan for: Naplan Preparation\n"
     "The student is 13 years old. Format as JSON array:\n"
     '[{"day": 1, "title": "Day title", "tasks": ["task 1", "task 2"], "time_minutes": 45}]\n'
     "Include realistic daily tasks and time estimates. No extra text.",
-    '[{"day": 1, "title": "Diagnostic Practice Test", "tasks": ["Complete a past NAPLAN reading paper", "Mark answers and list mistakes", "Note weak topic areas"], "time_minutes": 45}, {"day": 2, "title": "Reading and Comprehension", "tasks": ["Revise main idea and inference skills", "Practise 10 comprehension questions", "Review tricky vocabulary"], "time_minutes": 45}, {"day": 3, "title": "Writing: Narrative", "tasks": ["Plan a narrative using the structure triangle", "Write a 15-minute story draft", "Improve with strong adjectives and dialogue"], "time_minutes": 45}, {"day": 4, "title": "Numeracy Revision", "tasks": ["Practise decimals and fractions", "Do 10 number problems", "Try 5 word problems on measurement"], "time_minutes": 45}, {"day": 5, "title": "Final Timed Test", "tasks": ["Do a full timed numeracy paper", "Mark and review every mistake", "Get a good night of sleep"], "time_minutes": 45}]')
+    '[{"day": 1, "title": "Diagnostic Practice Test", "tasks": ["Complete a past NAPLAN reading paper", "Mark answers and list mistakes", "Note weak topic areas"], "time_minutes": 45}, {"day": 2, "title": "Reading and Comprehension", "tasks": ["Revise main idea and inference skills", "Practise 10 comprehension questions", "Review tricky vocabulary"], "time_minutes": 45}, {"day": 3, "title": "Writing: Narrative", "tasks": ["Plan a narrative using the structure triangle", "Write a 15-minute story draft", "Improve with strong adjectives and dialogue"], "time_minutes": 45}, {"day": 4, "title": "Numeracy Revision", "tasks": ["Practise decimals and fractions", "Do 10 number problems", "Try 5 word problems on measurement"], "time_minutes": 45}, {"day": 5, "title": "Final Timed Test", "tasks": ["Do a full timed numeracy paper", "Mark and review every mistake", "Get a good night of sleep"], "time_minutes": 45}]',
+)
 
 # ── 5. Quiz (multiple choice) ───────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Generate 2 multiple-choice quiz questions about: Photosynthesis\n"
     "Difficulty: medium — asks for clear understanding of concepts\n"
     "For each question:\n"
@@ -164,9 +188,11 @@ add(FLASHCARD_SYS,
     "A) Roots\nB) Stem\nC) Leaves\nD) Flowers\n"
     "Correct: C\n"
     "Explanation: Leaves contain chloroplasts which hold the green pigment "
-    "chlorophyll that captures sunlight.")
+    "chlorophyll that captures sunlight.",
+)
 
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Generate 2 multiple-choice quiz questions about: The Water Cycle\n"
     "Difficulty: easy — simple recall of key terms\n"
     "For each question:\n"
@@ -183,10 +209,12 @@ add(FLASHCARD_SYS,
     "Q2: Which form of precipitation is NOT liquid?\n"
     "A) Rain\nB) Drizzle\nC) Snow\nD) Hail\n"
     "Correct: C\n"
-    "Explanation: Snow falls as ice crystals; rain and drizzle are liquid water.")
+    "Explanation: Snow falls as ice crystals; rain and drizzle are liquid water.",
+)
 
 # ── 6. Summary ──────────────────────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Summarise the following in clear, simple language for a 13-year-old student.\n"
     "Include: key points, important vocabulary, main ideas.\n\n"
     "The Industrial Revolution began in Britain around 1760 and spread across the "
@@ -209,10 +237,12 @@ add(FLASHCARD_SYS,
     "- People moved from farms to cities for factory work\n"
     "- Early conditions were unsafe and children worked too\n"
     "- Laws later made work safer\n"
-    "- Transport got faster (railways), which changed trade and travel")
+    "- Transport got faster (railways), which changed trade and travel",
+)
 
 # ── 7. Notes ────────────────────────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Create comprehensive study notes about: Cells\n"
     "Style: well-organised with headings, bullet points, key terms bolded\n"
     "Include: key concepts, important definitions, examples, common mistakes.\n"
@@ -235,10 +265,12 @@ add(FLASHCARD_SYS,
     "❌ Saying mitochondria 'make' energy — they *release* energy from food\n\n"
     "## Quick check\n"
     "What is the difference between a plant and animal cell? "
-    "Plant cells have a cell wall, chloroplasts and a large vacuole.")
+    "Plant cells have a cell wall, chloroplasts and a large vacuole.",
+)
 
 # ── 8. Essay feedback ───────────────────────────────────────────────────────
-add("You are an expert English teacher providing constructive essay feedback for a 13-year-old student.",
+add(
+    "You are an expert English teacher providing constructive essay feedback for a 13-year-old student.",
     "Analyse this essay and provide detailed feedback.\n"
     "Topic: Should students have homework?\n\n"
     "Essay:\n"
@@ -282,10 +314,12 @@ add("You are an expert English teacher providing constructive essay feedback for
     "**Top 3 improvements**:\n"
     "1. Fix homophones (to → too) and add full stops\n"
     "2. Write an introduction with a stronger thesis sentence\n"
-    "3. Add one researched fact as evidence")
+    "3. Add one researched fact as evidence",
+)
 
 # ── 9. Formula reference ────────────────────────────────────────────────────
-add(FLASHCARD_SYS,
+add(
+    FLASHCARD_SYS,
     "Create a formula reference sheet for: Geometry (areas and perimeters)",
     "AREA — the space inside a shape (units²):\n"
     "- Square: side × side = s²\n"
@@ -299,7 +333,8 @@ add(FLASHCARD_SYS,
     "Mnemonic: 'The circle ate the pie' → Area = πr² (r squared), "
     "Circumference = 2πr.\n\n"
     "⚠ Watch out: area answers are always in square units (cm², m²). "
-    "Perimeter answers are in plain units (cm, m).")
+    "Perimeter answers are in plain units (cm, m).",
+)
 
 # ── Combine with organizer examples ─────────────────────────────────────────
 organizer_file = BACKEND_DIR / "data" / "finetune" / "organizer_dataset.jsonl"

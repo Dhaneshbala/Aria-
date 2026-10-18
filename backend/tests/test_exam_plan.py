@@ -1,10 +1,11 @@
 """Tests for the exam countdown planner (rule-based, no LLM needed)."""
+
 from datetime import date, timedelta
 
 import pytest
 
-from services.exam_plan_service import build_schedule
 import services.exam_plan_service as eps
+from services.exam_plan_service import build_schedule
 
 
 def test_schedule_weak_topics_first_and_repeated():
@@ -39,6 +40,7 @@ def test_schedule_defaults_subject():
 @pytest.mark.asyncio
 async def test_create_plan_makes_todos_and_lists():
     from datetime import date as _d
+
     exam = (_d.today() + timedelta(days=3)).isoformat()
     plan = await eps.create_plan("NAPLAN", exam, ["Maths"], 30)
     assert plan["exam_name"] == "NAPLAN"

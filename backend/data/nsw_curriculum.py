@@ -20,8 +20,13 @@ NSW_ENGLISH = {
             "EN4-5F — recognises, reflects on and assesses their capacity to interpret texts, compose texts and speak in a variety of situations",
         ],
         "modules": [
-            "Early Modern Texts", "Imaginative Writing", "Persuasive Writing",
-            "Poetry", "Film Study", "Media Literacy", "Spoken Text",
+            "Early Modern Texts",
+            "Imaginative Writing",
+            "Persuasive Writing",
+            "Poetry",
+            "Film Study",
+            "Media Literacy",
+            "Spoken Text",
         ],
         "topics": [
             "Essay writing (introduction, body, conclusion, thesis statement, topic sentences)",
@@ -45,8 +50,12 @@ NSW_ENGLISH = {
             "EN5-5F — uses a range of technologies appropriately to compose, publish and reflect on texts",
         ],
         "modules": [
-            "Extended Writing", "Critical Study of Literature", "Media Representation",
-            "Multimodal Texts", "Public Speaking", "Creative Non-fiction",
+            "Extended Writing",
+            "Critical Study of Literature",
+            "Media Representation",
+            "Multimodal Texts",
+            "Public Speaking",
+            "Creative Non-fiction",
         ],
         "topics": [
             "Discursive essays (balanced arguments, evidence, synthesis)",
@@ -134,12 +143,25 @@ NSW_SCIENCE = {
             "SC4-15IC — uses scientific understanding and skills in familiar and new situations",
         ],
         "topics": [
-            "Cells and cell division", "Digestive system", "Circulatory and respiratory systems",
-            "Ecosystems and food webs", "Adaptations and natural selection", "Genetics and inheritance",
-            "States of matter", "Atoms and elements", "Chemical reactions", "Mixtures and solutions",
-            "Forces and motion", "Energy transformations", "Electrical circuits",
-            "Plate tectonics", "Weathering and erosion", "Rock cycle", "Earth's atmosphere",
-            "Human impact on the environment", "Water cycle and sustainability",
+            "Cells and cell division",
+            "Digestive system",
+            "Circulatory and respiratory systems",
+            "Ecosystems and food webs",
+            "Adaptations and natural selection",
+            "Genetics and inheritance",
+            "States of matter",
+            "Atoms and elements",
+            "Chemical reactions",
+            "Mixtures and solutions",
+            "Forces and motion",
+            "Energy transformations",
+            "Electrical circuits",
+            "Plate tectonics",
+            "Weathering and erosion",
+            "Rock cycle",
+            "Earth's atmosphere",
+            "Human impact on the environment",
+            "Water cycle and sustainability",
         ],
     },
     "Stage 5": {
@@ -157,13 +179,25 @@ NSW_SCIENCE = {
             "SC5-13PD — evaluates the impact of personal choices on community health and safety",
         ],
         "topics": [
-            "Advanced cell biology", "DNA and protein synthesis", "Homeostasis",
-            "Ecosystem dynamics", "Classification and phylogenetics", "Evolution and speciation",
-            "Atomic structure", "Periodic table trends", "Chemical bonding",
-            "Balancing equations", "Acids, bases, and pH", "Rate of reactions",
-            "Wave physics", "Energy and momentum", "Electromagnetic spectrum",
-            "Earth's geological history", "Fossil fuels and renewable energy",
-            "Climate change science", "Nanotechnology and materials science",
+            "Advanced cell biology",
+            "DNA and protein synthesis",
+            "Homeostasis",
+            "Ecosystem dynamics",
+            "Classification and phylogenetics",
+            "Evolution and speciation",
+            "Atomic structure",
+            "Periodic table trends",
+            "Chemical bonding",
+            "Balancing equations",
+            "Acids, bases, and pH",
+            "Rate of reactions",
+            "Wave physics",
+            "Energy and momentum",
+            "Electromagnetic spectrum",
+            "Earth's geological history",
+            "Fossil fuels and renewable energy",
+            "Climate change science",
+            "Nanotechnology and materials science",
         ],
     },
 }
@@ -174,24 +208,38 @@ NSW_HSIE = {
     "Stage 4": {
         "topics": [
             # Geography
-            "Factors affecting food and water security", "Environmental change and management",
-            "Interconnections between places", "Global megacities", "Natural hazards",
+            "Factors affecting food and water security",
+            "Environmental change and management",
+            "Interconnections between places",
+            "Global megacities",
+            "Natural hazards",
             # History
-            "The Ancient World (Rome, Greece, Egypt, China)", "Medieval Europe",
-            "The Black Death", "The Renaissance", "Contact and conquest (1770-1810)",
-            "Colonial Australia", "The Industrial Revolution",
+            "The Ancient World (Rome, Greece, Egypt, China)",
+            "Medieval Europe",
+            "The Black Death",
+            "The Renaissance",
+            "Contact and conquest (1770-1810)",
+            "Colonial Australia",
+            "The Industrial Revolution",
         ],
     },
     "Stage 5": {
         "topics": [
             # Geography
-            "Human-environment interactions", "Water in the world", "Environmental change",
-            "Global spatial inequalities", "Changing places, changing people",
+            "Human-environment interactions",
+            "Water in the world",
+            "Environmental change",
+            "Global spatial inequalities",
+            "Changing places, changing people",
             # History
             "Australia in the 20th century (WWI, WWII, the Depression)",
-            "Rights and freedoms", "Migration to Australia",
-            "The Cold War", "The Vietnam War", "Australia in Asia",
-            "Aboriginal civil rights movement", "The environment movement",
+            "Rights and freedoms",
+            "Migration to Australia",
+            "The Cold War",
+            "The Vietnam War",
+            "Australia in Asia",
+            "Aboriginal civil rights movement",
+            "The environment movement",
         ],
     },
 }
@@ -201,19 +249,28 @@ NSW_HSIE = {
 NSW_PDHPE = {
     "Stage 4": {
         "topics": [
-            "Personal identity and self-awareness", "Healthy eating and nutrition",
-            "Physical activity and fitness", "Mental health and well-being",
-            "Safety and risk management", "Peer relationships and communication",
-            "Growth and development", "Substances and their effects",
-            "Diversity and inclusion", "Personal health management",
+            "Personal identity and self-awareness",
+            "Healthy eating and nutrition",
+            "Physical activity and fitness",
+            "Mental health and well-being",
+            "Safety and risk management",
+            "Peer relationships and communication",
+            "Growth and development",
+            "Substances and their effects",
+            "Diversity and inclusion",
+            "Personal health management",
         ],
     },
     "Stage 5": {
         "topics": [
-            "Nutrition for performance", "Cardiovascular and muscular fitness",
-            "Mental health strategies", "Body image and media influence",
-            "Substance use prevention", "Healthy relationships",
-            "First aid and emergency response", "Community health and safety",
+            "Nutrition for performance",
+            "Cardiovascular and muscular fitness",
+            "Mental health strategies",
+            "Body image and media influence",
+            "Substance use prevention",
+            "Healthy relationships",
+            "First aid and emergency response",
+            "Community health and safety",
             "Social and environmental influences on health",
         ],
     },
@@ -224,18 +281,27 @@ NSW_PDHPE = {
 NSW_TECH = {
     "Stage 4": {
         "topics": [
-            "Design process", "Engineering principles", "Food technology basics",
-            "Timber and metal technologies", "Textiles and materials",
-            "Digital technologies and coding basics", "Graphics and CAD",
-            "Sustainability in design", "Systems thinking",
+            "Design process",
+            "Engineering principles",
+            "Food technology basics",
+            "Timber and metal technologies",
+            "Textiles and materials",
+            "Digital technologies and coding basics",
+            "Graphics and CAD",
+            "Sustainability in design",
+            "Systems thinking",
         ],
     },
     "Stage 5": {
         "topics": [
-            "Advanced CAD and prototyping", "Robotics and automation",
-            "Food science and processing", "Industrial design",
-            "Software development basics", "Electronics and circuits",
-            "Engineering structures", "Biotechnology applications",
+            "Advanced CAD and prototyping",
+            "Robotics and automation",
+            "Food science and processing",
+            "Industrial design",
+            "Software development basics",
+            "Electronics and circuits",
+            "Engineering structures",
+            "Biotechnology applications",
             "Sustainable product design",
         ],
     },
@@ -249,21 +315,28 @@ NSW_ARTS = {
             # Visual Arts
             "Elements of art (line, shape, colour, form, texture, space)",
             "Principles of design (balance, contrast, emphasis, pattern, unity)",
-            "Australian Aboriginal art", "Art movements and styles",
+            "Australian Aboriginal art",
+            "Art movements and styles",
             # Music
             "Elements of music (rhythm, melody, harmony, dynamics, texture)",
-            "Music notation basics", "Ensemble performance",
+            "Music notation basics",
+            "Ensemble performance",
             # Drama
             "Drama conventions (role, status, space, time, tension)",
-            "Performance techniques", "Script writing basics",
+            "Performance techniques",
+            "Script writing basics",
         ],
     },
     "Stage 5": {
         "topics": [
-            "Art criticism and aesthetics", "Contemporary art practices",
-            "Photography and digital media", "Ceramics and sculpture",
-            "Music composition and arrangement", "Music technology and production",
-            "Improvisation and devised theatre", "Film making basics",
+            "Art criticism and aesthetics",
+            "Contemporary art practices",
+            "Photography and digital media",
+            "Ceramics and sculpture",
+            "Music composition and arrangement",
+            "Music technology and production",
+            "Improvisation and devised theatre",
+            "Film making basics",
             "Cultural and historical art contexts",
         ],
     },
@@ -287,12 +360,16 @@ SUBJECT_CURRICULUM = {
 }
 
 
-def get_curriculum_context(subject: str, stage: str = "Stage 4", topic: str = "") -> str:
+def get_curriculum_context(
+    subject: str, stage: str = "Stage 4", topic: str = ""
+) -> str:
     """Build curriculum context string for worksheet generation prompts."""
     curriculum = SUBJECT_CURRICULUM.get(subject, {})
     stage_data = curriculum.get(stage, {})
 
-    lines = [f"NSW {stage} ({NSW_STAGES.get(stage, {}).get('years', '?-?')} years, age {NSW_STAGES.get(stage, {}).get('age', '?-?')}):"]
+    lines = [
+        f"NSW {stage} ({NSW_STAGES.get(stage, {}).get('years', '?-?')} years, age {NSW_STAGES.get(stage, {}).get('age', '?-?')}):"
+    ]
 
     if "outcomes" in stage_data:
         lines.append("Syllabus outcomes:")
@@ -307,7 +384,11 @@ def get_curriculum_context(subject: str, stage: str = "Stage 4", topic: str = ""
         all_topics = stage_data["topics"]
         if topic:
             topic_lower = topic.lower()
-            relevant = [t for t in all_topics if any(w in t.lower() for w in topic_lower.split())]
+            relevant = [
+                t
+                for t in all_topics
+                if any(w in t.lower() for w in topic_lower.split())
+            ]
             if relevant:
                 lines.append(f"Relevant topics: {', '.join(relevant[:5])}")
         lines.append(f"All topics: {', '.join(all_topics)}")

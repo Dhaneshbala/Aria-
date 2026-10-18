@@ -4,11 +4,12 @@ Stores conversation turns, study-profile data, and knowledge graph.
 Retrieves semantically similar memories at query time.
 Includes cross-conversation search, timeline, compression, and cleanup.
 """
+
 import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,12 @@ COMPRESSED_FILE = DATA_DIR / "compressed_memory.json"
 TITLES_FILE = DATA_DIR / "titles.json"
 
 
-import threading
 import tempfile
+import threading
 
 _LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_LOCK = threading.Lock()
+
 
 def _lock_for(path: Path) -> threading.RLock:
     key = str(path)
@@ -34,6 +36,7 @@ def _lock_for(path: Path) -> threading.RLock:
         if key not in _LOCKS:
             _LOCKS[key] = threading.RLock()
         return _LOCKS[key]
+
 
 def _load_json(path: Path, default):
     lock = _lock_for(path)
@@ -50,7 +53,9 @@ def _save_json(path: Path, data):
     lock = _lock_for(path)
     with lock:
         text = json.dumps(data, indent=2, ensure_ascii=False)
-        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp.")
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(path.parent), prefix=f".{path.name}.tmp."
+        )
         try:
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -74,6 +79,7 @@ def _rerank_local(query: str, docs: list[str], top_k: int | None = None) -> list
     # Try sentence-transformers cross-encoder (quantized, CPU)
     try:
         from sentence_transformers import CrossEncoder
+
         # Use tiny quantized cross-encoder if available, else skip
         model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
         scores = model.predict([(query, d) for d in docs])
@@ -85,9 +91,11 @@ def _rerank_local(query: str, docs: list[str], top_k: int | None = None) -> list
     # Fallback: simple keyword overlap + nomic cosine via difflib (free, no model)
     try:
         q_words = set(query.lower().split())
+
         def score(d):
             d_words = set(d.lower().split())
             return len(q_words & d_words) / max(1, len(q_words))
+
         ranked = sorted(docs, key=score, reverse=True)
         return ranked[:top_k] if top_k else ranked
     except Exception:
@@ -129,7 +137,9 @@ def _heuristic_title(turns: list[dict]) -> str:
     return last[:55] + ("…" if len(last) > 55 else "")
 
 
-async def _llm_title_for_turns(turns: list[dict], model: str | None = None) -> str | None:
+async def _llm_title_for_turns(
+    turns: list[dict], model: str | None = None
+) -> str | None:
     """Try LLM for a 3-6 word title, fallback to heuristic."""
     try:
         if not turns:
@@ -144,18 +154,22 @@ async def _llm_title_for_turns(turns: list[dict], model: str | None = None) -> s
         snippet = "\n".join(f"- {u[:120]}" for u in users[-5:])
         prompt = f"Conversation progression (oldest to newest):\n{snippet}\n\nGenerate a concise 3-6 word chat title capturing the overall journey/progression. No quotes, no period, title case. Title:"
         system = "You generate short chat titles. Output ONLY the title, 3-6 words, no punctuation, no quotes."
-        from services.ollama_service import OllamaService
         from models.database import MODELS as _MODELS
-        m = model or _MODELS.get("main", "gemma4:e4b-mlx")
+        from services.ollama_service import OllamaService
+
+        m = model or _MODELS.get("main", "gemma3:12b")
         svc = OllamaService()
         # 4s timeout — title is not worth blocking chat
         import asyncio as _asyncio
+
         try:
             raw = await _asyncio.wait_for(
-                svc.complete(m, prompt, system, max_tokens=16, think=False, context_window=2048),
+                svc.complete(
+                    m, prompt, system, max_tokens=16, think=False, context_window=2048
+                ),
                 timeout=4,
             )
-        except _asyncio.TimeoutError:
+        except TimeoutError:
             return _heuristic_title(turns)
         raw = (raw or "").strip().strip('"').strip("'").strip()
         # Take first line, strip bullet
@@ -186,13 +200,20 @@ class _NomicEmbeddingFunction:
 
     def __call__(self, input: list[str]) -> list[list[float]]:
         import httpx
+
         # Resolve OLLAMA_URL and embedding model from central config
         try:
-            from models.database import OLLAMA_URL as _OLLAMA_URL, MODELS as _MODELS
+            from models.database import MODELS as _MODELS
+            from models.database import OLLAMA_URL as _OLLAMA_URL
+
             ollama_url = _OLLAMA_URL
             embed_model = _MODELS.get("embedding", "nomic-embed-text")
         except Exception:
-            ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/").split("/api")[0]
+            ollama_url = (
+                os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+                .rstrip("/")
+                .split("/api")[0]
+            )
             embed_model = os.environ.get("ARIA_EMBED_MODEL", "nomic-embed-text")
 
         # Normalize model variants — Ollama may have :latest suffix
@@ -228,25 +249,33 @@ class _NomicEmbeddingFunction:
                 embeddings: list[list[float]] = []
                 with httpx.Client(timeout=60, base_url=ollama_url) as client:
                     for text in input:
-                        r = client.post("/api/embeddings", json={"model": mdl, "prompt": text})
-                        r.raise_for_status()
-                        emb = r.json().get("embedding")
+                        try:
+                            r = client.post(
+                                "/api/embeddings", json={"model": mdl, "prompt": text}
+                            )
+                            r.raise_for_status()
+                            emb = r.json().get("embedding")
+                        except Exception as e:
+                            logger.debug("Memory per-text embedding failed: %s", e)
+                            continue
                         if emb:
                             embeddings.append(emb)
-                        else:
-                            embeddings.append([0.0] * 768)
-                if len(embeddings) == len(input):
+                        # else: skip texts with no embedding (no zero-vector poison)
+                if embeddings and len(embeddings) == len(input):
                     return embeddings
+                if embeddings:
+                    continue  # partial success is still poison-risk; try next model
             except Exception as e:
-                logger.debug("Memory embedding failed for %s via embeddings: %s", mdl, e)
+                logger.debug(
+                    "Memory embedding failed for %s via embeddings: %s", mdl, e
+                )
                 continue
 
-        logger.warning("Memory embedding failed for all candidates %s — returning zero vectors", candidates)
-        return [[0.0] * 768 for _ in input]
+        logger.warning("Memory embedding failed for all candidates %s", candidates)
+        raise RuntimeError("embedding unavailable")
 
 
 class MemoryService:
-
     def __init__(self):
         self._chroma_available = False
         self._collection = None
@@ -256,7 +285,7 @@ class MemoryService:
     def _init_chroma(self):
         try:
             import chromadb
-            from chromadb.config import Settings
+
             db_path = str(DATA_DIR / "chromadb")
             client = chromadb.PersistentClient(path=db_path)
             # Use nomic-embed-text via Ollama for consistent embeddings with KB
@@ -273,12 +302,12 @@ class MemoryService:
                 embedding_function=embedding_fn,
             )
             self._chroma_available = True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Chroma init failed: %s", e)
 
     async def save(self, conversation_id: str, user_msg: str, ai_msg: str):
         """Save a conversation turn to both local and global stores."""
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         turn = {
             "conversation_id": conversation_id,
             "user": user_msg,
@@ -305,6 +334,7 @@ class MemoryService:
             n = len(convs[conversation_id])
             if n >= 3 and n % 2 == 1:
                 import asyncio as _asyncio
+
                 try:
                     loop = _asyncio.get_running_loop()
                     loop.create_task(self._background_llm_title(conversation_id))
@@ -321,16 +351,21 @@ class MemoryService:
                 self._collection.add(
                     documents=[combined],
                     ids=[doc_id],
-                    metadatas=[{"conversation_id": conversation_id, "timestamp": ts}]
+                    metadatas=[{"conversation_id": conversation_id, "timestamp": ts}],
                 )
                 # Also add to global collection (no conversation_id filter)
-                self._global_collection.add(
-                    documents=[combined],
-                    ids=[f"g_{doc_id}"],
-                    metadatas=[{"conversation_id": conversation_id, "timestamp": ts}]
-                )
-            except Exception:
-                pass
+                try:
+                    self._global_collection.add(
+                        documents=[combined],
+                        ids=[f"g_{doc_id}"],
+                        metadatas=[
+                            {"conversation_id": conversation_id, "timestamp": ts}
+                        ],
+                    )
+                except Exception as e:
+                    logger.debug("Global memory add failed: %s", e)
+            except Exception as e:
+                logger.debug("Memory save failed (continuing without memory): %s", e)
 
     async def _background_llm_title(self, conversation_id: str):
         try:
@@ -366,7 +401,9 @@ class MemoryService:
         _save_titles(titles)
         return clean
 
-    async def regenerate_title(self, conversation_id: str, use_llm: bool = True) -> str | None:
+    async def regenerate_title(
+        self, conversation_id: str, use_llm: bool = True
+    ) -> str | None:
         convs = _load_json(CONVERSATIONS_FILE, {})
         turns = convs.get(conversation_id, [])
         if not turns:
@@ -397,7 +434,7 @@ class MemoryService:
                     results = self._collection.query(
                         query_texts=[query],
                         n_results=min(k, max(1, count)),
-                        where={"conversation_id": conversation_id}
+                        where={"conversation_id": conversation_id},
                     )
                     semantic = results["documents"][0] if results["documents"] else []
             except Exception as e:
@@ -413,17 +450,19 @@ class MemoryService:
                         query_texts=[query],
                         n_results=min(3, max(1, count)),
                     )
-                    global_context = results["documents"][0] if results["documents"] else []
+                    global_context = (
+                        results["documents"][0] if results["documents"] else []
+                    )
             except Exception:
                 pass
 
         # Merge, deduplicate, rerank, limit — Phase 3 local reranker (free)
         all_memories = list(dict.fromkeys(semantic + recent + global_context))
         try:
-            all_memories = _rerank_local(query, all_memories, top_k=k+6)
+            all_memories = _rerank_local(query, all_memories, top_k=k + 6)
         except Exception:
             pass
-        return all_memories[:k + 6]
+        return all_memories[: k + 6]
 
     async def search_global(self, query: str, limit: int = 20) -> list[dict]:
         """Semantic search across ALL conversations."""
@@ -439,11 +478,13 @@ class MemoryService:
                     docs = results["documents"][0] if results["documents"] else []
                     metas = results["metadatas"][0] if results["metadatas"] else []
                     for doc, meta in zip(docs, metas):
-                        results_list.append({
-                            "text": doc[:300],
-                            "conversation_id": meta.get("conversation_id", ""),
-                            "timestamp": meta.get("timestamp", ""),
-                        })
+                        results_list.append(
+                            {
+                                "text": doc[:300],
+                                "conversation_id": meta.get("conversation_id", ""),
+                                "timestamp": meta.get("timestamp", ""),
+                            }
+                        )
             except Exception as e:
                 logger.warning("Global search failed: %s", e)
 
@@ -455,12 +496,17 @@ class MemoryService:
                 if q in turn.get("user", "").lower() or q in turn.get("ai", "").lower():
                     snippet = (turn.get("ai", "") or turn.get("user", ""))[:200]
                     # Avoid duplicates
-                    if not any(r["conversation_id"] == cid and r["text"][:50] == snippet[:50] for r in results_list):
-                        results_list.append({
-                            "text": snippet,
-                            "conversation_id": cid,
-                            "timestamp": turn.get("timestamp", ""),
-                        })
+                    if not any(
+                        r["conversation_id"] == cid and r["text"][:50] == snippet[:50]
+                        for r in results_list
+                    ):
+                        results_list.append(
+                            {
+                                "text": snippet,
+                                "conversation_id": cid,
+                                "timestamp": turn.get("timestamp", ""),
+                            }
+                        )
 
         return results_list[:limit]
 
@@ -481,13 +527,15 @@ class MemoryService:
                         titles[cid] = title
                     except Exception:
                         pass
-                result.append({
-                    "id": cid,
-                    "title": title,
-                    "timestamp": first["timestamp"],
-                    "last_timestamp": last["timestamp"],
-                    "turn_count": len(turns),
-                })
+                result.append(
+                    {
+                        "id": cid,
+                        "title": title,
+                        "timestamp": first["timestamp"],
+                        "last_timestamp": last["timestamp"],
+                        "turn_count": len(turns),
+                    }
+                )
         # Save any newly generated heuristic titles
         try:
             _save_titles(titles)
@@ -504,22 +552,27 @@ class MemoryService:
         for cid, turns in convs.items():
             matching_turns = []
             for turn in turns:
-                if query_lower in turn.get("user", "").lower() or query_lower in turn.get("ai", "").lower():
+                if (
+                    query_lower in turn.get("user", "").lower()
+                    or query_lower in turn.get("ai", "").lower()
+                ):
                     matching_turns.append(turn)
             if matching_turns:
                 score = len(matching_turns)
                 first_match = matching_turns[0]
                 snippet = first_match.get("ai", "")[:200]
                 title = titles.get(cid) or _heuristic_title(turns)
-                results.append({
-                    "id": cid,
-                    "title": title,
-                    "timestamp": turns[0]["timestamp"],
-                    "last_timestamp": turns[-1]["timestamp"],
-                    "turn_count": len(turns),
-                    "snippet": snippet,
-                    "score": score,
-                })
+                results.append(
+                    {
+                        "id": cid,
+                        "title": title,
+                        "timestamp": turns[0]["timestamp"],
+                        "last_timestamp": turns[-1]["timestamp"],
+                        "turn_count": len(turns),
+                        "snippet": snippet,
+                        "score": score,
+                    }
+                )
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:20]
 
@@ -547,7 +600,8 @@ class MemoryService:
         """Get a timeline of learning activity over time."""
         convs = _load_json(CONVERSATIONS_FILE, {})
         from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        cutoff = datetime.now(UTC) - timedelta(days=days)
 
         daily = {}
         for cid, turns in convs.items():
@@ -555,13 +609,16 @@ class MemoryService:
                 try:
                     ts = turn.get("timestamp", "")
                     if ts:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = datetime.fromisoformat(ts)
                         if dt >= cutoff:
                             day_key = dt.strftime("%Y-%m-%d")
                             if day_key not in daily:
                                 daily[day_key] = {
-                                    "date": day_key, "conversation_ids": [],
-                                    "topics": [], "turns": 0, "conversations": 0,
+                                    "date": day_key,
+                                    "conversation_ids": [],
+                                    "topics": [],
+                                    "turns": 0,
+                                    "conversations": 0,
                                 }
                             daily[day_key]["turns"] += 1
                             if cid not in daily[day_key]["conversation_ids"]:
@@ -569,7 +626,9 @@ class MemoryService:
                             # Extract topics from user messages
                             user_msg = turn.get("user", "")
                             if user_msg and len(daily[day_key]["topics"]) < 5:
-                                topic = user_msg[:50] + ("..." if len(user_msg) > 50 else "")
+                                topic = user_msg[:50] + (
+                                    "..." if len(user_msg) > 50 else ""
+                                )
                                 if topic not in daily[day_key]["topics"]:
                                     daily[day_key]["topics"].append(topic)
                 except Exception:
@@ -597,14 +656,16 @@ class MemoryService:
                     continue
             if date_turns:
                 title = titles.get(cid) or _heuristic_title(date_turns)
-                results.append({
-                    "id": cid,
-                    "title": title or "Untitled conversation",
-                    "turn_count": len(date_turns),
-                    "first_turn": date_turns[0],
-                    "last_turn": date_turns[-1],
-                    "turns": date_turns,
-                })
+                results.append(
+                    {
+                        "id": cid,
+                        "title": title or "Untitled conversation",
+                        "turn_count": len(date_turns),
+                        "first_turn": date_turns[0],
+                        "last_turn": date_turns[-1],
+                        "turns": date_turns,
+                    }
+                )
         return results
 
     # ── Context Compression ───────────────────────────────────────────────────
@@ -614,7 +675,8 @@ class MemoryService:
         convs = _load_json(CONVERSATIONS_FILE, {})
         compressed = _load_json(COMPRESSED_FILE, [])
         from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+
+        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
 
         compressed_count = 0
         for cid, turns in list(convs.items()):
@@ -624,7 +686,7 @@ class MemoryService:
             try:
                 first_ts = turns[0].get("timestamp", "")
                 if first_ts:
-                    dt = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(first_ts)
                     if dt >= cutoff:
                         continue  # Too recent, skip
             except Exception:
@@ -663,7 +725,8 @@ class MemoryService:
         """Remove conversations older than max_age_days and clean up ChromaDB."""
         convs = _load_json(CONVERSATIONS_FILE, {})
         from datetime import timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
         removed = 0
         for cid in list(convs.keys()):
@@ -673,7 +736,7 @@ class MemoryService:
             try:
                 last_ts = turns[-1].get("timestamp", "")
                 if last_ts:
-                    dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(last_ts)
                     if dt < cutoff:
                         del convs[cid]
                         removed += 1
@@ -686,15 +749,18 @@ class MemoryService:
     # ── Study Profile ─────────────────────────────────────────────────────────
 
     async def get_profile(self) -> dict:
-        return _load_json(PROFILE_FILE, {
-            "subjects": {},
-            "streak": 0,
-            "last_active": None,
-            "total_questions": 0,
-            "correct_answers": 0,
-            "weak_areas": [],
-            "strong_areas": [],
-        })
+        return _load_json(
+            PROFILE_FILE,
+            {
+                "subjects": {},
+                "streak": 0,
+                "last_active": None,
+                "total_questions": 0,
+                "correct_answers": 0,
+                "weak_areas": [],
+                "strong_areas": [],
+            },
+        )
 
     async def update_profile(self, subject: str, correct: bool):
         profile = await self.get_profile()
@@ -717,7 +783,7 @@ class MemoryService:
                     strong.append(subj)
         profile["weak_areas"] = weak
         profile["strong_areas"] = strong
-        profile["last_active"] = datetime.now(timezone.utc).isoformat()
+        profile["last_active"] = datetime.now(UTC).isoformat()
         _save_json(PROFILE_FILE, profile)
         return profile
 
@@ -732,33 +798,41 @@ class MemoryService:
         strong = profile.get("strong_areas", [])
 
         if weak:
-            recommendations.append({
-                "type": "focus_area",
-                "message": f"You need more practice in: {', '.join(weak)}",
-                "subjects": weak,
-            })
+            recommendations.append(
+                {
+                    "type": "focus_area",
+                    "message": f"You need more practice in: {', '.join(weak)}",
+                    "subjects": weak,
+                }
+            )
 
         if strong:
-            recommendations.append({
-                "type": "strength",
-                "message": f"Great work in: {', '.join(strong)}! Keep it up!",
-                "subjects": strong,
-            })
+            recommendations.append(
+                {
+                    "type": "strength",
+                    "message": f"Great work in: {', '.join(strong)}! Keep it up!",
+                    "subjects": strong,
+                }
+            )
 
         total = profile.get("total_questions", 0)
         correct = profile.get("correct_answers", 0)
         if total > 0:
             accuracy = correct / total
             if accuracy < 0.5:
-                recommendations.append({
-                    "type": "overall",
-                    "message": "Your overall accuracy is below 50%. Consider reviewing fundamentals.",
-                })
+                recommendations.append(
+                    {
+                        "type": "overall",
+                        "message": "Your overall accuracy is below 50%. Consider reviewing fundamentals.",
+                    }
+                )
             elif accuracy >= 0.8:
-                recommendations.append({
-                    "type": "overall",
-                    "message": f"Excellent! {accuracy:.0%} accuracy across {total} questions.",
-                })
+                recommendations.append(
+                    {
+                        "type": "overall",
+                        "message": f"Excellent! {accuracy:.0%} accuracy across {total} questions.",
+                    }
+                )
 
         # Revision prediction (spaced repetition heuristic)
         subjects = profile.get("subjects", {})
@@ -766,12 +840,14 @@ class MemoryService:
             if stats["total"] >= 5:
                 accuracy = stats["correct"] / stats["total"]
                 if accuracy < 0.7:
-                    recommendations.append({
-                        "type": "revision",
-                        "message": f"Review {subj} soon — accuracy is {accuracy:.0%} with {stats['total']} attempts.",
-                        "subject": subj,
-                        "accuracy": accuracy,
-                    })
+                    recommendations.append(
+                        {
+                            "type": "revision",
+                            "message": f"Review {subj} soon — accuracy is {accuracy:.0%} with {stats['total']} attempts.",
+                            "subject": subj,
+                            "accuracy": accuracy,
+                        }
+                    )
 
         return {
             "profile": profile,

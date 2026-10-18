@@ -6,18 +6,21 @@ Supports:
   • Auto-research agent
   • Continuous coding agent
 """
+
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / ".aria_data"
+DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 TASKS_FILE = DATA_DIR / "background_tasks.json"
 
 
@@ -31,11 +34,30 @@ def _load_tasks():
 
 
 def _save_tasks(tasks):
-    TASKS_FILE.write_text(json.dumps(tasks, indent=2))
+    """Crash-safe atomic write (mkdir + tmp+rename+fsync)."""
+    import tempfile
+
+    TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(tasks, indent=2)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(TASKS_FILE.parent), prefix=".background_tasks.tmp."
+    )
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        Path(tmp_path).replace(TASKS_FILE)
+    finally:
+        p = Path(tmp_path)
+        if p.exists():
+            try:
+                p.unlink()
+            except Exception:
+                pass
 
 
 class BackgroundAgentService:
-
     def __init__(self):
         self._tasks: list[dict] = _load_tasks()
         self._running: dict[str, asyncio.Task] = {}
@@ -51,18 +73,20 @@ class BackgroundAgentService:
     async def add_task(self, task_type: str, payload: dict) -> dict:
         """Add a background task to the queue."""
         task = {
-            "id": f"task_{int(time.time()*1000)}",
+            "id": f"task_{int(time.time() * 1000)}",
             "type": task_type,
             "payload": payload,
             "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "result": None,
         }
         self._tasks.append(task)
         _save_tasks(self._tasks)
         return task
 
-    async def run_batch(self, task_type: str, items: list[dict], handler: Callable) -> dict:
+    async def run_batch(
+        self, task_type: str, items: list[dict], handler: Callable
+    ) -> dict:
         """Run a batch of items through a handler function."""
         results = []
         for i, item in enumerate(items):
@@ -101,11 +125,13 @@ class BackgroundAgentService:
                     text = await doc_svc.extract_text(content, file.name)
                     if text and len(text) > 50:
                         summary = await study_svc.generate_summary(text[:4000])
-                        summaries.append({
-                            "file": file.name,
-                            "summary": summary,
-                            "size": file.stat().st_size,
-                        })
+                        summaries.append(
+                            {
+                                "file": file.name,
+                                "summary": summary,
+                                "size": file.stat().st_size,
+                            }
+                        )
                 except Exception as e:
                     summaries.append({"file": file.name, "error": str(e)})
 
@@ -139,11 +165,11 @@ class BackgroundAgentService:
     def _watch_loop(self, folder_path: str, handler: Callable | None):
         """Simple polling-based folder watcher."""
         path = Path(folder_path)
-        seen_files = set(f.name for f in path.iterdir() if f.is_file())
+        seen_files = {f.name for f in path.iterdir() if f.is_file()}
 
         while self._watchers.get(folder_path):
             try:
-                current_files = set(f.name for f in path.iterdir() if f.is_file())
+                current_files = {f.name for f in path.iterdir() if f.is_file()}
                 new_files = current_files - seen_files
 
                 for fname in new_files:
@@ -182,10 +208,12 @@ class BackgroundAgentService:
             try:
                 results = await research_svc.search(queries[i])
                 if results:
-                    findings.append({
-                        "query": queries[i],
-                        "results": results[:3],
-                    })
+                    findings.append(
+                        {
+                            "query": queries[i],
+                            "results": results[:3],
+                        }
+                    )
             except Exception as e:
                 logger.warning("Research query failed: %s", e)
 

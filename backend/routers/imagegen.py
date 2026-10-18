@@ -1,18 +1,19 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.imagegen_service import ImageGenService
+
 from models.database import get_config
+from services.imagegen_service import ImageGenService
 
 router = APIRouter(prefix="/api/imagegen", tags=["imagegen"])
 sd = ImageGenService()
 
 
 class ImageRequest(BaseModel):
-    prompt:  str
+    prompt: str
     negative: str = ""
-    width:   int  = 512
-    height:  int  = 512
-    model:   str  = "flux"     # "flux" | "turbo" | "sana" | "flux-realism"
+    width: int = 512
+    height: int = 512
+    model: str = "flux"  # "flux" | "turbo" | "sana" | "flux-realism"
 
 
 @router.post("/generate")
@@ -27,8 +28,7 @@ async def generate_image(req: ImageRequest):
     elif req.model:
         model = req.model
     result = await sd.generate(
-        req.prompt, req.negative, req.width, req.height,
-        model=model
+        req.prompt, req.negative, req.width, req.height, model=model
     )
     return result
 

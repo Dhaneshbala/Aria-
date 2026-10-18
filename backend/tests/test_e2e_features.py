@@ -1,25 +1,51 @@
 """E2E user-level feature tests — boots the REAL FastAPI app and exercises
 every feature area the way a user would (health, config, telemetry, backups,
-chat, study tools, planner, knowledge base, notebooks, organizer, premium
+chat, study tools, planner, knowledge base, notebooks, premium
 planner, intelligence, voice/research where available).
 
 AI endpoints run against the live local Ollama if it is up (they are skipped
 with a clear message otherwise). Everything else must always pass.
 """
+
 import io
 import json
 import os
-import time
-from pathlib import Path
-
-import pytest
 import urllib.request
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
 
 client = TestClient(app)
+
+
+def _sse_text(resp_text: str) -> str:
+    """Reconstruct the assistant's message from an ARIA SSE stream.
+
+    ARIA streams word-fragments ('data: o' + 'data: xygen'), sometimes JSON
+    events ({'type':'text','content':...}) for chat, sometimes raw tokens for
+    KB/notebook streams. Substring asserts must run on the joined text —
+    matching the raw payload fails whenever a token splits a word mid-way.
+    """
+    parts: list[str] = []
+    for line in resp_text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        raw = line[len("data: ") :]
+        if raw.strip() in ("[DONE]", ""):
+            continue
+        try:
+            event = json.loads(raw)
+        except Exception:
+            parts.append(raw)  # raw token line (kb / notebook streams)
+            continue
+        if isinstance(event, dict) and event.get("type") in ("text", "token"):
+            parts.append(str(event.get("content", "")))
+        elif isinstance(event, str):
+            parts.append(event)
+    return "".join(parts).strip()
+
 
 # ── Session-scoped Ollama availability ────────────────────────────────────────
 
@@ -34,10 +60,13 @@ def _ollama_up() -> bool:
         return False
 
 
-pytestmark = pytest.mark.skipif(not _ollama_up(), reason="Ollama not running — AI tests skipped")
+pytestmark = pytest.mark.skipif(
+    not _ollama_up(), reason="Ollama not running — AI tests skipped"
+)
 
 
 # ═══════════════════════════ 1. Health & system ═══════════════════════════════
+
 
 def test_health():
     r = client.get("/api/health")
@@ -58,11 +87,13 @@ def test_system_diagnostics():
 def test_system_logs():
     r = client.get("/api/system/logs?lines=50")
     assert r.status_code == 200
-    assert isinstance(r.json().get("logs", []), list)
+    body = r.json()
+    assert "content" in body and "lines" in body
 
 
 def test_system_logs_download():
     import zipfile
+
     r = client.get("/api/system/logs/download")
     assert r.status_code == 200
     assert r.content[:2] == b"PK"  # zip magic
@@ -82,14 +113,16 @@ def test_restart_ollama_endpoint():
 
 # ═══════════════════════════ 2. Config & telemetry ════════════════════════════
 
+
 def test_config_get_and_save():
     r = client.get("/api/admin/config")
     assert r.status_code == 200
     cfg = r.json()
     assert isinstance(cfg, dict)
 
-    r = client.post("/api/admin/config", json={"memory_enabled": True,
-                                               "telemetry_enabled": False})
+    r = client.post(
+        "/api/admin/config", json={"memory_enabled": True, "telemetry_enabled": False}
+    )
     assert r.status_code == 200
     assert r.json().get("memory_enabled") is True
 
@@ -114,6 +147,7 @@ def test_telemetry_clear():
 
 
 # ═══════════════════════════ 3. Backups ═══════════════════════════════════════
+
 
 def test_backup_lifecycle():
     r = client.post("/api/backup/create", json={})
@@ -148,11 +182,14 @@ def test_backup_rejects_restore_of_unknown():
 
 def test_backup_restore_zip_slip():
     import zipfile
+
     evil = io.BytesIO()
     with zipfile.ZipFile(evil, "w") as z:
         z.writestr("../../evil.txt", "boom")
-    r = client.post("/api/backup/restore",
-                    files={"file": ("evil.zip", evil.getvalue(), "application/zip")})
+    r = client.post(
+        "/api/backup/restore",
+        files={"file": ("evil.zip", evil.getvalue(), "application/zip")},
+    )
     assert r.status_code == 400
 
 
@@ -161,17 +198,21 @@ def test_backup_restore_valid_roundtrip():
     name = r.json()["filename"]
     dl = client.get(f"/api/backup/download/{name}")
     assert dl.status_code == 200
-    r = client.post("/api/backup/restore",
-                    files={"file": (name, dl.content, "application/zip")})
+    r = client.post(
+        "/api/backup/restore", files={"file": (name, dl.content, "application/zip")}
+    )
     assert r.status_code == 200, r.text
     assert r.json().get("status") == "ok"
 
 
 # ═══════════════════════════ 4. Chat (SSE) ════════════════════════════════════
 
+
 def test_chat_streams_full_response():
-    r = client.post("/api/chat", data={"message": "What is 2+2? Answer in one line.",
-                                       "mode": "fast"})
+    r = client.post(
+        "/api/chat",
+        data={"message": "What is 2+2? Answer in one line.", "mode": "fast"},
+    )
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/event-stream")
     assert r.headers.get("x-conversation-id")
@@ -181,21 +222,26 @@ def test_chat_streams_full_response():
 
 
 def test_chat_with_document_upload():
-    txt = io.BytesIO(b"The water cycle has three main stages: evaporation, condensation, "
-                     b"and precipitation. Evaporation happens when the sun heats water in "
-                     b"rivers, lakes and oceans, turning it into water vapour.")
-    r = client.post("/api/chat",
-                    data={"message": "List the three stages of the water cycle.",
-                          "mode": "fast"},
-                    files={"document": ("water.txt", txt, "text/plain")})
+    txt = io.BytesIO(
+        b"The water cycle has three main stages: evaporation, condensation, "
+        b"and precipitation. Evaporation happens when the sun heats water in "
+        b"rivers, lakes and oceans, turning it into water vapour."
+    )
+    r = client.post(
+        "/api/chat",
+        data={"message": "List the three stages of the water cycle.", "mode": "fast"},
+        files={"document": ("water.txt", txt, "text/plain")},
+    )
     assert r.status_code == 200
-    assert "evaporation" in r.text.lower() or "evapor" in r.text.lower()
+    answer = _sse_text(r.text).lower()
+    assert "evaporation" in answer or "evapor" in answer
 
 
 def test_chat_conversation_history_endpoints():
     cid = "e2e-conv-1"
-    r = client.post("/api/chat", data={"message": "hi", "conversation_id": cid,
-                                       "mode": "fast"})
+    r = client.post(
+        "/api/chat", data={"message": "hi", "conversation_id": cid, "mode": "fast"}
+    )
     assert r.status_code == 200
 
     r = client.get("/api/chat/conversations")
@@ -214,17 +260,21 @@ def test_chat_conversation_history_endpoints():
 
 def test_chat_oversize_image_rejected():
     big = io.BytesIO(b"x" * (21 * 1024 * 1024))
-    r = client.post("/api/chat",
-                    data={"message": "hi"},
-                    files={"image": ("big.png", big, "image/png")})
+    r = client.post(
+        "/api/chat",
+        data={"message": "hi"},
+        files={"image": ("big.png", big, "image/png")},
+    )
     assert r.status_code == 413
 
 
 # ═══════════════════════════ 5. Study tools ═══════════════════════════════════
 
+
 def test_study_quiz_returns_questions():
-    r = client.post("/api/study/quiz", json={"topic": "Photosynthesis",
-                                             "level": "easy", "count": 3})
+    r = client.post(
+        "/api/study/quiz", json={"topic": "Photosynthesis", "level": "easy", "count": 3}
+    )
     assert r.status_code == 200, r.text
     qs = r.json()["questions"]
     assert len(qs) >= 1
@@ -241,15 +291,21 @@ def test_study_quiz_returns_questions():
             correct = q["correct"]
             if correct == "":
                 continue
-            idx = ord(str(correct).upper()) - 65 if isinstance(correct, str) else int(correct)
+            idx = (
+                ord(str(correct).upper()) - 65
+                if isinstance(correct, str)
+                else int(correct)
+            )
             assert 0 <= idx < len(options), f"answer index {correct} outside options"
         else:
             pytest.fail(f"question has no answer: {q}")
 
 
 def test_study_flashcards():
-    r = client.post("/api/study/flashcards", json={"topic": "Fractions",
-                                                   "level": "easy", "count": 3})
+    r = client.post(
+        "/api/study/flashcards",
+        json={"topic": "Fractions", "level": "easy", "count": 3},
+    )
     assert r.status_code == 200, r.text
     cards = r.json().get("flashcards", r.json().get("cards", []))
     assert len(cards) >= 1
@@ -258,9 +314,12 @@ def test_study_flashcards():
 
 # Standalone mindmap generator removed — chat diagram generator covers it
 def test_study_mindmap_removed():
-    r = client.post("/api/study/mindmap", json={"topic": "The Solar System",
-                                                "level": "easy"})
-    assert r.status_code == 404, f"/api/study/mindmap should be removed, got {r.status_code}"
+    r = client.post(
+        "/api/study/mindmap", json={"topic": "The Solar System", "level": "easy"}
+    )
+    assert r.status_code == 404, (
+        f"/api/study/mindmap should be removed, got {r.status_code}"
+    )
 
 
 def test_study_summary():
@@ -270,8 +329,9 @@ def test_study_summary():
 
 
 def test_study_notes():
-    r = client.post("/api/study/notes", json={"topic": "The Industrial Revolution",
-                                              "level": "easy"})
+    r = client.post(
+        "/api/study/notes", json={"topic": "The Industrial Revolution", "level": "easy"}
+    )
     assert r.status_code == 200, r.text
 
 
@@ -292,14 +352,26 @@ def test_removed_study_tools_return_404():
 
 
 def test_removed_planner_returns_404():
-    for path in ["/api/planner/schedule", "/api/planner/cushion", "/api/planner/events", "/api/premium-planner/courses"]:
-        r = client.get(path) if "courses" in path or "events" in path else client.post(path, json={})
+    for path in [
+        "/api/planner/schedule",
+        "/api/planner/cushion",
+        "/api/planner/events",
+        "/api/premium-planner/courses",
+    ]:
+        r = (
+            client.get(path)
+            if "courses" in path or "events" in path
+            else client.post(path, json={})
+        )
         assert r.status_code == 404, f"{path} should be removed, got {r.status_code}"
 
 
 def test_brain_handles_study_intents_via_chat():
     from services.orchestrator import detect_intents
-    assert "essay_feedback" in detect_intents("please give me essay feedback on my draft")
+
+    assert "essay_feedback" in detect_intents(
+        "please give me essay feedback on my draft"
+    )
     assert "formula" in detect_intents("formula for quadratic equations")
     assert "timeline" in detect_intents("timeline for World War 2")
     assert "worksheet_generator" in detect_intents("create a worksheet on fractions")
@@ -310,13 +382,18 @@ def test_brain_handles_study_intents_via_chat():
 
 # ═══════════════════════════ 7. Knowledge base ════════════════════════════════
 
+
 def test_kb_upload_search_ask():
-    txt = ("Photosynthesis is the process where plants use sunlight, water and "
-           "carbon dioxide to make glucose and oxygen. It happens in the "
-           "chloroplasts which contain the green pigment chlorophyll.")
-    r = client.post("/api/kb/upload",
-                    data={"collection": "science"},
-                    files={"file": ("photosynthesis.txt", txt.encode(), "text/plain")})
+    txt = (
+        "Photosynthesis is the process where plants use sunlight, water and "
+        "carbon dioxide to make glucose and oxygen. It happens in the "
+        "chloroplasts which contain the green pigment chlorophyll."
+    )
+    r = client.post(
+        "/api/kb/upload",
+        data={"collection": "science"},
+        files={"file": ("photosynthesis.txt", txt.encode(), "text/plain")},
+    )
     assert r.status_code == 200, r.text
     file_id = r.json().get("file_id")
 
@@ -332,9 +409,12 @@ def test_kb_upload_search_ask():
     r = client.get("/api/kb/search?q=what does photosynthesis need")
     assert r.status_code == 200
 
-    r = client.post("/api/kb/ask", data={"question": "What does photosynthesis produce?"})
+    r = client.post(
+        "/api/kb/ask", data={"question": "What does photosynthesis produce?"}
+    )
     assert r.status_code == 200
-    assert "oxygen" in r.text.lower() or "glucose" in r.text.lower()
+    answer = _sse_text(r.text).lower()
+    assert "oxygen" in answer or "glucose" in answer
 
     if file_id:
         r = client.delete(f"/api/kb/documents/{file_id}")
@@ -342,27 +422,34 @@ def test_kb_upload_search_ask():
 
 
 def test_kb_upload_handles_bad_collection():
-    r = client.post("/api/kb/upload",
-                    data={"collection": "not_a_real_collection"},
-                    files={"file": ("x.txt", b"content", "text/plain")})
+    r = client.post(
+        "/api/kb/upload",
+        data={"collection": "not_a_real_collection"},
+        files={"file": ("x.txt", b"content", "text/plain")},
+    )
     assert r.status_code in (200, 400)  # must not 500
 
 
 # ═══════════════════════════ 8. Notebooks ═════════════════════════════════════
+
 
 def test_notebook_full_lifecycle():
     r = client.post("/api/notebooks", json={"name": "Biology Revision"})
     assert r.status_code == 200, r.text
     nb_id = r.json()["id"]
 
-    r = client.post(f"/api/notebooks/{nb_id}/sources", json={
-        "source_type": "notes",
-        "title": "Cells",
-        "content": "Mitochondria are the powerhouse of the cell. They produce "
-                   "energy through cellular respiration. Plant cells also have "
-                   "chloroplasts for photosynthesis."})
+    r = client.post(
+        f"/api/notebooks/{nb_id}/sources",
+        json={
+            "source_type": "notes",
+            "title": "Cells",
+            "content": "Mitochondria are the powerhouse of the cell. They produce "
+            "energy through cellular respiration. Plant cells also have "
+            "chloroplasts for photosynthesis.",
+        },
+    )
     assert r.status_code == 200, r.text
-    src_id = r.json()["id"]
+    r.json()["id"]
     # key used by the API is "id", and source type echoed as "type"
     assert r.json().get("type") == "notes"
 
@@ -375,7 +462,9 @@ def test_notebook_full_lifecycle():
     r = client.get(f"/api/notebooks/{nb_id}/generate/summary")
     assert r.status_code == 200, r.text
 
-    r = client.get(f"/api/notebooks/{nb_id}/generate/flashcards", params={"num_cards": 2})
+    r = client.get(
+        f"/api/notebooks/{nb_id}/generate/flashcards", params={"num_cards": 2}
+    )
     assert r.status_code == 200, r.text
 
     r = client.get(f"/api/notebooks/{nb_id}/generate/quiz", params={"num_questions": 2})
@@ -394,82 +483,45 @@ def test_notebook_full_lifecycle():
 def test_notebook_chat():
     r = client.post("/api/notebooks", json={"name": "Chat NB"})
     nb_id = r.json()["id"]
-    client.post(f"/api/notebooks/{nb_id}/sources",
-                json={"source_type": "notes",
-                      "title": "Climate",
-                      "content": "Climate change increases the frequency of "
-                                 "extreme weather events like heatwaves and "
-                                 "bushfires in Australia."})
-    r = client.post(f"/api/notebooks/{nb_id}/chat", json={"message": "What is the effect of climate change?"})
+    client.post(
+        f"/api/notebooks/{nb_id}/sources",
+        json={
+            "source_type": "notes",
+            "title": "Climate",
+            "content": "Climate change increases the frequency of "
+            "extreme weather events like heatwaves and "
+            "bushfires in Australia.",
+        },
+    )
+    r = client.post(
+        f"/api/notebooks/{nb_id}/chat",
+        json={"message": "What is the effect of climate change?"},
+    )
     assert r.status_code == 200
-    assert "heatwave" in r.text.lower() or "extreme" in r.text.lower()
+    answer = _sse_text(r.text).lower()
+    assert "heatwave" in answer or "extreme" in answer
     client.delete(f"/api/notebooks/{nb_id}")
 
 
-# ═══════════════════════════ 9. File organizer (non-AI) ═══════════════════════
-
-def test_organizer_upload_rename_move_search(tmp_path):
-    p = tmp_path / "algebra_homework.txt"
-    p.write_text("Solve 2x + 5 = 13. Algebra homework.")
-    with open(p, "rb") as f:
-        r = client.post("/api/files/upload", files={"file": ("algebra_homework.txt",
-                                                              f, "text/plain")})
-    assert r.status_code == 200, r.text
-    fid = r.json()["file_id"]
-
-    r = client.get("/api/files")
-    assert r.status_code == 200
-    # files response is list or {"files": [...]} depending on impl
-    files = r.json() if isinstance(r.json(), list) else r.json().get("files", r.json().get("items", []))
-    assert any(f.get("id") == fid for f in files)
-
-    r = client.get("/api/files/stats")
-    assert r.status_code == 200
-
-    r = client.put(f"/api/files/{fid}/rename", json={"name": "algebra_hw_v2.txt"})
-    assert r.status_code == 200, r.text
-
-    r = client.get("/api/files/search?q=algebra")
-    assert r.status_code == 200
-
-    r = client.delete(f"/api/files/{fid}")
-    assert r.status_code == 200
-
-    r = client.get("/api/files")
-    files2 = r.json() if isinstance(r.json(), list) else r.json().get("files", r.json().get("items", []))
-    assert not any(f.get("id") == fid for f in files2)
+# ── 9. File organizer — REMOVED ──────────────────────────────────────────
+# Former /api/files endpoints were removed. Verify they stay gone (404)
+# instead of silently returning 200 with wrong data.
 
 
-def test_organizer_rules_crud():
-    # File organizer has no dedicated rules endpoints — verify the file APIs are coherent instead
-    r = client.get("/api/files")
-    assert r.status_code == 200
-    r = client.get("/api/files/stats")
-    assert r.status_code == 200
-
-
-def test_organizer_profiles_and_folders(tmp_path):
-    r = client.get("/api/files/scanned-folders")
-    assert r.status_code == 200
-
-    r = client.get("/api/files/folder-tree")
-    assert r.status_code == 200
-
-
-def test_organizer_undo_and_rollback(tmp_path):
-    p = tmp_path / "essay_final.txt"
-    p.write_text("Essay content")
-    with open(p, "rb") as f:
-        r = client.post("/api/files/upload",
-                        files={"file": ("essay_final.txt", f, "text/plain")})
-    fid = r.json()["file_id"]
-    r = client.put(f"/api/files/{fid}/rename", json={"name": "essay_v2.txt"})
-    assert r.status_code == 200
-
-    client.delete(f"/api/files/{fid}")
+def test_organizer_removed():
+    for method, path in [
+        ("GET", "/api/files"),
+        ("GET", "/api/files/stats"),
+        ("GET", "/api/files/folder-tree"),
+        ("GET", "/api/files/scanned-folders"),
+        ("GET", "/api/files/search?q=algebra"),
+    ]:
+        r = client.get(path)
+        assert r.status_code == 404, f"{path} should stay removed, got {r.status_code}"
 
 
 # ═══════════════════════════ 10. Intelligence & memory ════════════════════════
+
 
 def test_intelligence_knowledge_graph():
     r = client.get("/api/intelligence/knowledge-graph/graph")
@@ -502,10 +554,15 @@ def test_memory_timeline_and_search():
 
 # ═══════════════════════════ 11. V2 analytics & SR ════════════════════════════
 
+
 def test_v2_analytics_endpoints():
-    for path in ("/api/v2/analytics/heatmap", "/api/v2/analytics/trends",
-                 "/api/v2/analytics/predicted-grades", "/api/v2/analytics/focus-score",
-                 "/api/v2/analytics/weekly-summary"):
+    for path in (
+        "/api/v2/analytics/heatmap",
+        "/api/v2/analytics/trends",
+        "/api/v2/analytics/predicted-grades",
+        "/api/v2/analytics/focus-score",
+        "/api/v2/analytics/weekly-summary",
+    ):
         r = client.get(path)
         assert r.status_code == 200, (path, r.text)
 
@@ -520,14 +577,20 @@ def test_v2_gamification():
 
 
 def test_v2_flashcard_spaced_repetition():
-    r = client.post("/api/v2/study/add-card",
-                    json={"front": "What is the capital of Australia?",
-                          "back": "Canberra", "subject": "Geography"})
+    r = client.post(
+        "/api/v2/study/add-card",
+        json={
+            "front": "What is the capital of Australia?",
+            "back": "Canberra",
+            "subject": "Geography",
+        },
+    )
     assert r.status_code == 200, r.text
     card_id = r.json()["id"]
 
-    r = client.post("/api/v2/study/review-card",
-                    json={"card_id": card_id, "quality": 5})
+    r = client.post(
+        "/api/v2/study/review-card", json={"card_id": card_id, "quality": 5}
+    )
     assert r.status_code == 200
 
     r = client.get("/api/v2/study/sr-stats")
@@ -572,10 +635,15 @@ def test_premium_planner_removed():
 
 # ═══════════════════════════ 13. Agent (safe, read-only) ══════════════════════
 
+
 def test_agent_safe_read_commands():
-    r = client.post("/api/agent/terminal", json={"command": "echo hello"})
+    # Agent API requires X-Agent-Request: 1 (drive-by protection, see agent.py)
+    headers = {"X-Agent-Request": "1"}
+    r = client.post(
+        "/api/agent/terminal", json={"command": "echo hello"}, headers=headers
+    )
     assert r.status_code == 200
     assert "hello" in r.json().get("output", "")
 
-    r = client.post("/api/agent/list-directory", json={"path": "."})
+    r = client.post("/api/agent/list-directory", json={"path": "."}, headers=headers)
     assert r.status_code == 200

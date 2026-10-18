@@ -16,25 +16,26 @@ Pipeline (single local model, no extra RAM):
   4. RETRY — empty or one-line answers trigger one simpler retry.
   5. FALLBACK — if vision is down entirely, pure OCR result is returned.
 
-Primary: gemma4:e4b-mlx multimodal (same model as text — no RAM swap).
+Primary: gemma3:12b multimodal (same model as text — no RAM swap).
 """
+
 import asyncio
 import base64
 import logging
+import os as _os
 
 import httpx
 
-import os as _os
 _raw = _os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_URL = _raw.rsplit("/api", 1)[0]
 
 logger = logging.getLogger(__name__)
 
 # Vision sweet spots: detail survives, token/time cost stays bounded
-MAX_EDGE = 1568        # downscale huge photos to this long edge
-MIN_EDGE = 600         # upscale tiny images below this long edge
-VISION_TIMEOUT = 90    # seconds — M4 needs room for 1568px images
-MIN_GOOD_LEN = 60      # answers shorter than this trigger a retry
+MAX_EDGE = 1568  # downscale huge photos to this long edge
+MIN_EDGE = 600  # upscale tiny images below this long edge
+VISION_TIMEOUT = 90  # seconds — M4 needs room for 1568px images
+MIN_GOOD_LEN = 60  # answers shorter than this trigger a retry
 
 
 def _build_prompt(ocr_text: str = "") -> str:
@@ -78,9 +79,8 @@ def _build_prompt(ocr_text: str = "") -> str:
 
 
 class ImageService:
-
     async def analyse(
-        self, image_data: bytes, mime_type: str, model: str = "gemma4:e4b-mlx"
+        self, image_data: bytes, mime_type: str, model: str = "gemma3:12b"
     ) -> str:
         """Full pipeline: preprocess → fast OCR → vision WITH ocr text → validate."""
         loop = asyncio.get_running_loop()
@@ -116,7 +116,9 @@ class ImageService:
             # Too thin — one simpler retry with OCR context
             try:
                 retry = await self._vision_model(
-                    processed, model, ocr_text or "",
+                    processed,
+                    model,
+                    ocr_text or "",
                     simple=True,
                 )
                 if retry and len(retry.strip()) > len(vision_result):
@@ -134,10 +136,11 @@ class ImageService:
 
     def _preprocess_sync(self, image_data: bytes) -> tuple[bytes, str]:
         """Normalise size/contrast. Returns (jpeg_bytes, note)."""
+        from io import BytesIO
+
         import cv2
         import numpy as np
         from PIL import Image
-        from io import BytesIO
 
         nparr = np.frombuffer(image_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -152,16 +155,18 @@ class ImageService:
         # Upscale tiny images so small text is readable
         if long_edge < MIN_EDGE:
             scale = MIN_EDGE / long_edge
-            img = cv2.resize(img, None, fx=scale, fy=scale,
-                             interpolation=cv2.INTER_CUBIC)
+            img = cv2.resize(
+                img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+            )
             notes.append(f"upscaled {w}x{h}")
             h, w = img.shape[:2]
 
         # Downscale huge photos — detail survives at 1568, tokens don't explode
         if max(h, w) > MAX_EDGE:
             scale = MAX_EDGE / max(h, w)
-            img = cv2.resize(img, None, fx=scale, fy=scale,
-                             interpolation=cv2.INTER_AREA)
+            img = cv2.resize(
+                img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA
+            )
             notes.append(f"downscaled to {img.shape[1]}x{img.shape[0]}")
 
         # Auto-contrast dark or flat images (the previously dead enhance step,
@@ -182,6 +187,7 @@ class ImageService:
 
     def _clahe_sync(self, img):
         import cv2
+
         lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         l = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(l)
@@ -199,7 +205,10 @@ class ImageService:
     # ── Vision call ────────────────────────────────────────────────────────
 
     async def _vision_model(
-        self, image_data: bytes, model: str, ocr_text: str = "",
+        self,
+        image_data: bytes,
+        model: str,
+        ocr_text: str = "",
         simple: bool = False,
     ) -> str:
         b64 = base64.b64encode(image_data).decode()
@@ -207,13 +216,12 @@ class ImageService:
             "What is happening in this image? Describe the subjects, what "
             "they are doing, where everything is, and what it means. Then "
             "copy any visible text exactly. Be specific, not vague."
-            if simple else _build_prompt(ocr_text)
+            if simple
+            else _build_prompt(ocr_text)
         )
         payload = {
             "model": model,
-            "messages": [
-                {"role": "user", "content": prompt, "images": [b64]}
-            ],
+            "messages": [{"role": "user", "content": prompt, "images": [b64]}],
             "stream": False,
             "options": {"num_ctx": 8192, "temperature": 0.2},
         }
@@ -234,26 +242,29 @@ class ImageService:
             return ""
 
     def _ocr_sync_raw(self, image_data: bytes) -> str:
+        from io import BytesIO
+
         import cv2
         import numpy as np
         import pytesseract
         from PIL import Image
-        from io import BytesIO
 
         nparr = np.frombuffer(image_data, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
-            img = cv2.cvtColor(np.array(Image.open(BytesIO(image_data)).convert("RGB")),
-                               cv2.COLOR_RGB2BGR)
+            img = cv2.cvtColor(
+                np.array(Image.open(BytesIO(image_data)).convert("RGB")),
+                cv2.COLOR_RGB2BGR,
+            )
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         h, w = gray.shape
         if max(h, w) < 1000:
             scale = 1000 / max(h, w)
-            gray = cv2.resize(gray, None, fx=scale, fy=scale,
-                              interpolation=cv2.INTER_CUBIC)
+            gray = cv2.resize(
+                gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+            )
         denoised = cv2.fastNlMeansDenoising(gray, h=10)
-        _, thresh = cv2.threshold(denoised, 0, 255,
-                                  cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return pytesseract.image_to_string(thresh).strip()
 
     async def _ocr_fallback(self, image_data: bytes) -> str:
@@ -268,6 +279,8 @@ class ImageService:
             text = await self._ocr_text(image_data)
         if text.strip():
             return f"[OCR Result — vision unavailable ({reason})]\n{text.strip()}"
-        return ("Could not read this image: no text found by OCR and the "
-                f"vision model is unavailable ({reason}). Try a brighter, "
-                "closer photo.")
+        return (
+            "Could not read this image: no text found by OCR and the "
+            f"vision model is unavailable ({reason}). Try a brighter, "
+            "closer photo."
+        )

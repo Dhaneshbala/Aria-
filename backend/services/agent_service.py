@@ -3,21 +3,23 @@ Agent service — tool calling framework for autonomous actions.
 Supports: terminal commands, file operations, web browsing.
 All actions require confirmation for safety.
 """
+
 import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
-class AgentService:
 
+class AgentService:
     def __init__(self):
         self._pending_confirmations = {}
         # Jail: only allow file ops inside DATA_DIR or project root
         try:
             from models.database import DATA_DIR as _DD
+
             self._allowed_roots = [Path(_DD).resolve(), Path.cwd().resolve()]
         except Exception:
             self._allowed_roots = [Path.cwd().resolve()]
@@ -25,37 +27,93 @@ class AgentService:
     def _is_jailed(self, path: str) -> bool:
         try:
             p = Path(path).resolve()
-            return any(str(p).startswith(str(root)) for root in self._allowed_roots)
+            for root in self._allowed_roots:
+                try:
+                    if p.is_relative_to(root):
+                        return True
+                except AttributeError:
+                    # Python < 3.9 fallback
+                    if os.path.commonpath([str(p), str(root)]) == str(root):
+                        return True
+                except Exception:
+                    continue
+            return False
         except Exception:
             return False
 
-    async def execute_terminal(self, command: str, cwd: Optional[str] = None, timeout: int = 30) -> dict:
+    _ALLOWED_CMDS: ClassVar[set[str]] = {
+        "ls",
+        "pwd",
+        "echo",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "grep",
+        "find",
+        "python3",
+        "git",
+        "npm",
+        "node",
+        "ollama",
+    }
+
+    async def execute_terminal(
+        self, command: str, cwd: str | None = None, timeout: int = 30
+    ) -> dict:
         """Execute a terminal command with safety timeout."""
-        # Safety: block dangerous patterns
-        dangerous = ['rm -rf /', 'mkfs', 'dd if=', ':(){ :|:& };:', 'chmod -R 777 /',
-                     'curl', 'wget', '| sh', '| bash', 'nc -', 'nmap', 'ssh ', 'shutdown', 'reboot',
-                     'mv /', 'cp /etc', 'cat /etc/passwd', ':(){']
-        lower = command.lower()
-        if any(d in lower for d in dangerous):
-            return {"error": "Command blocked for safety", "command": command}
+        # Validate inputs (fix: unvalidated timeout / oversize command = DoS)
+        try:
+            timeout = int(timeout)
+        except Exception:
+            return {"error": "Invalid timeout (must be 1-120s)", "command": command}
+        if timeout < 1 or timeout > 120:
+            return {"error": "Invalid timeout (must be 1-120s)", "command": command}
+        if not command or not command.strip():
+            return {"error": "Command cannot be empty", "command": command}
+        if len(command) > 5000:
+            return {"error": "Command too long (max 5000 chars)", "command": command}
+        # Allowlist: only known-safe first tokens, no shell. Parse with shlex.
+        import shlex as _shlex
+
+        try:
+            argv = _shlex.split(command)
+        except Exception:
+            return {"error": "Could not parse command", "command": command}
+        if not argv:
+            return {"error": "Command cannot be empty", "command": command}
+        import os as _os2
+
+        prog = _os2.path.basename(argv[0])
+        if prog not in self._ALLOWED_CMDS:
+            return {"error": f"Command not allowed: {prog}", "command": command}
+        # Reject shell metachars (no shell is used, but reject smuggling attempts)
+        if any(
+            c in command
+            for c in (";", "|", "&", "$", "`", "(", ")", "{", "}", "<", ">", "\\", "\n")
+        ):
+            return {"error": "Shell metacharacters not allowed", "command": command}
         if cwd and not self._is_jailed(cwd):
             return {"error": f"Working directory not allowed: {cwd}"}
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd or os.getcwd(),
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            out_text = stdout.decode(errors="replace")
+            err_text = stderr.decode(errors="replace")
             return {
-                "stdout": stdout.decode(errors="replace"),
-                "stderr": stderr.decode(errors="replace"),
+                "output": out_text,
+                "stdout": out_text,
+                "stderr": err_text,
                 "returncode": proc.returncode,
                 "command": command,
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             return {"error": f"Command timed out after {timeout}s", "command": command}
         except Exception as e:
@@ -79,6 +137,10 @@ class AgentService:
     async def write_file(self, path: str, content: str) -> dict:
         """Write content to a file."""
         try:
+            if content is None:
+                return {"error": "content is required"}
+            if len(content) > 1 * 1024 * 1024:
+                return {"error": "Content too large (max 1MB)"}
             p = Path(path).resolve()
             if not self._is_jailed(str(p)):
                 return {"error": f"Path not allowed: {path}"}
@@ -100,16 +162,20 @@ class AgentService:
             for i, item in enumerate(sorted(p.iterdir())):
                 if i >= max_items:
                     break
-                items.append({
-                    "name": item.name,
-                    "type": "dir" if item.is_dir() else "file",
-                    "size": item.stat().st_size if item.is_file() else 0,
-                })
+                items.append(
+                    {
+                        "name": item.name,
+                        "type": "dir" if item.is_dir() else "file",
+                        "size": item.stat().st_size if item.is_file() else 0,
+                    }
+                )
             return {"path": str(p), "items": items, "count": len(items)}
         except Exception as e:
             return {"error": str(e)}
 
-    async def search_files(self, pattern: str, path: str = ".", max_results: int = 20) -> dict:
+    async def search_files(
+        self, pattern: str, path: str = ".", max_results: int = 20
+    ) -> dict:
         """Search for files matching a pattern."""
         try:
             p = Path(path).resolve()
@@ -124,7 +190,9 @@ class AgentService:
                     continue
                 if len(matches) >= max_results:
                     break
-                matches.append({"path": str(item), "type": "dir" if item.is_dir() else "file"})
+                matches.append(
+                    {"path": str(item), "type": "dir" if item.is_dir() else "file"}
+                )
             return {"matches": matches, "count": len(matches)}
         except Exception as e:
             return {"error": str(e)}

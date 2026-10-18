@@ -12,6 +12,7 @@ Outputs (mlx_lm.lora format — {"messages": [...]} chat JSONL):
 Run from the backend directory:
     ../.venv/bin/python scripts/make_diagram_dataset.py
 """
+
 import json
 import random
 import xml.etree.ElementTree as ET
@@ -1110,9 +1111,9 @@ add(
     "Soccer is half the class. Mermaid pie takes labels and values.\n\n"
     "```mermaid\n"
     "pie title Favourite sports\n"
-    "    \"Soccer\" : 10\n"
-    "    \"Cricket\" : 6\n"
-    "    \"Swimming\" : 4\n"
+    '    "Soccer" : 10\n'
+    '    "Cricket" : 6\n'
+    '    "Swimming" : 4\n'
     "```",
 )
 
@@ -1571,7 +1572,7 @@ rng.shuffle(idx)
 n_valid = max(2, len(E) // 10)
 n_test = max(2, len(E) // 10)
 valid_i = set(idx[:n_valid])
-test_i = set(idx[n_valid:n_valid + n_test])
+test_i = set(idx[n_valid : n_valid + n_test])
 
 splits = {"train": [], "valid": [], "test": []}
 for i, (u, a) in enumerate(E):
@@ -1587,5 +1588,7 @@ for name, rows in splits.items():
     path = OUT_DIR / f"{name}.jsonl"
     path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n")
 
-print(f"Wrote {len(splits['train'])} train + {len(splits['valid'])} valid "
-      f"+ {len(splits['test'])} test examples to {OUT_DIR}")
+print(
+    f"Wrote {len(splits['train'])} train + {len(splits['valid'])} valid "
+    f"+ {len(splits['test'])} test examples to {OUT_DIR}"
+)

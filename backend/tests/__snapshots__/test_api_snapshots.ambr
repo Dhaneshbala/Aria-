@@ -1,0 +1,20 @@
+# serializer version: 1
+# name: test_health_shape_snapshot
+  dict({
+    'data_dir': '…',
+    'disk_free_gb': '…',
+    'ollama': True,
+    'status': 'ok',
+    'version': '2.1.0',
+  })
+# ---
+# name: test_todos_shape_snapshot
+  dict({
+    'keys': list([
+      'cushion',
+      'todos',
+    ]),
+    'todo_keys': list([
+    ]),
+  })
+# ---

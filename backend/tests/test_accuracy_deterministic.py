@@ -3,47 +3,56 @@
 These functions have no randomness (regex, scoring, lookups, math), so a
 correct implementation must pass every case exactly.
 """
-import json
+
 import os
 import sys
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.knowledge_graph_service import KnowledgeGraphService
-from services.citation_service import CitationService, enhance_system_prompt_with_citations
-from services.nsw_curriculum_service import get_curriculum_service
-from services.document_service import DocumentService
-from services.study_service import StudyService
-from services.knowledge_base_service import (
-    _chunk_text, _file_hash, _detect_collection,
-)
-from services.analytics_service import AnalyticsService
+from datetime import UTC
 
+from services.analytics_service import AnalyticsService
+from services.citation_service import (
+    CitationService,
+    enhance_system_prompt_with_citations,
+)
+from services.document_service import DocumentService
+from services.knowledge_base_service import (
+    _chunk_text,
+    _detect_collection,
+    _file_hash,
+)
+from services.knowledge_graph_service import KnowledgeGraphService
+from services.nsw_curriculum_service import get_curriculum_service
+from services.study_service import StudyService
 
 # ── Knowledge graph entity extraction ────────────────────────────────────
 
 KG_CASES = [
     # (input text, expected entity tuples)
-    ("Dr. Sarah Chen presented the Solar Tracker project today.",
-     [("person", "Dr. Sarah Chen"), ("project", "Solar Tracker")]),
-    ("John Smith and Mary Johnson worked on the weather app.",
-     [("person", "John Smith"), ("person", "Mary Johnson"), ("project", "weather")]),
-    ("The photosynthesis_notes.pdf and data.csv were uploaded.",
-     [("file", "photosynthesis_notes.pdf"), ("file", "data.csv")]),
-    ("World War 2 ended in 1945.",
-     [("date", "1945")]),
-    ("The treaty was signed on March 15, 1945.",
-     [("date", "March 15, 1945")]),
-    ("We discussed the topic of ancient Rome.",
-     [("topic", "ancient Rome")]),
-    ("They are working on a quiz game and a homework system.",
-     [("project", "quiz"), ("project", "homework")]),
+    (
+        "Dr. Sarah Chen presented the Solar Tracker project today.",
+        [("person", "Dr. Sarah Chen"), ("project", "Solar Tracker")],
+    ),
+    (
+        "John Smith and Mary Johnson worked on the weather app.",
+        [("person", "John Smith"), ("person", "Mary Johnson"), ("project", "weather")],
+    ),
+    (
+        "The photosynthesis_notes.pdf and data.csv were uploaded.",
+        [("file", "photosynthesis_notes.pdf"), ("file", "data.csv")],
+    ),
+    ("World War 2 ended in 1945.", [("date", "1945")]),
+    ("The treaty was signed on March 15, 1945.", [("date", "March 15, 1945")]),
+    ("We discussed the topic of ancient Rome.", [("topic", "ancient Rome")]),
+    (
+        "They are working on a quiz game and a homework system.",
+        [("project", "quiz"), ("project", "homework")],
+    ),
 ]
 
 
 class TestKnowledgeGraphAccuracy:
-
     def test_entity_extraction_exact(self):
         kg = KnowledgeGraphService()
         for text, expected in KG_CASES:
@@ -61,7 +70,9 @@ class TestKnowledgeGraphAccuracy:
 
     def test_common_phrase_false_positives_filtered(self):
         kg = KnowledgeGraphService()
-        entities = kg._extract_entities("This is a test. Tell me about the solar system.")
+        entities = kg._extract_entities(
+            "This is a test. Tell me about the solar system."
+        )
         names = [v for t, v in entities if t == "person"]
         assert "Tell Me" not in names
         assert "This Is" not in names
@@ -69,13 +80,15 @@ class TestKnowledgeGraphAccuracy:
 
 # ── Citation service ──────────────────────────────────────────────────────
 
-class TestCitationAccuracy:
 
+class TestCitationAccuracy:
     def _sources(self):
         cs = CitationService()
         cs.register_sources(
             web_results=[{"title": "T1", "url": "https://a.com", "snippet": "s1"}],
-            kb_results=[{"metadata": {"source": "KB1"}, "text": "kb text", "score": 0.9}],
+            kb_results=[
+                {"metadata": {"source": "KB1"}, "text": "kb text", "score": 0.9}
+            ],
             doc_content="---\nPage 1\n---\nFirst page text.\n---\nPage 2\n---\nSecond page text.",
             youtube_results={"title": "YT", "video_id": "abc123", "transcript": "tr"},
         )
@@ -126,7 +139,9 @@ class TestCitationAccuracy:
 
     def test_extract_inline_citations_context(self):
         cs = self._sources()
-        results = cs.extract_inline_citations("The quick brown fox jumps [2] over the lazy dog")
+        results = cs.extract_inline_citations(
+            "The quick brown fox jumps [2] over the lazy dog"
+        )
         assert len(results) == 1
         assert results[0]["index"] == 2
         assert "quick brown fox" in results[0]["context"]
@@ -140,15 +155,31 @@ class TestCitationAccuracy:
 
 # ── NSW curriculum ────────────────────────────────────────────────────────
 
-class TestNSWCurriculumAccuracy:
 
+class TestNSWCurriculumAccuracy:
     def setup_method(self):
         self.c = get_curriculum_service()
 
     def test_stage_for_age_exact(self):
-        cases = {4: "ES1", 5: "ES1", 6: "S1", 7: "S1", 8: "S2", 9: "S2",
-                 10: "S3", 11: "S3", 12: "S4", 13: "S4", 14: "S4",
-                 15: "S5", 16: "S5", 17: "S6", 18: "S6", 19: None, 3: "ES1"}
+        cases = {
+            4: "ES1",
+            5: "ES1",
+            6: "S1",
+            7: "S1",
+            8: "S2",
+            9: "S2",
+            10: "S3",
+            11: "S3",
+            12: "S4",
+            13: "S4",
+            14: "S4",
+            15: "S5",
+            16: "S5",
+            17: "S6",
+            18: "S6",
+            19: None,
+            3: "ES1",
+        }
         for age, expected in cases.items():
             got = self.c.get_stage_for_age(age)
             assert got == expected, f"age {age}: got {got!r}, expected {expected!r}"
@@ -179,33 +210,50 @@ class TestNSWCurriculumAccuracy:
 
     def test_learning_progression_ordered(self):
         prog = self.c.get_learning_progression("mathematics")
-        assert list(prog.keys()) == sorted(prog.keys(), key=lambda s: ["ES1","S1","S2","S3","S4","S5","S6"].index(s))
+        assert list(prog.keys()) == sorted(
+            prog.keys(),
+            key=lambda s: ["ES1", "S1", "S2", "S3", "S4", "S5", "S6"].index(s),
+        )
 
 
 # ── Document service (quote scoring) ──────────────────────────────────────
 
-class TestDocumentQuoteAccuracy:
 
+class TestDocumentQuoteAccuracy:
     def setup_method(self):
         self.d = DocumentService()
 
     def test_keyword_extraction_removes_stopwords(self):
-        kws = self.d._extract_keywords("Find the quotes about photosynthesis in the chapter")
+        kws = self.d._extract_keywords(
+            "Find the quotes about photosynthesis in the chapter"
+        )
         assert "photosynthesis" in kws
         assert "the" not in kws
         assert "find" not in kws
         assert len(kws) >= 1
 
     def test_keyword_score_exact_and_partial(self):
-        assert self.d._keyword_score("photosynthesis converts light", ["photosynthesis"]) == 1.0
-        assert self.d._keyword_score("photosynthetically active", ["photosynthesis"]) == 0.5
+        assert (
+            self.d._keyword_score("photosynthesis converts light", ["photosynthesis"])
+            == 1.0
+        )
+        assert (
+            self.d._keyword_score("photosynthetically active", ["photosynthesis"])
+            == 0.5
+        )
         assert self.d._keyword_score("nothing related", ["photosynthesis"]) == 0.0
 
     def test_quote_scoring_ranks_relevant_first(self):
         pages = [
-            {"page": 1, "text": "Photosynthesis is the process plants use to make food from sunlight."},
+            {
+                "page": 1,
+                "text": "Photosynthesis is the process plants use to make food from sunlight.",
+            },
             {"page": 2, "text": "The Roman empire expanded across Europe and Africa."},
-            {"page": 3, "text": "Photosynthesis requires chlorophyll, water and carbon dioxide to produce glucose."},
+            {
+                "page": 3,
+                "text": "Photosynthesis requires chlorophyll, water and carbon dioxide to produce glucose.",
+            },
         ]
         quotes = self.d._score_quotes(pages, "photosynthesis process plants")
         assert quotes, "expected at least one quote"
@@ -214,13 +262,24 @@ class TestDocumentQuoteAccuracy:
         assert quotes[0]["relevance"] >= quotes[-1]["relevance"]
 
     def test_quote_word_count_bounds(self):
-        pages = [{"page": 1, "text": "Short."},
-                 {"page": 2, "text": "This sentence has exactly enough words to be considered a quote for the purpose of this test."}]
+        pages = [
+            {"page": 1, "text": "Short."},
+            {
+                "page": 2,
+                "text": "This sentence has exactly enough words to be considered a quote for the purpose of this test.",
+            },
+        ]
         quotes = self.d._score_quotes(pages, "enough words quote")
         assert all(8 <= q["word_count"] <= 150 for q in quotes)
 
     def test_dedup_by_prefix(self):
-        pages = [{"page": 1, "text": "The solar system has eight planets orbiting the sun in elliptical paths." * 2}]
+        pages = [
+            {
+                "page": 1,
+                "text": "The solar system has eight planets orbiting the sun in elliptical paths."
+                * 2,
+            }
+        ]
         quotes = self.d._score_quotes(pages, "solar system planets")
         starts = [q["quote"][:40] for q in quotes]
         assert len(starts) == len(set(starts))
@@ -228,8 +287,8 @@ class TestDocumentQuoteAccuracy:
 
 # ── Study service parsers ─────────────────────────────────────────────────
 
-class TestStudyServiceParserAccuracy:
 
+class TestStudyServiceParserAccuracy:
     def setup_method(self):
         self.s = StudyService()
 
@@ -281,14 +340,13 @@ class TestStudyServiceParserAccuracy:
         assert "b is right" in qs[0]["explanation"]
 
     def test_parse_quiz_bracketed_correct(self):
-        qs = self.s._parse_quiz(
-            "Q1: X?\nA) a\nB) b\nC) c\nD) d\nCorrect: (D)\n"
-        )
+        qs = self.s._parse_quiz("Q1: X?\nA) a\nB) b\nC) c\nD) d\nCorrect: (D)\n")
         assert qs[0]["correct"] == "D"
 
     async def _mock_google(self, snippets, options=None):
         """Run _verify_with_google against injected ResearchService results."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
+
         if options is None:
             options = ["Oxygen", "Carbon dioxide", "Nitrogen", "Helium"]
         fake_research = AsyncMock()
@@ -306,9 +364,17 @@ class TestStudyServiceParserAccuracy:
     def test_google_verify_prefers_distinct_option(self):
         """Distinctive terms echoed exactly in the snippet must win."""
         import asyncio
-        letter = asyncio.run(self._mock_google([
-            ("Photosynthesis", "Plants take in carbon dioxide and release oxygen."),
-        ]))
+
+        letter = asyncio.run(
+            self._mock_google(
+                [
+                    (
+                        "Photosynthesis",
+                        "Plants take in carbon dioxide and release oxygen.",
+                    ),
+                ]
+            )
+        )
         # "carbon dioxide" and "oxygen" both appear; distinctive-score weighs
         # the informative option, so an exact echo should be selected.
         assert letter in "AB"
@@ -316,19 +382,34 @@ class TestStudyServiceParserAccuracy:
     def test_google_verify_tolerates_inflection(self):
         """Fuzzy match must handle evaporation vs evaporates."""
         import asyncio
+
         options = ["Evaporation", "Condensation", "Precipitation", "Collection"]
-        letter = asyncio.run(self._mock_google([
-            ("Water cycle", "Water evaporates from oceans, lakes and rivers."),
-        ], options))
+        letter = asyncio.run(
+            self._mock_google(
+                [
+                    ("Water cycle", "Water evaporates from oceans, lakes and rivers."),
+                ],
+                options,
+            )
+        )
         assert letter == "A"
 
     def test_google_verify_ignores_conjunctive_options(self):
         """'All of the above' carries no signal and must never be chosen."""
         import asyncio
+
         options = ["Evaporation", "Condensation", "Precipitation", "All of the above"]
-        letter = asyncio.run(self._mock_google([
-            ("Water cycle", "Water evaporates from the heated surface of the ocean."),
-        ], options))
+        letter = asyncio.run(
+            self._mock_google(
+                [
+                    (
+                        "Water cycle",
+                        "Water evaporates from the heated surface of the ocean.",
+                    ),
+                ],
+                options,
+            )
+        )
         assert letter == "A"
 
     def test_parse_flashcards(self):
@@ -345,6 +426,7 @@ class TestStudyServiceParserAccuracy:
 
     def test_brain_intents_cover_study_tools(self):
         from services.orchestrator import detect_intents
+
         # previously study_plan, now covered via exam_sim/audio_overview/etc via brain
         assert "exam_sim" in detect_intents("exam simulation on algebra")
         assert "audio_overview" in detect_intents("audio overview photosynthesis")
@@ -353,13 +435,13 @@ class TestStudyServiceParserAccuracy:
 
 # ── Knowledge base helpers ────────────────────────────────────────────────
 
-class TestKnowledgeBaseHelperAccuracy:
 
+class TestKnowledgeBaseHelperAccuracy:
     def test_chunk_text_overlap_contiguous(self):
         text = "word " * 500
         chunks = _chunk_text(text, chunk_size=50)
         assert len(chunks) >= 2
-        joined = "".join(chunks)
+        "".join(chunks)
         assert all(c.strip() for c in chunks)
 
     def test_chunk_single_small_text(self):
@@ -380,13 +462,37 @@ class TestKnowledgeBaseHelperAccuracy:
 
     def test_detect_collection_exact(self):
         cases = [
-            ("syllabus.pdf", "NSW Year 7 Mathematics syllabus aligned to the Australian curriculum", "education_au"),
+            (
+                "syllabus.pdf",
+                "NSW Year 7 Mathematics syllabus aligned to the Australian curriculum",
+                "education_au",
+            ),
             ("main.py", "def main():\n    return 1\n", "coding"),
-            ("paper.pdf", "The abstract describes the methodology and conclusion. The study was peer-reviewed with citations.", "research"),
-            ("algebra.pdf", "Solve the equation using the quadratic formula and prove the theorem.", "math"),
-            ("biology.pdf", "The experiment studied cells and molecules in organisms and chemical reactions.", "science"),
-            ("history.pdf", "The war and the revolution in the 19th century shaped the empire.", "history"),
-            ("geography.pdf", "The river crosses continents with varied climate and population density.", "geography"),
+            (
+                "paper.pdf",
+                "The abstract describes the methodology and conclusion. The study was peer-reviewed with citations.",
+                "research",
+            ),
+            (
+                "algebra.pdf",
+                "Solve the equation using the quadratic formula and prove the theorem.",
+                "math",
+            ),
+            (
+                "biology.pdf",
+                "The experiment studied cells and molecules in organisms and chemical reactions.",
+                "science",
+            ),
+            (
+                "history.pdf",
+                "The war and the revolution in the 19th century shaped the empire.",
+                "history",
+            ),
+            (
+                "geography.pdf",
+                "The river crosses continents with varied climate and population density.",
+                "geography",
+            ),
         ]
         for fname, text, expected in cases:
             got = _detect_collection(fname, text)
@@ -395,29 +501,32 @@ class TestKnowledgeBaseHelperAccuracy:
 
 # ── Analytics ─────────────────────────────────────────────────────────────
 
-class TestAnalyticsAccuracy:
 
+class TestAnalyticsAccuracy:
     def test_streak_calculation(self):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime
+
         a = AnalyticsService()
         daily = {"2026-08-07": 5, "2026-08-06": 3, "2026-08-05": 0, "2026-08-04": 2}
         # anchor "now" explicitly → the test is deterministic regardless of TZ
-        now = datetime(2026, 8, 7, tzinfo=timezone.utc)
+        now = datetime(2026, 8, 7, tzinfo=UTC)
         # consecutive days from today backward: 07, 06 count; 05 breaks
         assert a._calculate_streak(daily, now) == 2
         assert a._calculate_streak({"2026-08-07": 1, **daily}, now) == 2
-        assert a._calculate_streak(daily, datetime(2026, 8, 5, tzinfo=timezone.utc)) == 0
+        assert a._calculate_streak(daily, datetime(2026, 8, 5, tzinfo=UTC)) == 0
 
 
 # ── Ollama concurrency guard ──────────────────────────────────────────────
 
-class TestOllamaConcurrencyGuard:
 
+class TestOllamaConcurrencyGuard:
     def test_parallel_completes_bounded(self):
         """6 parallel complete() calls must never exceed MAX_CONCURRENT_CALLS
         concurrent requests to the model server."""
         import asyncio
+
         import httpx
+
         import services.ollama_service as osvc
 
         async def run():
@@ -431,16 +540,16 @@ class TestOllamaConcurrencyGuard:
                 max_active = max(max_active, active)
                 await asyncio.sleep(0.02)
                 active -= 1
-                resp = httpx.Response(200, request=client.build_request("POST", url, json={}))
+                resp = httpx.Response(
+                    200, request=client.build_request("POST", url, json={})
+                )
                 resp._content = b'{"message":{"content":"ok"}}'
                 return resp
 
             httpx.AsyncClient.post = slow_post
             try:
                 svc = osvc.OllamaService()
-                await asyncio.gather(
-                    *[svc.complete("m", f"p{i}") for i in range(6)]
-                )
+                await asyncio.gather(*[svc.complete("m", f"p{i}") for i in range(6)])
             finally:
                 httpx.AsyncClient.post = real_post
 

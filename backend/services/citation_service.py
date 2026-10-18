@@ -3,18 +3,26 @@
 Extracts structured citations from LLM output, validates them against
 available sources, and provides citation metadata for frontend display.
 """
-import re
-import json
+
 import logging
-from typing import List, Dict, Optional, Tuple
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class Citation:
     """Represents a single citation reference."""
-    def __init__(self, index: int, text: str, source_type: str, source_url: str = "",
-                 source_title: str = "", snippet: str = "", page: int = None):
+
+    def __init__(
+        self,
+        index: int,
+        text: str,
+        source_type: str,
+        source_url: str = "",
+        source_title: str = "",
+        snippet: str = "",
+        page: int | None = None,
+    ):
         self.index = index
         self.text = text
         self.source_type = source_type  # web, kb, document, youtube, memory
@@ -41,22 +49,22 @@ class CitationService:
     """Parse and manage citations in LLM responses."""
 
     # Pattern for [N] style citations
-    CITATION_PATTERN = re.compile(r'\[(\d+)\]')
+    CITATION_PATTERN = re.compile(r"\[(\d+)\]")
     # Pattern for page citations like "page 3" or "p. 3"
-    PAGE_PATTERN = re.compile(r'(?:page|p\.?)\s*(\d+)', re.I)
+    PAGE_PATTERN = re.compile(r"(?:page|p\.?)\s*(\d+)", re.IGNORECASE)
 
     def __init__(self):
-        self.sources: List[Dict] = []
-        self.citations: List[Citation] = []
+        self.sources: list[dict] = []
+        self.citations: list[Citation] = []
 
     def register_sources(
         self,
-        web_results: List[Dict] = None,
-        kb_results: List[Dict] = None,
-        doc_content: str = None,
-        youtube_results: Dict = None,
-        memory_context: str = None,
-        cross_check: List[Dict] = None,
+        web_results: list[dict] | None = None,
+        kb_results: list[dict] | None = None,
+        doc_content: str | None = None,
+        youtube_results: dict | None = None,
+        memory_context: str | None = None,
+        cross_check: list[dict] | None = None,
     ):
         """Register all available sources for citation mapping."""
         self.sources = []
@@ -66,13 +74,15 @@ class CitationService:
         # Web search results
         if web_results:
             for r in web_results[:8]:
-                self.sources.append({
-                    "index": idx,
-                    "type": "web",
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "snippet": r.get("snippet", "")[:300],
-                })
+                self.sources.append(
+                    {
+                        "index": idx,
+                        "type": "web",
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("snippet", "")[:300],
+                    }
+                )
                 idx += 1
 
         # Cross-check results (if different from web results)
@@ -81,55 +91,63 @@ class CitationService:
             for r in cross_check[:4]:
                 url = r.get("url", "")
                 if url and url not in existing_urls:
-                    self.sources.append({
-                        "index": idx,
-                        "type": "web",
-                        "title": r.get("title", ""),
-                        "url": url,
-                        "snippet": r.get("snippet", "")[:300],
-                        "role": "cross-check",
-                    })
+                    self.sources.append(
+                        {
+                            "index": idx,
+                            "type": "web",
+                            "title": r.get("title", ""),
+                            "url": url,
+                            "snippet": r.get("snippet", "")[:300],
+                            "role": "cross-check",
+                        }
+                    )
                     existing_urls.add(url)
                     idx += 1
 
         # Knowledge base results
         if kb_results:
             for r in kb_results[:5]:
-                self.sources.append({
-                    "index": idx,
-                    "type": "kb",
-                    "title": r.get("metadata", {}).get("source", "Knowledge Base"),
-                    "collection": r.get("collection", ""),
-                    "snippet": r.get("text", "")[:200],
-                    "score": r.get("score", 0),
-                })
+                self.sources.append(
+                    {
+                        "index": idx,
+                        "type": "kb",
+                        "title": r.get("metadata", {}).get("source", "Knowledge Base"),
+                        "collection": r.get("collection", ""),
+                        "snippet": r.get("text", "")[:200],
+                        "score": r.get("score", 0),
+                    }
+                )
                 idx += 1
 
         # Document content
         if doc_content:
             pages = self._extract_pages(doc_content)
             for page_num, page_text in pages[:10]:
-                self.sources.append({
-                    "index": idx,
-                    "type": "document",
-                    "title": f"Document (page {page_num})",
-                    "page": page_num,
-                    "snippet": page_text[:200],
-                })
+                self.sources.append(
+                    {
+                        "index": idx,
+                        "type": "document",
+                        "title": f"Document (page {page_num})",
+                        "page": page_num,
+                        "snippet": page_text[:200],
+                    }
+                )
                 idx += 1
 
         # YouTube
         if youtube_results and not youtube_results.get("error"):
-            self.sources.append({
-                "index": idx,
-                "type": "youtube",
-                "title": youtube_results.get("title", "YouTube Video"),
-                "url": f"https://youtube.com/watch?v={youtube_results.get('video_id', '')}",
-                "snippet": youtube_results.get("transcript", "")[:200],
-            })
+            self.sources.append(
+                {
+                    "index": idx,
+                    "type": "youtube",
+                    "title": youtube_results.get("title", "YouTube Video"),
+                    "url": f"https://youtube.com/watch?v={youtube_results.get('video_id', '')}",
+                    "snippet": youtube_results.get("transcript", "")[:200],
+                }
+            )
             idx += 1
 
-    def parse_citations(self, text: str) -> Tuple[str, List[Citation]]:
+    def parse_citations(self, text: str) -> tuple[str, list[Citation]]:
         """Parse [N] citations from LLM output and return cleaned text + citation objects."""
         citations = []
         seen_indices = set()
@@ -157,7 +175,7 @@ class CitationService:
         self.citations = citations
         return text, citations
 
-    def extract_inline_citations(self, text: str) -> List[Dict]:
+    def extract_inline_citations(self, text: str) -> list[dict]:
         """Extract citations with their surrounding context for highlighting."""
         results = []
         for match in self.CITATION_PATTERN.finditer(text):
@@ -168,16 +186,18 @@ class CitationService:
 
             source = next((s for s in self.sources if s["index"] == idx), None)
             if source:
-                results.append({
-                    "index": idx,
-                    "context": context,
-                    "source_type": source.get("type", "unknown"),
-                    "source_title": source.get("title", ""),
-                    "source_url": source.get("url", ""),
-                })
+                results.append(
+                    {
+                        "index": idx,
+                        "context": context,
+                        "source_type": source.get("type", "unknown"),
+                        "source_title": source.get("title", ""),
+                        "source_url": source.get("url", ""),
+                    }
+                )
         return results
 
-    def get_source_list(self) -> List[Dict]:
+    def get_source_list(self) -> list[dict]:
         """Get all registered sources as a list for frontend display."""
         return [
             {
@@ -218,11 +238,11 @@ class CitationService:
 
         return "\n".join(lines)
 
-    def _extract_pages(self, doc_text: str) -> List[Tuple[int, str]]:
+    def _extract_pages(self, doc_text: str) -> list[tuple[int, str]]:
         """Extract page-numbered sections from document text."""
         pages = []
         # Try to split by page markers
-        page_splits = re.split(r'(?:---\s*Page\s+(\d+)\s*---|Page\s+(\d+))', doc_text)
+        page_splits = re.split(r"(?:---\s*Page\s+(\d+)\s*---|Page\s+(\d+))", doc_text)
 
         if len(page_splits) > 1:
             current_page = 1
@@ -236,12 +256,12 @@ class CitationService:
             chunk_size = 2000
             for i in range(0, len(doc_text), chunk_size):
                 page_num = (i // chunk_size) + 1
-                pages.append((page_num, doc_text[i:i + chunk_size]))
+                pages.append((page_num, doc_text[i : i + chunk_size]))
 
         return pages
 
 
-def enhance_system_prompt_with_citations(base_prompt: str, sources: List[Dict]) -> str:
+def enhance_system_prompt_with_citations(base_prompt: str, sources: list[dict]) -> str:
     """Add citation instructions to the system prompt based on available sources."""
     if not sources:
         return base_prompt
@@ -270,9 +290,7 @@ def enhance_system_prompt_with_citations(base_prompt: str, sources: List[Dict]) 
         "\n━━ CITATION SOURCES ━━\n"
         "The following sources are available for citation. "
         "When referencing information from these sources, use the format [N] "
-        "where N is the source number.\n\n"
-        + "\n".join(source_lines)
-        + "\n\n"
+        "where N is the source number.\n\n" + "\n".join(source_lines) + "\n\n"
         "After your answer, include a **Sources:** section listing only "
         "the sources you actually cited, with their numbers and titles.\n"
     )

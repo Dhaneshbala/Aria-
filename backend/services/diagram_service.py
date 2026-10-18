@@ -18,45 +18,84 @@ Spec shape:
 Rules: 3-8 nodes, label ≤ 48 chars, sub ≤ 80 chars.
 """
 
+import asyncio
 import json
 import logging
 import re
-import asyncio
 
 logger = logging.getLogger(__name__)
 
 VISUAL_TYPES = [
-    "flowchart", "mindmap", "cycle", "timeline", "steps",
-    "comparison", "pyramid", "venn", "pie", "bar",
+    "flowchart",
+    "mindmap",
+    "cycle",
+    "timeline",
+    "steps",
+    "comparison",
+    "pyramid",
+    "venn",
+    "pie",
+    "bar",
 ]
 
 # ── Auto-detect: prompt keywords → best visual type (Napkin's auto-pick) ──
 _TYPE_HINTS = [
-    ({"venn", "overlap", "both", "neither", "compare", "contrast", "vs", "versus"}, "comparison"),
-    ({"timeline", "history", "chronolog", "evolution", "year", "century", "ww2", "war"}, "timeline"),
+    (
+        {"venn", "overlap", "both", "neither", "compare", "contrast", "vs", "versus"},
+        "comparison",
+    ),
+    (
+        {
+            "timeline",
+            "history",
+            "chronolog",
+            "evolution",
+            "year",
+            "century",
+            "ww2",
+            "war",
+        },
+        "timeline",
+    ),
     ({"cycle", "water cycle", "carbon cycle", "circulat", "loop", "recycl"}, "cycle"),
     ({"process", "steps", "procedure", "how to", "method", "stage"}, "steps"),
     ({"flowchart", "flow", "decision", "if ", "workflow", "algorithm"}, "flowchart"),
     ({"pyramid", "hierarchy", "levels of", "maslow", "food chain"}, "pyramid"),
     ({"pie", "percent", "share", "proportion", "distribution"}, "pie"),
     ({"bar", "statistics", "stats", "compare numbers", "chart"}, "bar"),
-    ({"mindmap", "mind map", "branches", "concept map", "overview", "about"}, "mindmap"),
+    (
+        {"mindmap", "mind map", "branches", "concept map", "overview", "about"},
+        "mindmap",
+    ),
 ]
 
 _ICON_HINTS = [
-    ({"sun", "solar", "evaporat"}, "☀️"), ({"water", "rain", "ocean", "river"}, "💧"),
-    ({"plant", "photo", "leaf"}, "🌱"), ({"cell", "blood", "body", "heart"}, "🧬"),
-    ({"war", "battle", "army", "history"}, "⚔️"), ({"space", "planet", "star"}, "🪐"),
-    ({"money", "econom", "trade"}, "💰"), ({"code", "program", "comput"}, "💻"),
-    ({"food", "eat", "nutri"}, "🍎"), ({"energy", "power", "electric"}, "⚡"),
-    ({"earth", "climate", "carbon"}, "🌍"), ({"animal", "species"}, "🐾"),
-    ({"math", "number", "fraction", "angle"}, "📐"), ({"music", "sound"}, "🎵"),
-    ({"book", "essay", "writ"}, "📚"), ({"sport", "game"}, "⚽"),
-    ({"heart", "love", "emotion"}, "❤️"), ({"brain", "think", "cognitive"}, "🧠"),
-    ({"time", "clock", "schedule"}, "⏰"), ({"home", "house", "building"}, "🏠"),
-    ({"car", "transport", "travel"}, "🚗"), ({"fire", "heat", "burn"}, "🔥"),
-    ({"wind", "air", "breeze"}, "💨"), ({"mountain", "rock", "geology"}, "🏔️"),
-    ({"ocean", "sea", "marine"}, "🌊"), ({"star", "night", "sky"}, "⭐"),
+    ({"sun", "solar", "evaporat"}, "☀️"),
+    ({"water", "rain", "ocean", "river"}, "💧"),
+    ({"plant", "photo", "leaf"}, "🌱"),
+    ({"cell", "blood", "body", "heart"}, "🧬"),
+    ({"war", "battle", "army", "history"}, "⚔️"),
+    ({"space", "planet", "star"}, "🪐"),
+    ({"money", "econom", "trade"}, "💰"),
+    ({"code", "program", "comput"}, "💻"),
+    ({"food", "eat", "nutri"}, "🍎"),
+    ({"energy", "power", "electric"}, "⚡"),
+    ({"earth", "climate", "carbon"}, "🌍"),
+    ({"animal", "species"}, "🐾"),
+    ({"math", "number", "fraction", "angle"}, "📐"),
+    ({"music", "sound"}, "🎵"),
+    ({"book", "essay", "writ"}, "📚"),
+    ({"sport", "game"}, "⚽"),
+    ({"heart", "love", "emotion"}, "❤️"),
+    ({"brain", "think", "cognitive"}, "🧠"),
+    ({"time", "clock", "schedule"}, "⏰"),
+    ({"home", "house", "building"}, "🏠"),
+    ({"car", "transport", "travel"}, "🚗"),
+    ({"fire", "heat", "burn"}, "🔥"),
+    ({"wind", "air", "breeze"}, "💨"),
+    ({"mountain", "rock", "geology"}, "🏔️"),
+    ({"ocean", "sea", "marine"}, "🌊"),
+    ({"star", "night", "sky"}, "⭐"),
 ]
 
 # ── Smart sub-descriptions for common topics ──
@@ -135,7 +174,10 @@ def suggest_visuals(prompt: str) -> list[dict]:
         "pie": "Pie — shares of a whole",
         "bar": "Bars — compare sizes",
     }
-    return [{"type": t, "label": labels.get(t, t), "recommended": i == 0} for i, t in enumerate(picks[:3])]
+    return [
+        {"type": t, "label": labels.get(t, t), "recommended": i == 0}
+        for i, t in enumerate(picks[:3])
+    ]
 
 
 def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
@@ -147,23 +189,39 @@ def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
     if vtype not in VISUAL_TYPES:
         vtype = "flowchart"
     # Try bullets / numbered lines first, then sentences, then phrases
-    lines = [l.strip(" •-*0123456789.)\t ") for l in re.split(r"[\n;]", prompt) if l.strip()]
+    lines = [
+        l.strip(" •-*0123456789.)\t ")  # noqa: B005 — set-style strip is intended (drops bullet chars/digits)
+        for l in re.split(r"[\n;]", prompt)
+        if l.strip()
+    ]
     items: list[str] = []
     for ln in lines:
         parts = re.split(r"\s*[•·]\s*|\s{2,}", ln)
         items.extend(p.strip() for p in parts if p.strip())
     if len(items) < 3:
-        items = [s.strip() for s in re.split(r"(?<=[.!?])\s+", prompt) if len(s.strip()) > 8]
+        items = [
+            s.strip() for s in re.split(r"(?<=[.!?])\s+", prompt) if len(s.strip()) > 8
+        ]
     if len(items) < 3:
         items = [p.strip() for p in re.split(r",\s*", prompt) if len(p.strip()) > 3]
     items = [i[:70] for i in items if i][:6]
     while len(items) < 3:
         items.append(f"Key point {len(items) + 1}")
     title_bits = prompt.strip().split("\n")[0][:60]
-    title = re.sub(r"^(please\s+)?(draw|generate|create|make|show|give|explain)\b[^a-zA-Z]*", "", title_bits, flags=re.I).strip().title() or "Overview"
+    title = (
+        re.sub(
+            r"^(please\s+)?(draw|generate|create|make|show|give|explain)\b[^a-zA-Z]*",
+            "",
+            title_bits,
+            flags=re.IGNORECASE,
+        )
+        .strip()
+        .title()
+        or "Overview"
+    )
     nodes = [
         {
-            "id": f"n{i+1}",
+            "id": f"n{i + 1}",
             "label": _short(label, 48),
             "sub": _sub_for(label) or "",
             "icon": _icon_for(label, prompt),
@@ -171,7 +229,12 @@ def _fallback_spec(prompt: str, visual_type: str | None = None) -> dict:
         for i, label in enumerate(items[:6])
     ]
     edges = _chain_edges(nodes, vtype)
-    return {"visual_type": vtype, "title": _short(title, 60), "nodes": nodes, "edges": edges}
+    return {
+        "visual_type": vtype,
+        "title": _short(title, 60),
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 def _short(text: str, n: int) -> str:
@@ -182,10 +245,15 @@ def _short(text: str, n: int) -> str:
 def _chain_edges(nodes: list[dict], vtype: str) -> list[dict]:
     ids = [nd["id"] for nd in nodes]
     if vtype == "cycle":
-        return [{"from": ids[i], "to": ids[(i + 1) % len(ids)], "label": ""} for i in range(len(ids))]
+        return [
+            {"from": ids[i], "to": ids[(i + 1) % len(ids)], "label": ""}
+            for i in range(len(ids))
+        ]
     if vtype in ("comparison", "venn", "pie", "bar", "pyramid", "mindmap", "timeline"):
         return []
-    return [{"from": ids[i], "to": ids[i + 1], "label": ""} for i in range(len(ids) - 1)]
+    return [
+        {"from": ids[i], "to": ids[i + 1], "label": ""} for i in range(len(ids) - 1)
+    ]
 
 
 def _sanitize_spec(data: dict, prompt: str, fallback_type: str) -> dict:
@@ -204,19 +272,27 @@ def _sanitize_spec(data: dict, prompt: str, fallback_type: str) -> dict:
         label = _short(str(nd.get("label", "")), 48)
         if not label:
             continue
-        nodes.append({
-            "id": f"n{i+1}",
-            "label": label,
-            "sub": _short(str(nd.get("sub", "")), 80),
-            "icon": str(nd.get("icon", ""))[:4] or _icon_for(label, prompt),
-        })
+        nodes.append(
+            {
+                "id": f"n{i + 1}",
+                "label": label,
+                "sub": _short(str(nd.get("sub", "")), 80),
+                "icon": str(nd.get("icon", ""))[:4] or _icon_for(label, prompt),
+            }
+        )
     if len(nodes) < 3:
         return _fallback_spec(prompt, vtype)
     ids = {nd["id"] for nd in nodes}
     edges: list[dict] = []
     for e in (data.get("edges") or [])[:10]:
         if isinstance(e, dict) and e.get("from") in ids and e.get("to") in ids:
-            edges.append({"from": e["from"], "to": e["to"], "label": _short(str(e.get("label", "")), 24)})
+            edges.append(
+                {
+                    "from": e["from"],
+                    "to": e["to"],
+                    "label": _short(str(e.get("label", "")), 24),
+                }
+            )
     if not edges and vtype in ("flowchart", "steps", "cycle"):
         edges = _chain_edges(nodes, vtype)
     return {"visual_type": vtype, "title": title, "nodes": nodes, "edges": edges}
@@ -242,8 +318,13 @@ class DiagramService:
     Speed strategy: heuristic-first (instant), LLM refines in background (optional).
     """
 
-    async def generate(self, prompt: str, visual_type: str | None = None,
-                       model: str | None = None, max_tokens: int = 300) -> dict:
+    async def generate(
+        self,
+        prompt: str,
+        visual_type: str | None = None,
+        model: str | None = None,
+        max_tokens: int = 300,
+    ) -> dict:
         """Returns {"type": "napkin", "spec": {...}} — or {"error": ...}.
 
         Instant: returns heuristic spec immediately.
@@ -262,14 +343,20 @@ class DiagramService:
 
         # Try LLM refinement with timeout (5s max — don't block the user)
         try:
+            from models.database import MODELS, get_config
             from services.ollama_service import OllamaService
-            from models.database import get_config, MODELS
+
             cfg = {}
             try:
                 cfg = get_config()
             except Exception:
                 pass
-            mdl = model or cfg.get("model") or cfg.get("reasoning_model") or MODELS["main"]
+            mdl = (
+                model
+                or cfg.get("model")
+                or cfg.get("reasoning_model")
+                or MODELS["main"]
+            )
             full_prompt = (
                 f"Visual type: {hint}\n"
                 f"Topic/text to visualise (Year 7-8 student):\n{prompt}\n"
@@ -278,9 +365,13 @@ class DiagramService:
             ollama = OllamaService()
             raw = await asyncio.wait_for(
                 ollama.complete(
-                    mdl, full_prompt, system=_SPEC_SYSTEM,
+                    mdl,
+                    full_prompt,
+                    system=_SPEC_SYSTEM,
                     max_tokens=max(250, min(max_tokens, 400)),
-                    think=False, json_mode=True, context_window=4096,
+                    think=False,
+                    json_mode=True,
+                    context_window=4096,
                 ),
                 timeout=5.0,
             )
@@ -289,7 +380,7 @@ class DiagramService:
             if len(refined_spec.get("nodes", [])) >= len(instant_spec.get("nodes", [])):
                 return {"type": "napkin", "spec": refined_spec}
             return {"type": "napkin", "spec": instant_spec, "refined": False}
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.info("Diagram LLM timed out (5s) — using heuristic")
             return {"type": "napkin", "spec": instant_spec, "fallback": True}
         except Exception as e:
@@ -312,7 +403,7 @@ def _strip_fences(text: str) -> str:
         t = re.sub(r"^```(?:json)?", "", t).strip()
         t = re.sub(r"```$", "", t).strip()
     if not t.startswith("{"):
-        m = re.search(r"\{.*\}", t, re.S)
+        m = re.search(r"\{.*\}", t, re.DOTALL)
         if m:
             t = m.group(0)
     return t

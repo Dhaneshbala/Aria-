@@ -1,19 +1,42 @@
 """
 Gamification — Streaks, Achievements, Challenge Mode, Leaderboard.
 """
+
 import json
 import logging
 import os
 import random
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
 GAMIFICATION_FILE = DATA_DIR / "gamification.json"
 PROFILE_FILE = DATA_DIR / "study_profile.json"
+
+
+def _atomic_write(path: Path, text: str):
+    """Crash-safe write via tmp+rename+fsync (same as models.database)."""
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.tmp.")
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        Path(tmp_path).replace(path)
+    finally:
+        p = Path(tmp_path)
+        if p.exists():
+            try:
+                p.unlink()
+            except Exception:
+                pass
 
 
 def _load_json(path, default):
@@ -26,42 +49,164 @@ def _load_json(path, default):
 
 
 def _save_json(path, data):
-    path.write_text(json.dumps(data, indent=2))
+    _atomic_write(path, json.dumps(data, indent=2))
 
 
 ACHIEVEMENT_DEFS = [
-    {"id": "first_quiz", "name": "First Steps", "desc": "Complete your first quiz", "icon": "🎯", "category": "milestone"},
-    {"id": "quiz_10", "name": "Quiz Master", "desc": "Complete 10 quizzes", "icon": "🏆", "category": "milestone"},
-    {"id": "quiz_50", "name": "Quiz Legend", "desc": "Complete 50 quizzes", "icon": "👑", "category": "milestone"},
-    {"id": "flashcard_50", "name": "Card Collector", "desc": "Review 50 flashcards", "icon": "🃏", "category": "milestone"},
-    {"id": "flashcard_100", "name": "Card Champion", "desc": "Review 100 flashcards", "icon": "🎰", "category": "milestone"},
-    {"id": "streak_3", "name": "Three Day Streak", "desc": "Study 3 days in a row", "icon": "🔥", "category": "streak"},
-    {"id": "streak_7", "name": "Week Warrior", "desc": "Study 7 days in a row", "icon": "⚡", "category": "streak"},
-    {"id": "streak_14", "name": "Fortnight Fighter", "desc": "Study 14 days in a row", "icon": "💪", "category": "streak"},
-    {"id": "streak_30", "name": "Monthly Master", "desc": "Study 30 days in a row", "icon": "🌟", "category": "streak"},
-    {"id": "perfect_quiz", "name": "Perfect Score", "desc": "Get 100% on a quiz", "icon": "💯", "category": "achievement"},
-    {"id": "all_subjects", "name": "Well Rounded", "desc": "Study 5 different subjects", "icon": "🎓", "category": "achievement"},
-    {"id": "early_bird", "name": "Early Bird", "desc": "Study before 8am", "icon": "🌅", "category": "special"},
-    {"id": "night_owl", "name": "Night Owl", "desc": "Study after 10pm", "icon": "🦉", "category": "special"},
-    {"id": "speed_demon", "name": "Speed Demon", "desc": "Complete a quiz in under 2 minutes", "icon": "⏱️", "category": "special"},
-    {"id": "night_before", "name": "Crammer", "desc": "Study the night before something", "icon": "📚", "category": "special"},
-    {"id": "pdf_reader", "name": "Bookworm", "desc": "Upload and analyse 5 documents", "icon": "🐛", "category": "milestone"},
-    {"id": "video_learner", "name": "Visual Learner", "desc": "Analyse 3 YouTube videos", "icon": "🎬", "category": "milestone"},
-    {"id": "code_ninja", "name": "Code Ninja", "desc": "Use coding features 10 times", "icon": "🥷", "category": "milestone"},
-    {"id": "mindmap_master", "name": "Mind Mapper", "desc": "Create 5 mind maps", "icon": "🗺️", "category": "milestone"},
-    {"id": "presentation_pro", "name": "Presentation Pro", "desc": "Generate 3 PowerPoint presentations", "icon": "📊", "category": "milestone"},
+    {
+        "id": "first_quiz",
+        "name": "First Steps",
+        "desc": "Complete your first quiz",
+        "icon": "🎯",
+        "category": "milestone",
+    },
+    {
+        "id": "quiz_10",
+        "name": "Quiz Master",
+        "desc": "Complete 10 quizzes",
+        "icon": "🏆",
+        "category": "milestone",
+    },
+    {
+        "id": "quiz_50",
+        "name": "Quiz Legend",
+        "desc": "Complete 50 quizzes",
+        "icon": "👑",
+        "category": "milestone",
+    },
+    {
+        "id": "flashcard_50",
+        "name": "Card Collector",
+        "desc": "Review 50 flashcards",
+        "icon": "🃏",
+        "category": "milestone",
+    },
+    {
+        "id": "flashcard_100",
+        "name": "Card Champion",
+        "desc": "Review 100 flashcards",
+        "icon": "🎰",
+        "category": "milestone",
+    },
+    {
+        "id": "streak_3",
+        "name": "Three Day Streak",
+        "desc": "Study 3 days in a row",
+        "icon": "🔥",
+        "category": "streak",
+    },
+    {
+        "id": "streak_7",
+        "name": "Week Warrior",
+        "desc": "Study 7 days in a row",
+        "icon": "⚡",
+        "category": "streak",
+    },
+    {
+        "id": "streak_14",
+        "name": "Fortnight Fighter",
+        "desc": "Study 14 days in a row",
+        "icon": "💪",
+        "category": "streak",
+    },
+    {
+        "id": "streak_30",
+        "name": "Monthly Master",
+        "desc": "Study 30 days in a row",
+        "icon": "🌟",
+        "category": "streak",
+    },
+    {
+        "id": "perfect_quiz",
+        "name": "Perfect Score",
+        "desc": "Get 100% on a quiz",
+        "icon": "💯",
+        "category": "achievement",
+    },
+    {
+        "id": "all_subjects",
+        "name": "Well Rounded",
+        "desc": "Study 5 different subjects",
+        "icon": "🎓",
+        "category": "achievement",
+    },
+    {
+        "id": "early_bird",
+        "name": "Early Bird",
+        "desc": "Study before 8am",
+        "icon": "🌅",
+        "category": "special",
+    },
+    {
+        "id": "night_owl",
+        "name": "Night Owl",
+        "desc": "Study after 10pm",
+        "icon": "🦉",
+        "category": "special",
+    },
+    {
+        "id": "speed_demon",
+        "name": "Speed Demon",
+        "desc": "Complete a quiz in under 2 minutes",
+        "icon": "⏱️",
+        "category": "special",
+    },
+    {
+        "id": "night_before",
+        "name": "Crammer",
+        "desc": "Study the night before something",
+        "icon": "📚",
+        "category": "special",
+    },
+    {
+        "id": "pdf_reader",
+        "name": "Bookworm",
+        "desc": "Upload and analyse 5 documents",
+        "icon": "🐛",
+        "category": "milestone",
+    },
+    {
+        "id": "video_learner",
+        "name": "Visual Learner",
+        "desc": "Analyse 3 YouTube videos",
+        "icon": "🎬",
+        "category": "milestone",
+    },
+    {
+        "id": "code_ninja",
+        "name": "Code Ninja",
+        "desc": "Use coding features 10 times",
+        "icon": "🥷",
+        "category": "milestone",
+    },
+    {
+        "id": "mindmap_master",
+        "name": "Mind Mapper",
+        "desc": "Create 5 mind maps",
+        "icon": "🗺️",
+        "category": "milestone",
+    },
+    {
+        "id": "presentation_pro",
+        "name": "Presentation Pro",
+        "desc": "Generate 3 PowerPoint presentations",
+        "icon": "📊",
+        "category": "milestone",
+    },
 ]
 
 
 class GamificationService:
-
     def __init__(self):
-        self._data = _load_json(GAMIFICATION_FILE, {
-            "achievements": [],
-            "xp": 0,
-            "level": 1,
-            "badges": [],
-        })
+        self._data = _load_json(
+            GAMIFICATION_FILE,
+            {
+                "achievements": [],
+                "xp": 0,
+                "level": 1,
+                "badges": [],
+            },
+        )
 
     def check_and_award_achievements(self, profile: dict, convs: dict) -> list[dict]:
         """Check all achievement conditions and award new ones."""
@@ -78,12 +223,12 @@ class GamificationService:
 
         # Streak calculation
         daily = {}
-        for cid, turns in convs.items():
+        for turns in convs.values():
             for turn in turns:
                 try:
                     ts = turn.get("timestamp", "")
                     if ts:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = datetime.fromisoformat(ts)
                         day = dt.strftime("%Y-%m-%d")
                         daily[day] = daily.get(day, 0) + 1
                 except Exception:
@@ -91,7 +236,7 @@ class GamificationService:
         streak = self._calc_streak(daily)
 
         # Time-based
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         hour = now.hour
 
         # Check each achievement
@@ -105,7 +250,9 @@ class GamificationService:
             "streak_7": streak >= 7,
             "streak_14": streak >= 14,
             "streak_30": streak >= 30,
-            "perfect_quiz": total_correct > 0 and total_q > 0 and (total_correct / total_q) == 1.0,
+            "perfect_quiz": total_correct > 0
+            and total_q > 0
+            and (total_correct / total_q) == 1.0,
             "all_subjects": subject_count >= 5,
             "early_bird": 5 <= hour < 8,
             "night_owl": hour >= 22,
@@ -116,10 +263,12 @@ class GamificationService:
                 ach_def = next((a for a in ACHIEVEMENT_DEFS if a["id"] == ach_id), None)
                 if ach_def:
                     new_achievements.append(ach_def)
-                    self._data["achievements"].append({
-                        **ach_def,
-                        "earned_at": now.isoformat(),
-                    })
+                    self._data["achievements"].append(
+                        {
+                            **ach_def,
+                            "earned_at": now.isoformat(),
+                        }
+                    )
                     self._data["xp"] = self._data.get("xp", 0) + 10
                     self._data["level"] = 1 + self._data["xp"] // 100
 
@@ -147,19 +296,49 @@ class GamificationService:
     def get_challenge(self) -> dict:
         """Generate a random challenge for the student."""
         profile = _load_json(PROFILE_FILE, {})
-        subjects = profile.get("subjects", {})
+        profile.get("subjects", {})
 
         challenges = [
-            {"id": "speed_quiz", "name": "Speed Round", "desc": "Complete 5 questions in under 3 minutes", "xp_reward": 20, "type": "timed"},
-            {"id": "accuracy挑战", "name": "Accuracy Challenge", "desc": "Get 80%+ on a 10-question quiz", "xp_reward": 25, "type": "accuracy"},
-            {"id": "subject_blend", "name": "Subject Blend", "desc": "Study 3 different subjects today", "xp_reward": 15, "type": "variety"},
-            {"id": "flashcard_sprint", "name": "Flashcard Sprint", "desc": "Review 10 flashcards in a row without missing", "xp_reward": 30, "type": "streak"},
-            {"id": "weekend_warrior", "name": "Weekend Warrior", "desc": "Study for 30+ minutes on a weekend", "xp_reward": 15, "type": "weekend"},
+            {
+                "id": "speed_quiz",
+                "name": "Speed Round",
+                "desc": "Complete 5 questions in under 3 minutes",
+                "xp_reward": 20,
+                "type": "timed",
+            },
+            {
+                "id": "accuracy挑战",
+                "name": "Accuracy Challenge",
+                "desc": "Get 80%+ on a 10-question quiz",
+                "xp_reward": 25,
+                "type": "accuracy",
+            },
+            {
+                "id": "subject_blend",
+                "name": "Subject Blend",
+                "desc": "Study 3 different subjects today",
+                "xp_reward": 15,
+                "type": "variety",
+            },
+            {
+                "id": "flashcard_sprint",
+                "name": "Flashcard Sprint",
+                "desc": "Review 10 flashcards in a row without missing",
+                "xp_reward": 30,
+                "type": "streak",
+            },
+            {
+                "id": "weekend_warrior",
+                "name": "Weekend Warrior",
+                "desc": "Study for 30+ minutes on a weekend",
+                "xp_reward": 15,
+                "type": "weekend",
+            },
         ]
 
         # Pick a random challenge
         challenge = random.choice(challenges)
-        challenge["expires"] = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        challenge["expires"] = (datetime.now(UTC) + timedelta(hours=24)).isoformat()
         return challenge
 
     def get_leaderboard(self) -> dict:
@@ -172,18 +351,20 @@ class GamificationService:
             total = stats.get("total", 0)
             correct = stats.get("correct", 0)
             accuracy = correct / total if total > 0 else 0
-            entries.append({
-                "subject": subj,
-                "accuracy": round(accuracy * 100),
-                "questions": total,
-                "xp": total * 2 + correct * 3,
-                "rank": "",  # Set below
-            })
+            entries.append(
+                {
+                    "subject": subj,
+                    "accuracy": round(accuracy * 100),
+                    "questions": total,
+                    "xp": total * 2 + correct * 3,
+                    "rank": "",  # Set below
+                }
+            )
 
         entries.sort(key=lambda e: e["xp"], reverse=True)
         medals = ["🥇", "🥈", "🥉"]
         for i, entry in enumerate(entries):
-            entry["rank"] = medals[i] if i < 3 else f"#{i+1}"
+            entry["rank"] = medals[i] if i < 3 else f"#{i + 1}"
 
         return {
             "entries": entries,
@@ -192,7 +373,7 @@ class GamificationService:
         }
 
     def _calc_streak(self, daily: dict) -> int:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         streak = 0
         current = now
         while True:

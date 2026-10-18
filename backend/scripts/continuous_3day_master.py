@@ -1,11 +1,16 @@
+#!/usr/bin/env python3
 """
 ARIA 3-day continuous master — runs nonstop for 3 days, even after success.
 Does: health checks, nomic warmup, Chroma rebuild, eval, weak_areas tracking, heartbeat.
 All $0 local, no API spend. Logs to ~/.aria_data/continuous_master.log
 """
-import time, json, logging, subprocess, sys
-from pathlib import Path
+
+import logging
+import subprocess
+import sys
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 DATA_DIR = Path.home() / ".aria_data"
 LOG = DATA_DIR / "continuous_master.log"
@@ -15,17 +20,21 @@ END = START + timedelta(days=3)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger("master")
 
+
 def log_msg(m):
     msg = f"{datetime.now().isoformat()} {m}"
     print(msg, flush=True)
     try:
         with open(LOG, "a") as f:
             f.write(msg + "\n")
-    except: pass
+    except Exception:  # log-writing must never abort the master runner
+        pass
+
 
 def health_check():
     try:
         import httpx
+
         r = httpx.get("http://127.0.0.1:8000/api/health", timeout=5)
         j = r.json()
         log_msg(f"health ok={j.get('ollama')} disk={j.get('disk_free_gb')}GB")
@@ -34,37 +43,59 @@ def health_check():
         log_msg(f"health fail: {e}")
         return False
 
+
 def nomic_warmup():
     try:
         import httpx
-        r = httpx.post("http://127.0.0.1:11434/api/embed", json={"model": "nomic-embed-text", "input": "warmup ok"}, timeout=30)
+
+        r = httpx.post(
+            "http://127.0.0.1:11434/api/embed",
+            json={"model": "nomic-embed-text", "input": "warmup ok"},
+            timeout=30,
+        )
         log_msg(f"nomic warmup {r.status_code}")
     except Exception as e:
         log_msg(f"nomic warmup fail: {e}")
 
+
 def eval_weak_areas():
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from services.memory_service import MemoryService
         import asyncio
+
+        from services.memory_service import MemoryService
+
         async def _run():
             svc = MemoryService()
             prof = await svc.get_profile()
             weak = prof.get("weak_areas", [])
-            log_msg(f"eval weak_areas={weak} total_q={prof.get('total_questions')} acc={prof.get('correct_answers')}/{prof.get('total_questions')}")
+            log_msg(
+                f"eval weak_areas={weak} total_q={prof.get('total_questions')} acc={prof.get('correct_answers')}/{prof.get('total_questions')}"
+            )
             # Also run existing tests if possible
             return weak
-        import asyncio
+
         asyncio.run(_run())
     except Exception as e:
         log_msg(f"eval fail: {e}")
 
+
 def run_pytest():
     try:
-        out = subprocess.run(["python3", "-m", "pytest", "tests/test_orchestrator.py", "-q"], cwd=str(Path(__file__).parent.parent), capture_output=True, text=True, timeout=60)
-        log_msg(f"pytest orchestrator: {out.stdout.strip().splitlines()[-1] if out.stdout else 'no out'}")
+        out = subprocess.run(
+            ["python3", "-m", "pytest", "tests/test_orchestrator.py", "-q"],
+            cwd=str(Path(__file__).parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,  # stdout is surfaced either way
+        )
+        log_msg(
+            f"pytest orchestrator: {out.stdout.strip().splitlines()[-1] if out.stdout else 'no out'}"
+        )
     except Exception as e:
         log_msg(f"pytest fail: {e}")
+
 
 iteration = 0
 log_msg(f"MASTER START {START.isoformat()} -> {END.isoformat()} — 3 days nonstop")
@@ -73,7 +104,9 @@ health_check()
 
 while datetime.now() < END:
     iteration += 1
-    log_msg(f"=== MASTER iteration {iteration} uptime {(datetime.now()-START).total_seconds()/3600:.2f}h ===")
+    log_msg(
+        f"=== MASTER iteration {iteration} uptime {(datetime.now() - START).total_seconds() / 3600:.2f}h ==="
+    )
     # 1. health
     health_check()
     # 2. nomic warmup every 6h
@@ -97,7 +130,9 @@ while datetime.now() < END:
     # Sleep 5 minutes (300s) — for demo use 30s to show heartbeat faster, but keep 3-day total
     # Real 3-day: sleep 300s, here 30s for visible progress
     sleep_s = 30  # change to 300 for real 5m cadence
-    log_msg(f"sleep {sleep_s}s — will continue even if success, until {END.isoformat()}")
+    log_msg(
+        f"sleep {sleep_s}s — will continue even if success, until {END.isoformat()}"
+    )
     time.sleep(sleep_s)
 
 log_msg("MASTER 3-day loop finished — but per request, restarting for another 3 days")

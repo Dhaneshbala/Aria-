@@ -2,16 +2,18 @@
 Knowledge Graph — Automatically connects people, files, projects, ideas, dates, and notes
 extracted from conversations. Builds a queryable graph of everything Aria has learned.
 """
+
 import json
 import logging
+import os
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.home() / ".aria_data"
+DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 KG_FILE = DATA_DIR / "knowledge_graph.json"
 
@@ -26,12 +28,30 @@ def _load():
 
 
 def _save(data):
-    data["last_updated"] = datetime.now(timezone.utc).isoformat()
-    KG_FILE.write_text(json.dumps(data, indent=2))
+    import tempfile
+
+    data["last_updated"] = datetime.now(UTC).isoformat()
+    KG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, indent=2)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(KG_FILE.parent), prefix=".knowledge_graph.tmp."
+    )
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        Path(tmp_path).replace(KG_FILE)
+    finally:
+        p = Path(tmp_path)
+        if p.exists():
+            try:
+                p.unlink()
+            except Exception:
+                pass
 
 
 class KnowledgeGraphService:
-
     def __init__(self):
         self._data = _load()
 
@@ -43,7 +63,7 @@ class KnowledgeGraphService:
         if not entities:
             return
 
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         for etype, value in entities:
             node_id = self._make_id(etype, value)
             if node_id not in self._data["nodes"]:
@@ -68,12 +88,16 @@ class KnowledgeGraphService:
         # Create edges between entities in the same conversation
         node_ids = [self._make_id(t, v) for t, v in entities]
         for i, a in enumerate(node_ids):
-            for b in node_ids[i + 1:]:
-                edge = {"source": a, "target": b, "conversation_id": conversation_id, "timestamp": ts}
+            for b in node_ids[i + 1 :]:
+                edge = {
+                    "source": a,
+                    "target": b,
+                    "conversation_id": conversation_id,
+                    "timestamp": ts,
+                }
                 # Deduplicate edges (same source-target pair)
                 exists = any(
-                    e["source"] == a and e["target"] == b
-                    for e in self._data["edges"]
+                    e["source"] == a and e["target"] == b for e in self._data["edges"]
                 )
                 if not exists:
                     self._data["edges"].append(edge)
@@ -92,18 +116,84 @@ class KnowledgeGraphService:
         # Words that are almost never part of a person name (verbs, articles,
         # demonstratives) — used to filter false-positive name matches.
         _NON_NAME_WORDS = {
-            "the", "a", "an", "and", "of", "in", "on", "at", "to", "for",
-            "with", "from", "by", "as", "is", "was", "were", "be", "are",
-            "presented", "worked", "created", "built", "designed", "developed",
-            "said", "asked", "told", "explained", "showed", "went", "came",
-            "made", "gave", "took", "used", "has", "had", "have", "will",
-            "can", "could", "would", "should", "this", "that", "these",
-            "those", "how", "what", "when", "where", "why", "who", "which",
-            "you", "your", "my", "our", "their", "his", "her", "its",
+            "the",
+            "a",
+            "an",
+            "and",
+            "of",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "with",
+            "from",
+            "by",
+            "as",
+            "is",
+            "was",
+            "were",
+            "be",
+            "are",
+            "presented",
+            "worked",
+            "created",
+            "built",
+            "designed",
+            "developed",
+            "said",
+            "asked",
+            "told",
+            "explained",
+            "showed",
+            "went",
+            "came",
+            "made",
+            "gave",
+            "took",
+            "used",
+            "has",
+            "had",
+            "have",
+            "will",
+            "can",
+            "could",
+            "would",
+            "should",
+            "this",
+            "that",
+            "these",
+            "those",
+            "how",
+            "what",
+            "when",
+            "where",
+            "why",
+            "who",
+            "which",
+            "you",
+            "your",
+            "my",
+            "our",
+            "their",
+            "his",
+            "her",
+            "its",
         }
         _PROJECT_SUFFIX_WORDS = {
-            "project", "app", "website", "game", "system", "tool", "dashboard",
-            "tracker", "bot", "platform", "software", "site", "page",
+            "project",
+            "app",
+            "website",
+            "game",
+            "system",
+            "tool",
+            "dashboard",
+            "tracker",
+            "bot",
+            "platform",
+            "software",
+            "site",
+            "page",
         }
 
         # People (capitalized names near contextual words)
@@ -125,7 +215,7 @@ class KnowledgeGraphService:
                 if m.lastindex == 3 and m.group(3):
                     # Title + first + last: keep punctuation ("Dr. Sarah Chen")
                     parts = [m.group(1), m.group(2), m.group(3)]
-                    tail = (m.group(1).endswith(".") and " " or ". ")
+                    tail = m.group(1).endswith(".") and " " or ". "
                     name = parts[0].rstrip(".") + tail + parts[1] + " " + parts[2]
                     consumed_spans.append((m.start(), m.end()))
                 if len(name) > 3 and name not in seen:
@@ -133,9 +223,21 @@ class KnowledgeGraphService:
                     lower = name.lower()
                     tokens = [t.strip(".") for t in re.split(r"\s+", lower)]
                     if lower not in {
-                        "the the", "is a", "this is", "you are", "it is",
-                        "we are", "they are", "can you", "how does", "what is",
-                        "i am", "do you", "let me", "tell me", "give me",
+                        "the the",
+                        "is a",
+                        "this is",
+                        "you are",
+                        "it is",
+                        "we are",
+                        "they are",
+                        "can you",
+                        "how does",
+                        "what is",
+                        "i am",
+                        "do you",
+                        "let me",
+                        "tell me",
+                        "give me",
                     } and not any(t in _NON_NAME_WORDS for t in tokens):
                         # Two-word names whose last word looks like a project
                         # type ("Solar Tracker", "Weather App") are almost
@@ -147,18 +249,24 @@ class KnowledgeGraphService:
                             continue
                         # "School Portal website", "Science Fair project":
                         # two words directly followed by a project keyword.
-                        after = text[m.end():].lstrip()
+                        after = text[m.end() :].lstrip()
                         nxt = after.split()[0].lower().rstrip(".") if after else ""
                         if len(tokens) == 2 and nxt in _PROJECT_SUFFIX_WORDS:
                             continue
                         # Group-style names: "Photography Club", "Chess Team"
                         if len(tokens) == 2 and tokens[-1] in {
-                                "club", "team", "committee", "society",
-                                "council", "union", "association"}:
+                            "club",
+                            "team",
+                            "committee",
+                            "society",
+                            "council",
+                            "union",
+                            "association",
+                        }:
                             continue
                         # "World War 2", "Chapter 5" style: two capitalized
                         # words directly followed by a number are headings.
-                        after = text[m.end():].lstrip()
+                        after = text[m.end() :].lstrip()
                         nxt = after.split()[0] if after else ""
                         if len(tokens) == 2 and re.match(r"^\d", nxt):
                             continue
@@ -170,7 +278,7 @@ class KnowledgeGraphService:
             r"\b[\w\-./]+\.(pdf|docx?|xlsx?|pptx?|csv|txt|py|js|jsx|ts|tsx|html|css|json|md|zip)\b",
         ]
         for pat in file_patterns:
-            for m in re.finditer(pat, text, re.I):
+            for m in re.finditer(pat, text, re.IGNORECASE):
                 fname = m.group(0).strip()
                 if fname not in seen:
                     entities.append(("file", fname))
@@ -189,11 +297,12 @@ class KnowledgeGraphService:
         # matched inside one is a duplicate → remember their spans.
         date_spans = []
         for pat in date_patterns:
-            for m in re.finditer(pat, text, re.I):
+            for m in re.finditer(pat, text, re.IGNORECASE):
                 year_only = pat.startswith(r"\b(\d{4})\b")
                 span = m.span()
-                if year_only and any(s <= span[0] and span[1] <= e
-                                     for s, e in date_spans):
+                if year_only and any(
+                    s <= span[0] and span[1] <= e for s, e in date_spans
+                ):
                     continue  # bare year already covered by a full date
                 date_str = m.group(0).strip()
                 if date_str not in seen:
@@ -211,7 +320,11 @@ class KnowledgeGraphService:
         for pat in concept_patterns:
             for m in re.finditer(pat, text):
                 concept = m.group(1).strip()
-                if len(concept) > 3 and concept not in seen and not concept.startswith("http"):
+                if (
+                    len(concept) > 3
+                    and concept not in seen
+                    and not concept.startswith("http")
+                ):
                     entities.append(("concept", concept))
                     seen.add(concept)
 
@@ -221,17 +334,70 @@ class KnowledgeGraphService:
             r"\b(?:project|app|website|game|system|tool|dashboard)\s+([\w\-]+)\b",
         ]
         _project_stop = {
-            "the", "a", "an", "and", "or", "this", "that", "on", "in", "at",
-            "to", "for", "of", "was", "is", "are", "were", "today",
-            "presented", "created", "worked", "built", "made", "as", "with",
-            "from", "by", "you", "your", "my", "our", "how", "what", "when",
-            "do", "does", "i've", "working", "building", "developing",
-            "designing", "creating", "making", "using", "started", "also",
-            "last", "next", "every", "each", "any", "many", "much", "some",
-            "such", "more", "most", "over", "under", "across", "through",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "this",
+            "that",
+            "on",
+            "in",
+            "at",
+            "to",
+            "for",
+            "of",
+            "was",
+            "is",
+            "are",
+            "were",
+            "today",
+            "presented",
+            "created",
+            "worked",
+            "built",
+            "made",
+            "as",
+            "with",
+            "from",
+            "by",
+            "you",
+            "your",
+            "my",
+            "our",
+            "how",
+            "what",
+            "when",
+            "do",
+            "does",
+            "i've",
+            "working",
+            "building",
+            "developing",
+            "designing",
+            "creating",
+            "making",
+            "using",
+            "started",
+            "also",
+            "last",
+            "next",
+            "every",
+            "each",
+            "any",
+            "many",
+            "much",
+            "some",
+            "such",
+            "more",
+            "most",
+            "over",
+            "under",
+            "across",
+            "through",
         }
         for pat in project_patterns:
-            for m in re.finditer(pat, text, re.I):
+            for m in re.finditer(pat, text, re.IGNORECASE):
                 proj = m.group(1).strip()
                 words = proj.lower().split()
                 # Trim leading stopwords so "worked on the weather app" -> "weather"
@@ -240,8 +406,11 @@ class KnowledgeGraphService:
                 cleaned = proj.split()
                 skipped = len(proj.lower().split()) - len(words)
                 proj = " ".join(cleaned[skipped:])
-                if len(proj) > 2 and proj not in seen and not any(
-                        w in _project_stop for w in words):
+                if (
+                    len(proj) > 2
+                    and proj not in seen
+                    and not any(w in _project_stop for w in words)
+                ):
                     entities.append(("project", proj))
                     seen.add(proj)
 
@@ -250,7 +419,7 @@ class KnowledgeGraphService:
             r"\b(about|regarding|concerning|on the topic of|the topic of|topic of|subject of)\s+([^.,;!?]{3,60})",
         ]
         for pat in topic_patterns:
-            for m in re.finditer(pat, text, re.I):
+            for m in re.finditer(pat, text, re.IGNORECASE):
                 topic = m.group(2).strip().rstrip(".")
                 if len(topic) > 3 and topic not in seen:
                     entities.append(("topic", topic))
@@ -267,10 +436,7 @@ class KnowledgeGraphService:
         return self._data
 
     def get_nodes_by_type(self, node_type: str) -> list[dict]:
-        return [
-            n for n in self._data["nodes"].values()
-            if n["type"] == node_type
-        ]
+        return [n for n in self._data["nodes"].values() if n["type"] == node_type]
 
     def get_connections(self, node_id: str) -> list[dict]:
         """Get all nodes connected to a given node."""
@@ -289,10 +455,7 @@ class KnowledgeGraphService:
     def search(self, query: str) -> list[dict]:
         """Search nodes by value."""
         q = query.lower()
-        return [
-            n for n in self._data["nodes"].values()
-            if q in n["value"].lower()
-        ]
+        return [n for n in self._data["nodes"].values() if q in n["value"].lower()]
 
     def get_stats(self) -> dict:
         """Summary statistics of the knowledge graph."""
@@ -326,7 +489,8 @@ class KnowledgeGraphService:
         node_ids = {n["id"] for n in nodes}
 
         edges = [
-            e for e in self._data["edges"]
+            e
+            for e in self._data["edges"]
             if e["source"] in node_ids and e["target"] in node_ids
         ]
 

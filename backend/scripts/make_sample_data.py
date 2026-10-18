@@ -10,6 +10,7 @@ Usage:
 Example:
     python scripts/make_sample_data.py /tmp/sample_downloads
 """
+
 import argparse
 import shutil
 import sys
@@ -34,7 +35,9 @@ SAMPLES = {
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dest", nargs="?", default="/tmp/sample_downloads")
-    parser.add_argument("--files", type=int, default=0, help="duplicate N extra generic files")
+    parser.add_argument(
+        "--files", type=int, default=0, help="duplicate N extra generic files"
+    )
     args = parser.parse_args()
 
     dest = Path(args.dest).expanduser()
@@ -47,7 +50,8 @@ def main() -> int:
 
     for i in range(args.files):
         (dest / f"download_{i:03d}.txt").write_text(
-            f"Untitled document {i} with some text content about nothing in particular.")
+            f"Untitled document {i} with some text content about nothing in particular."
+        )
 
     print(f"Created {len(SAMPLES) + args.files} sample files in {dest}")
     return 0

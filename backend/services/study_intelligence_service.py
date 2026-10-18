@@ -3,9 +3,11 @@ Study Intelligence — Adaptive learning features.
 Includes: Difficulty Adjustment, Adaptive Learning, Revision Predictor,
 School Curriculum Mode, and Formula Memory.
 """
+
 import logging
-from services.ollama_service import OllamaService
+
 from services.memory_service import MemoryService
+from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +16,9 @@ memory_svc = MemoryService()
 
 
 class StudyIntelligence:
-
     # ── Difficulty Adjustment ─────────────────────────────────────────────────
 
-    async def get_difficulty(self, topic: str, model: str = "gemma4:e4b-mlx") -> str:
+    async def get_difficulty(self, topic: str, model: str = "gemma3:12b") -> str:
         """Determine appropriate difficulty level based on student profile."""
         profile = await memory_svc.get_profile()
         subjects = profile.get("subjects", {})
@@ -39,7 +40,9 @@ class StudyIntelligence:
         # Default to medium for unknown topics
         return "medium"
 
-    async def adjust_explanation(self, explanation: str, difficulty: str, model: str = "gemma4:e4b-mlx") -> str:
+    async def adjust_explanation(
+        self, explanation: str, difficulty: str, model: str = "gemma3:12b"
+    ) -> str:
         """Adjust explanation complexity based on difficulty level."""
         if difficulty == "medium":
             return explanation
@@ -50,7 +53,9 @@ class StudyIntelligence:
             "Return ONLY the adjusted explanation."
         )
         try:
-            result = await ollama.complete(model, explanation[:2000], system=system, max_tokens=2000)
+            result = await ollama.complete(
+                model, explanation[:2000], system=system, max_tokens=2000
+            )
             return result.strip() if result.strip() else explanation
         except Exception:
             return explanation
@@ -69,13 +74,15 @@ class StudyIntelligence:
             if total >= 3:
                 accuracy = correct / total
                 if accuracy < 0.5:
-                    weak_topics.append({
-                        "topic": subj,
-                        "accuracy": accuracy,
-                        "attempts": total,
-                        "priority": "high" if accuracy < 0.3 else "medium",
-                        "recommendation": f"Focus on {subj} — you're getting {accuracy:.0%} correct after {total} attempts.",
-                    })
+                    weak_topics.append(
+                        {
+                            "topic": subj,
+                            "accuracy": accuracy,
+                            "attempts": total,
+                            "priority": "high" if accuracy < 0.3 else "medium",
+                            "recommendation": f"Focus on {subj} — you're getting {accuracy:.0%} correct after {total} attempts.",
+                        }
+                    )
 
         # Sort by priority
         priority_order = {"high": 0, "medium": 1, "low": 2}
@@ -126,21 +133,27 @@ class StudyIntelligence:
                 if accuracy < 0.7:
                     urgency = "high" if accuracy < 0.5 else "medium"
                     next_review = "now" if accuracy < 0.4 else "this week"
-                    revision_list.append({
-                        "topic": subj,
-                        "accuracy": accuracy,
-                        "attempts": total,
-                        "urgency": urgency,
-                        "next_review": next_review,
-                        "suggestion": f"Review {subj} {next_review} — accuracy is {accuracy:.0%}",
-                    })
+                    revision_list.append(
+                        {
+                            "topic": subj,
+                            "accuracy": accuracy,
+                            "attempts": total,
+                            "urgency": urgency,
+                            "next_review": next_review,
+                            "suggestion": f"Review {subj} {next_review} — accuracy is {accuracy:.0%}",
+                        }
+                    )
 
-        revision_list.sort(key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["urgency"], 2))
+        revision_list.sort(
+            key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["urgency"], 2)
+        )
         return revision_list
 
     # ── School Curriculum Mode ────────────────────────────────────────────────
 
-    async def get_curriculum_context(self, subject: str, model: str = "gemma4:e4b-mlx") -> str:
+    async def get_curriculum_context(
+        self, subject: str, model: str = "gemma3:12b"
+    ) -> str:
         """Generate context about what's typically covered in this subject."""
         system = (
             "You are an education expert who knows school curricula.\n"
@@ -152,7 +165,12 @@ class StudyIntelligence:
             "Be concise. Return as a structured list."
         )
         try:
-            result = await ollama.complete(model, f"What is covered in {subject} at school?", system=system, max_tokens=600)
+            result = await ollama.complete(
+                model,
+                f"What is covered in {subject} at school?",
+                system=system,
+                max_tokens=600,
+            )
             return result
         except Exception:
             return f"Curriculum information for {subject} is not available."
@@ -168,20 +186,23 @@ class StudyIntelligence:
             text = r.get("text", "")
             # Extract formula-like patterns
             import re
+
             formula_patterns = [
-                r'[A-Za-z]+\s*=\s*[^,\n]+',  # x = ...
-                r'[A-Z]\s*=\s*[^,\n]+',  # Single letter = ...
-                r'\b(?:area|volume|speed|force|energy|power)\s*=\s*[^,\n]+',
+                r"[A-Za-z]+\s*=\s*[^,\n]+",  # x = ...
+                r"[A-Z]\s*=\s*[^,\n]+",  # Single letter = ...
+                r"\b(?:area|volume|speed|force|energy|power)\s*=\s*[^,\n]+",
             ]
             for pat in formula_patterns:
-                for m in re.finditer(pat, text, re.I):
+                for m in re.finditer(pat, text, re.IGNORECASE):
                     formula = m.group().strip()
                     if len(formula) > 5 and len(formula) < 100:
-                        formulas.append({
-                            "formula": formula,
-                            "source": r.get("conversation_id", "unknown"),
-                            "timestamp": r.get("timestamp", ""),
-                        })
+                        formulas.append(
+                            {
+                                "formula": formula,
+                                "source": r.get("conversation_id", "unknown"),
+                                "timestamp": r.get("timestamp", ""),
+                            }
+                        )
 
         # Deduplicate
         seen = set()

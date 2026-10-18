@@ -1,0 +1,27 @@
+# Ruff config — runs via pre-commit and CI (`ruff check`, `ruff format`).
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+# Documented conventions — intentional patterns are opt-OUT here, everything
+# else (imports, unused vars, datetime TZ, correctness rules) stays enforced.
+ignore = [
+  "BLE001", # blind `except Exception` — deliberate defensive guards in routers/services so a single failing optional feature can never crash a study session
+  "S110",   # `try/except/pass` — optional feature discovery fails silently by design (logged at debug where a logger exists)
+  "S112",   # `try/except/continue` — same resilience pattern inside loops
+  "B008",   # FastAPI `Form(...)`/`File(...)` defaults intentionally call functions at signature definition
+  # DTZ (61 findings: datetime.now()/date.today() across services, scripts,
+  # tests) — DEFERRED, not ignored forever: a correct fix must migrate
+  # stored naive timestamps AND their comparison sites together, otherwise
+  # UTC-vs-local (Australia) shifts day boundaries and breaks streaks /
+  # exam-plan deadline math. Tracked on the Phase-19 remaining-work list.
+  "DTZ001", "DTZ005", "DTZ006", "DTZ007", "DTZ011",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# main.py startup guards must stay fail-open: a logging/telemetry failure
+# must never crash boot. The catches all log at debug level.
+"main.py" = ["BLE001", "S110"]
+# __init__.py files are re-export barrels — F401 "unused" imports are the API surface
+"__init__.py" = ["F401"]

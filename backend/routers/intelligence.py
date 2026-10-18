@@ -2,9 +2,8 @@
 Intelligence router — Knowledge Graph, Memory Timeline, Semantic Search,
 Context Compression, Smart Cleanup, Background Agents, Study Intelligence.
 """
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -19,6 +18,7 @@ def _get_kg():
     global _kg_svc
     if _kg_svc is None:
         from services.knowledge_graph_service import KnowledgeGraphService
+
         _kg_svc = KnowledgeGraphService()
     return _kg_svc
 
@@ -27,6 +27,7 @@ def _get_mem():
     global _mem_svc
     if _mem_svc is None:
         from services.memory_service import MemoryService
+
         _mem_svc = MemoryService()
     return _mem_svc
 
@@ -35,6 +36,7 @@ def _get_bg():
     global _bg_svc
     if _bg_svc is None:
         from services.background_agent_service import BackgroundAgentService
+
         _bg_svc = BackgroundAgentService()
     return _bg_svc
 
@@ -43,14 +45,15 @@ def _get_study_intel():
     global _study_intel
     if _study_intel is None:
         from services.study_intelligence_service import StudyIntelligence
+
         _study_intel = StudyIntelligence()
     return _study_intel
-
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Knowledge Graph
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/knowledge-graph")
 async def get_knowledge_graph():
@@ -94,6 +97,7 @@ async def clear_knowledge_graph():
 # Memory Intelligence
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/memory/timeline")
 async def get_memory_timeline(days: int = 30):
     return await _get_mem().get_timeline(days)
@@ -120,6 +124,7 @@ async def cleanup_memory(max_age_days: int = 90):
 # Background Agents
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 @router.post("/agents/summarise-folder")
 async def summarise_folder(folder_path: str):
     return await _get_bg().summarise_folder(folder_path)
@@ -131,7 +136,7 @@ async def auto_research(topic: str, depth: int = 3):
 
 
 @router.get("/agents/tasks")
-async def get_tasks(status: Optional[str] = None):
+async def get_tasks(status: str | None = None):
     return _get_bg().get_tasks(status)
 
 
@@ -143,6 +148,7 @@ async def clear_completed_tasks():
 # ═══════════════════════════════════════════════════════════════════════════════
 # Study Intelligence
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/study/weak-topics")
 async def get_weak_topics():

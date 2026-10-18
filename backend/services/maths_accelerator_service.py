@@ -12,13 +12,15 @@ Each generated question carries:
 Works offline: if the LLM is unavailable, deterministic fallback sets
 are returned so the UI + tests never break.
 """
+
 import json
 import logging
 import os
 import re
-import threading
 import tempfile
-from datetime import datetime, timezone
+import threading
+import uuid as _uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -250,7 +252,11 @@ _GENERIC_FALLBACK = {
         {
             "question": "State the key definition for this topic in one sentence, then give one worked example.",
             "marks": 2,
-            "solution_steps": ["Define the core idea", "Work one basic example with every step", "Check by substitution"],
+            "solution_steps": [
+                "Define the core idea",
+                "Work one basic example with every step",
+                "Check by substitution",
+            ],
             "trap": "Rushing step 1 — selective markers award method marks for setup lines.",
             "shortcut": "Write the formula first, then substitute — never do mental substitution in exams.",
             "answer": "See worked example",
@@ -260,7 +266,11 @@ _GENERIC_FALLBACK = {
         {
             "question": "Exam-style multi-step problem: set up equations from words, solve, then verify against the question conditions. [3 marks]",
             "marks": 3,
-            "solution_steps": ["Define variables + write equations", "Solve with full working", "Verify + reject extraneous answers with a reason"],
+            "solution_steps": [
+                "Define variables + write equations",
+                "Solve with full working",
+                "Verify + reject extraneous answers with a reason",
+            ],
             "trap": "Unrejected extraneous answer = lost mark. Always state why you discard.",
             "shortcut": "Estimate the answer size first — catches algebra slips early.",
             "answer": "See full solution",
@@ -270,7 +280,11 @@ _GENERIC_FALLBACK = {
         {
             "question": "Prove-or-generalise task: solve the specific case, then state and justify the general rule. [4 marks]",
             "marks": 4,
-            "solution_steps": ["Solve the numeric case", "Spot the pattern / conjecture", "Prove it (factorise, complete square, or contradiction)"],
+            "solution_steps": [
+                "Solve the numeric case",
+                "Spot the pattern / conjecture",
+                "Prove it (factorise, complete square, or contradiction)",
+            ],
             "trap": "Example ≠ proof. One verified case earns at most 1 of 4 without general reasoning.",
             "shortcut": "Try small numbers to guess the pattern, then prove backwards from the answer.",
             "answer": "See proof",
@@ -288,7 +302,7 @@ def _fallback_set(topic_id: str, tier: str, count: int) -> list[dict]:
         q = dict(base)
         if len(out) > 0:
             q = dict(q)
-            q["question"] = f"(v{len(out)+1}) {q['question']}"
+            q["question"] = f"(v{len(out) + 1}) {q['question']}"
         out.append(q)
         i += 1
     return out[:count]
@@ -347,7 +361,9 @@ def _parse_set(text: str) -> list[dict]:
                 continue
             m = re.match(r"(?i)^solution\s*[:\-]\s*(.+)", line)
             if m:
-                q["solution_steps"] = [s.strip() for s in m.group(1).split("|") if s.strip()][:8]
+                q["solution_steps"] = [
+                    s.strip() for s in m.group(1).split("|") if s.strip()
+                ][:8]
                 continue
             m = re.match(r"(?i)^trap\s*[:\-]\s*(.+)", line)
             if m:
@@ -363,7 +379,9 @@ def _parse_set(text: str) -> list[dict]:
                 continue
         if len(q["question"]) >= 8 and q["answer"]:
             if not q["solution_steps"]:
-                q["solution_steps"] = ["See answer — show full working for method marks."]
+                q["solution_steps"] = [
+                    "See answer — show full working for method marks."
+                ]
             out.append(q)
     return out
 
@@ -382,12 +400,12 @@ async def generate_set(
 
     if model is None:
         try:
-            from models.database import get_config, MODELS
+            from models.database import MODELS, get_config
 
             cfg = get_config()
             model = cfg.get("model") or cfg.get("reasoning_model") or MODELS["main"]
         except Exception:
-            model = "gemma4:e4b-mlx"
+            model = "gemma3:12b"
 
     try:
         from services.ollama_service import OllamaService
@@ -406,27 +424,105 @@ async def generate_set(
             # Top up with fallback variants if LLM short-delivered
             while len(parsed) < count:
                 parsed.extend(_fallback_set(topic_id, tier, 1))
+            parsed = parsed[:count]
             return {
                 "topic_id": topic_id,
                 "topic": topic["name"],
                 "tier": tier,
-                "questions": parsed[:count],
+                "questions": parsed,
                 "source": "llm",
+                "session_id": register_session(topic_id, tier, parsed),
             }
         logger.warning("Maths LLM under-delivered (%d), using fallback", len(parsed))
     except Exception as e:
         logger.warning("Maths generation failed, fallback: %s", e)
 
+    fallback_qs = _fallback_set(topic_id, tier, count)
     return {
         "topic_id": topic_id,
         "topic": topic["name"],
         "tier": tier,
-        "questions": _fallback_set(topic_id, tier, count),
+        "questions": fallback_qs,
         "source": "fallback",
+        "session_id": register_session(topic_id, tier, fallback_qs),
     }
 
 
+# ── Practice sessions (anti-spoofing) ───────────────────────────────────────
+# A generated set registers server-side; submit scores against that real set
+# so faked /api/maths/submit calls (correct=big, total=big) can't inflate
+# mastery without a genuine generate first. Answers remain self-marked in
+# the UI for open-response questions (honest limitation, not server grading).
+
+_SESSIONS: dict[str, dict] = {}
+_SESSIONS_LOCK = threading.RLock()
+_SESSION_TTL_MIN = 240  # 4 hours should comfortably cover a study session
+_MAX_SESSIONS = 100
+
+
+def _prune_locked() -> None:
+    """Drop expired sessions; hard-cap size (oldest first)."""
+    cutoff = datetime.now(UTC).timestamp() - _SESSION_TTL_MIN * 60
+    expired = [k for k, v in _SESSIONS.items() if v.get("created_ts", 0) < cutoff]
+    for k in expired:
+        _SESSIONS.pop(k, None)
+    while len(_SESSIONS) > _MAX_SESSIONS:
+        oldest = min(_SESSIONS, key=lambda k: _SESSIONS[k].get("created_ts", 0))
+        _SESSIONS.pop(oldest, None)
+
+
+def register_session(topic_id: str, tier: str, questions: list[dict]) -> str:
+    """Persist the generated set; returns the session id to pass to submit."""
+    sid = _uuid.uuid4().hex
+    payload = {
+        "topic_id": topic_id,
+        "tier": tier,
+        "created_ts": datetime.now(UTC).timestamp(),
+        "questions": [
+            {
+                "i": i,
+                "marks": int(q.get("marks", 2) or 2),
+                "q": str(q.get("question", ""))[:200],
+            }
+            for i, q in enumerate(questions)
+        ],
+        "count": len(questions),
+    }
+    with _SESSIONS_LOCK:
+        _SESSIONS[sid] = payload
+        _prune_locked()
+    return sid
+
+
+def get_session(sid: str) -> dict | None:
+    with _SESSIONS_LOCK:
+        return _SESSIONS.get(sid)
+
+
+def record_session_result(sid: str, marks: list[bool] | None = None) -> dict:
+    """Score a session server-side from per-question marks.
+
+    Raises ValueError when the session is unknown/expired so the caller can
+    return a 400 instead of trusting a client-fabricated score.
+    """
+    session = get_session(sid)
+    if not session:
+        raise ValueError("Unknown or expired maths session — generate a new set")
+
+    questions = session["questions"]
+    mark_list = list(marks or [])
+    # Pad or trim to the real set size — never let the client invent attempts.
+    if len(mark_list) < len(questions):
+        mark_list = mark_list + [False] * (len(questions) - len(mark_list))
+    mark_list = mark_list[: len(questions)]
+
+    correct = sum(1 for m in mark_list if bool(m))
+    total = len(questions)
+    return record_attempt(session["topic_id"], session["tier"], correct, total, None)
+
+
 # ── Mastery ──────────────────────────────────────────────────────────────────
+
 
 def record_attempt(
     topic_id: str,
@@ -436,7 +532,9 @@ def record_attempt(
     mistakes: list[dict] | None = None,
 ) -> dict:
     data = _load_mastery()
-    entry = data.get(topic_id, {"attempts": 0, "correct": 0, "by_tier": {}, "mistakes": []})
+    entry = data.get(
+        topic_id, {"attempts": 0, "correct": 0, "by_tier": {}, "mistakes": []}
+    )
     total = max(1, int(total or 1))
     correct = max(0, min(total, int(correct or 0)))
     entry["attempts"] = int(entry.get("attempts", 0)) + total
@@ -449,9 +547,11 @@ def record_attempt(
     if mistakes:
         ml = entry.setdefault("mistakes", [])
         for m in mistakes[:10]:
-            ml.append({**m, "ts": datetime.now(timezone.utc).isoformat()})
+            ml.append({**m, "ts": datetime.now(UTC).isoformat()})
         entry["mistakes"] = ml[-30:]
-    entry["accuracy"] = round(entry["correct"] / entry["attempts"] * 100) if entry["attempts"] else 0
+    entry["accuracy"] = (
+        round(entry["correct"] / entry["attempts"] * 100) if entry["attempts"] else 0
+    )
     data[topic_id] = entry
     _save_mastery(data)
     return {"topic_id": topic_id, **entry}
@@ -461,7 +561,9 @@ def get_mastery() -> dict:
     data = _load_mastery()
     out = {}
     for t in MATHS_TOPICS:
-        e = data.get(t["id"], {"attempts": 0, "correct": 0, "accuracy": 0, "by_tier": {}})
+        e = data.get(
+            t["id"], {"attempts": 0, "correct": 0, "accuracy": 0, "by_tier": {}}
+        )
         out[t["id"]] = {
             "name": t["name"],
             "stage": t["stage"],

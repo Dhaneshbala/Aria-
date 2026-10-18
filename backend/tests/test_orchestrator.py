@@ -5,6 +5,7 @@ classified here, so these tests pin down the exact expected behaviour and
 guard against regressions. The full orchestrate() flow is tested with
 fakes for every service so no network/model is needed.
 """
+
 import json
 
 import pytest
@@ -20,8 +21,8 @@ from services.orchestrator import (
     orchestrate,
 )
 
-
 # ═══════════════════════ 1. Intent routing ══════════════════════════════════
+
 
 def test_intents_default_to_chat():
     assert detect_intents("Hello there!") == ["chat"]
@@ -55,7 +56,9 @@ def test_intent_exam_sim():
 
 
 def test_intent_audio_overview():
-    assert "audio_overview" in detect_intents("give me an audio overview of photosynthesis")
+    assert "audio_overview" in detect_intents(
+        "give me an audio overview of photosynthesis"
+    )
     assert "audio_overview" in detect_intents("create audio guide for WW2")
 
 
@@ -66,7 +69,9 @@ def test_intent_study_intel():
 
 def test_intent_math():
     assert "math" in detect_intents("solve 3x + 5 = 20")
-    assert "math" in detect_intents("what is the area of a triangle with base 8 and height 5")
+    assert "math" in detect_intents(
+        "what is the area of a triangle with base 8 and height 5"
+    )
     assert "math" in detect_intents("calculate 2 + 2 * 3")
 
 
@@ -88,12 +93,16 @@ def test_intent_coding():
 
 
 def test_intent_web_search():
-    assert "web_search" in detect_intents("search for the latest discoveries about black holes")
+    assert "web_search" in detect_intents(
+        "search for the latest discoveries about black holes"
+    )
     assert "web_search" in detect_intents("what happened in the news today")
 
 
 def test_intent_youtube_url():
-    assert "youtube" in detect_intents("https://www.youtube.com/watch?v=abc123 explain it")
+    assert "youtube" in detect_intents(
+        "https://www.youtube.com/watch?v=abc123 explain it"
+    )
 
 
 def test_intent_translate():
@@ -106,11 +115,15 @@ def test_intent_image_added_with_image():
 
 
 def test_intent_doc_chat_added_with_doc():
-    assert "doc_chat" in detect_intents("what are the quotes about diversity", has_doc=True)
+    assert "doc_chat" in detect_intents(
+        "what are the quotes about diversity", has_doc=True
+    )
 
 
 def test_intent_worksheet_solver():
-    assert "worksheet_solver" in detect_intents("help me with question 3 on the worksheet")
+    assert "worksheet_solver" in detect_intents(
+        "help me with question 3 on the worksheet"
+    )
     assert "worksheet_solver" in detect_intents("solve this homework")
 
 
@@ -120,7 +133,9 @@ def test_intent_essay_feedback():
 
 
 def test_intent_quote_extraction():
-    assert "quote_extraction" in detect_intents("find quotes about diversity in this pdf")
+    assert "quote_extraction" in detect_intents(
+        "find quotes about diversity in this pdf"
+    )
 
 
 def test_intent_geography():
@@ -155,6 +170,7 @@ def test_intent_no_false_positive_math():
 
 # ═══════════════════════ 2. Language detection ═══════════════════════════════
 
+
 def test_language_detection():
     assert detect_message_language("안녕하세요") == "Korean"
     assert detect_message_language("こんにちは") == "Japanese"
@@ -177,11 +193,11 @@ def test_language_detection_english_is_none():
 # ═══════════════════════ 3. Model selection ═════════════════════════════════
 
 CONFIG = {
-    "model": "gemma4:e4b-mlx",
-    "reasoning_model": "gemma4:e4b-mlx",
-    "vision_model": "gemma4:e4b-mlx",
-    "coding_model": "gemma4:e4b-mlx",
-    "fallback_model": "gemma4:e4b-mlx",
+    "model": "gemma3:12b",
+    "reasoning_model": "gemma3:12b",
+    "vision_model": "gemma3:12b",
+    "coding_model": "gemma3:12b",
+    "fallback_model": "gemma3:12b",
 }
 
 # Legacy config — should still route but migrate to gemma for vision
@@ -195,23 +211,35 @@ LEGACY_CONFIG = {
 
 def test_choose_models_plain_chat():
     # New single-model routing: all generation uses gemma
-    assert choose_models(["chat"], CONFIG) == {"reasoning": "gemma4:e4b-mlx", "fallback": "gemma4:e4b-mlx"}
+    assert choose_models(["chat"], CONFIG) == {
+        "reasoning": "gemma3:12b",
+        "fallback": "gemma3:12b",
+    }
     # Legacy config still returns legacy if explicitly set, but coding now maps to main
-    assert choose_models(["chat"], LEGACY_CONFIG) == {"reasoning": "qwen3:8b", "fallback": "qwen3:8b"}
+    assert choose_models(["chat"], LEGACY_CONFIG) == {
+        "reasoning": "qwen3:8b",
+        "fallback": "qwen3:8b",
+    }
 
 
 def test_choose_models_coding_uses_coder():
     # Single model: coding uses same main model (no separate coder needed)
-    assert choose_models(["coding"], CONFIG) == {"reasoning": "gemma4:e4b-mlx", "fallback": "gemma4:e4b-mlx"}
+    assert choose_models(["coding"], CONFIG) == {
+        "reasoning": "gemma3:12b",
+        "fallback": "gemma3:12b",
+    }
     # Legacy coding_model is now mapped to main (gemma strategy)
-    assert choose_models(["coding"], LEGACY_CONFIG) == {"reasoning": "qwen3:8b", "fallback": "qwen3:8b"}
+    assert choose_models(["coding"], LEGACY_CONFIG) == {
+        "reasoning": "qwen3:8b",
+        "fallback": "qwen3:8b",
+    }
 
 
 def test_choose_models_vision():
     # Gemma is multimodal — vision points to same main model
     m = choose_models(["image_analysis", "explain"], CONFIG)
-    assert m["vision"] == "gemma4:e4b-mlx"
-    assert m["reasoning"] == "gemma4:e4b-mlx"
+    assert m["vision"] == "gemma3:12b"
+    assert m["reasoning"] == "gemma3:12b"
     # Legacy vision model is migrated to legacy main (or gemma if main is gemma)
     m2 = choose_models(["image_analysis", "explain"], LEGACY_CONFIG)
     assert m2["vision"] == "qwen3:8b"  # migrated to legacy main
@@ -219,16 +247,23 @@ def test_choose_models_vision():
 
 
 def test_choose_models_quiz():
-    assert choose_models(["quiz"], CONFIG) == {"reasoning": "gemma4:e4b-mlx", "fallback": "gemma4:e4b-mlx"}
+    assert choose_models(["quiz"], CONFIG) == {
+        "reasoning": "gemma3:12b",
+        "fallback": "gemma3:12b",
+    }
 
 
 def test_choose_models_no_intent_is_empty():
     # New behaviour: empty intents still returns a default reasoning model (gemma)
     # so orchestrator never has zero models
-    assert choose_models([], CONFIG) == {"reasoning": "gemma4:e4b-mlx", "fallback": "gemma4:e4b-mlx"}
+    assert choose_models([], CONFIG) == {
+        "reasoning": "gemma3:12b",
+        "fallback": "gemma3:12b",
+    }
 
 
 # ═══════════════════════ 4. Streaming flow (all fakes) ══════════════════════
+
 
 class FakeStream:
     """Streams a fixed token sequence then finishes."""
@@ -249,8 +284,17 @@ class FakeOllama:
         self.stream = FakeStream(tokens)
         self.complete_calls = 0
 
-    async def complete(self, model, prompt, system="", max_tokens=2048,
-                       timeout=300.0, think=None, json_mode=False, context_window=4096):
+    async def complete(
+        self,
+        model,
+        prompt,
+        system="",
+        max_tokens=2048,
+        timeout=300.0,
+        think=None,
+        json_mode=False,
+        context_window=4096,
+    ):
         self.complete_calls += 1
         return '{"verified": true, "notes": "ok"}' if "fact" in prompt else ""
 
@@ -334,7 +378,9 @@ async def test_orchestrate_plain_chat_flow(fakes):
 
 
 async def test_orchestrate_emits_intents_event(fakes):
-    events = _collect([c async for c in orchestrate("quiz me on maths", "c1", config={})])
+    events = _collect(
+        [c async for c in orchestrate("quiz me on maths", "c1", config={})]
+    )
     intent_ev = events[0]
     assert "quiz" in intent_ev["content"]
 
@@ -369,7 +415,8 @@ async def test_orchestrate_emits_friendly_error_when_all_models_fail(fakes):
     def _fail_stream(model, system, message, context_window=4096, **kwargs):
         async def _gen():
             raise RuntimeError("ollama is down")
-            yield  # pragma: no cover
+            yield
+
         return _gen()
 
     fakes["ollama"].stream = _fail_stream
@@ -392,7 +439,9 @@ async def test_orchestrate_saves_memory(fakes, monkeypatch):
             saved.append((cid, user, ai))
 
     monkeypatch.setattr(orch, "memory_svc", Mem())
-    events = _collect([c async for c in orchestrate("hello", "c1", config={"memory_enabled": True})])
+    _collect(
+        [c async for c in orchestrate("hello", "c1", config={"memory_enabled": True})]
+    )
     assert saved and saved[0][0] == "c1"
     assert saved[0][1] == "hello"
     assert saved[0][2] == "Hello world"
@@ -415,20 +464,28 @@ async def test_orchestrate_image_flow(fakes, monkeypatch):
             return "DESCRIPTION: a worksheet about fractions"
 
     monkeypatch.setattr(orch, "image_svc", Img())
-    events = _collect([c async for c in
-                       orchestrate("answer this", "c1", image_data=b"x", image_mime="image/png",
-                                   config={})])
+    events = _collect(
+        [
+            c
+            async for c in orchestrate(
+                "answer this", "c1", image_data=b"x", image_mime="image/png", config={}
+            )
+        ]
+    )
     types = [e["type"] for e in events]
     assert "image_analysis" in events[0]["content"]
-    assert seen["model"] == "gemma4:e4b-mlx"
+    # Model-agnostic: whatever the configured main model is (qwen3.5:9b today)
+    assert seen["model"] == orch.MODELS["main"]
     assert "tool" in types
 
 
 # ═══════════════════════ 5. System prompt building ══════════════════════════
 
+
 def test_build_system_prompt_contains_student_name():
-    p = _build_system_prompt(["chat"], None, None, None, "", None,
-                             {"student_name": "Amy", "student_age": 12})
+    p = _build_system_prompt(
+        ["chat"], None, None, None, "", None, {"student_name": "Amy", "student_age": 12}
+    )
     assert "Amy" in p
 
 
@@ -449,7 +506,9 @@ def test_build_system_prompt_think_mode():
 
 
 def test_build_system_prompt_doc_text():
-    p = _build_system_prompt(["doc_chat"], None, None, "Chapter text here", "", None, {})
+    p = _build_system_prompt(
+        ["doc_chat"], None, None, "Chapter text here", "", None, {}
+    )
     assert "Chapter text here" in p
 
 
@@ -461,16 +520,26 @@ def test_build_system_prompt_web_results():
 
 # ═══════════════════════ 6. Parsers & helpers ═══════════════════════════════
 
+
 def test_sse_format():
     assert _sse({"type": "done"}) == 'data: {"type": "done"}\n\n'
 
 
 async def test_generate_suggestions_parses_numbered_lines():
-    async def _fake_complete(model, prompt, system="", max_tokens=2048, timeout=300.0,
-                             think=None, json_mode=False, context_window=4096):
+    async def _fake_complete(
+        model,
+        prompt,
+        system="",
+        max_tokens=2048,
+        timeout=300.0,
+        think=None,
+        json_mode=False,
+        context_window=4096,
+    ):
         return "1. What happens next?\n2. Why is the sky blue?\n3. Can you show me an example?"
 
     import services.orchestrator as o
+
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(o.ollama, "complete", _fake_complete)
     try:
@@ -482,11 +551,20 @@ async def test_generate_suggestions_parses_numbered_lines():
 
 
 async def test_generate_suggestions_fails_gracefully():
-    async def _boom(model, prompt, system="", max_tokens=2048, timeout=300.0,
-                    think=None, json_mode=False, context_window=4096):
+    async def _boom(
+        model,
+        prompt,
+        system="",
+        max_tokens=2048,
+        timeout=300.0,
+        think=None,
+        json_mode=False,
+        context_window=4096,
+    ):
         raise RuntimeError("nope")
 
     import services.orchestrator as o
+
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(o.ollama, "complete", _boom)
     try:

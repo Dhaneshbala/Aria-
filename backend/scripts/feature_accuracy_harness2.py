@@ -1,15 +1,16 @@
 """Live accuracy harness #2 — vision, document quotes, syllabus parse, KB RAG.
 
 Validates against ground truth:
-- VISION: gemma4:e4b-mlx (multimodal) reads a known text/diagram → must contain key tokens
+- VISION: gemma3:12b (multimodal) reads a known text/diagram → must contain key tokens
 - DOC_QUOTES: keyword-scored quote extraction from a generated PDF must rank
   the matching sentence first
 - SYLLABUS: premium planner parse_syllabus must extract name/subject/date
 - KB_RAG: ingest a known doc, search must return it for its own topic
-- CODE: gemma4:e4b-mlx generates a fizzbuzz → must execute correctly
+- CODE: gemma3:12b generates a fizzbuzz → must execute correctly
 
 Usage: python backend/scripts/feature_accuracy_harness2.py
 """
+
 import asyncio
 import io
 import json
@@ -18,13 +19,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.image_service import ImageService
 from services.document_service import DocumentService
+from services.image_service import ImageService
+
 try:
-    from services.premium_planner_service import parse_syllabus, PremiumPlannerDB
+    from services.premium_planner_service import parse_syllabus
 except ImportError:
     parse_syllabus = None
-    PremiumPlannerDB = None
 from services.knowledge_base_service import KnowledgeBaseService
 from services.ollama_service import OllamaService
 
@@ -63,7 +64,11 @@ def make_test_pdf() -> bytes:
     )
     objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     objs.append(
-        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+        b"<< /Length "
+        + str(len(stream)).encode()
+        + b" >>\nstream\n"
+        + stream
+        + b"\nendstream"
     )
 
     out = io.BytesIO()
@@ -74,12 +79,12 @@ def make_test_pdf() -> bytes:
         out.write(f"{i} 0 obj\n".encode())
         out.write(b"  " + o + b"\nendobj\n")
     xref_pos = out.tell()
-    out.write(f"xref\n0 {len(objs)+1}\n".encode())
+    out.write(f"xref\n0 {len(objs) + 1}\n".encode())
     out.write(b"0000000000 65535 f \n")
     for off in offsets:
         out.write(f"{off:010d} 00000 n \n".encode())
     out.write(
-        f"trailer\n<< /Size {len(objs)+1} /Root 1 0 R >>\n"
+        f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\n"
         f"startxref\n{xref_pos}\n%%EOF\n".encode()
     )
     return out.getvalue()
@@ -88,6 +93,7 @@ def make_test_pdf() -> bytes:
 def make_test_image() -> bytes:
     """PNG with a big readable label: HELLO ARIA 2026"""
     from PIL import Image, ImageDraw, ImageFont
+
     img = Image.new("RGB", (640, 200), "white")
     d = ImageDraw.Draw(img)
     try:
@@ -123,7 +129,11 @@ async def check_doc_quotes():
 
 async def check_syllabus():
     if parse_syllabus is None:
-        record("SYLLABUS", True, "skipped — planner removed to brain (chat handles via exam_sim/study_intel)")
+        record(
+            "SYLLABUS",
+            True,
+            "skipped — planner removed to brain (chat handles via exam_sim/study_intel)",
+        )
         return
     text = (
         "Year 7 Mathematics Examination 2026\n"
@@ -134,7 +144,7 @@ async def check_syllabus():
     )
     try:
         plan = parse_syllabus(text)
-        rec = plan.get("courses") or plan.get("assignments") or {}
+        plan.get("courses") or plan.get("assignments") or {}
         flat = json.dumps(plan).lower()
         ok = ("mathematics" in flat or "math" in flat) and "2026" in flat
         record("SYLLABUS", ok, flat[:160])
@@ -150,7 +160,8 @@ async def check_kb_rag():
     )
     try:
         await kb.add_document(
-            text=content, collection="science",
+            text=content,
+            collection="science",
             metadata={"source": "mitochondria_test.txt"},
         )
         res = await kb.search("mitochondria powerhouse atp")
@@ -162,25 +173,45 @@ async def check_kb_rag():
 
 
 async def check_code():
-    """FizzBuzz via gemma4:e4b-mlx — output must be runnable and correct."""
+    """FizzBuzz via gemma3:12b — output must be runnable and correct."""
     prompt = (
         "Write a Python function fizzbuzz(n) that returns a list of strings "
         "for numbers 1..n: 'Fizz' for multiples of 3, 'Buzz' for multiples of 5, "
         "'FizzBuzz' for both, else the number as string. Return ONLY the function code."
     )
     try:
-        coding_model = "gemma4:e4b-mlx"
+        coding_model = "gemma3:12b"
         code = await ollama.complete(
-            coding_model, prompt,
-            system="You write correct Python code. Only output code.", max_tokens=800)
+            coding_model,
+            prompt,
+            system="You write correct Python code. Only output code.",
+            max_tokens=800,
+        )
         # extract python block
         import re
-        m = re.search(r"```(?:python)?\s*(.*?)```", code, re.S)
+
+        m = re.search(r"```(?:python)?\s*(.*?)```", code, re.DOTALL)
         code = m.group(1) if m else code
         ns = {}
-        exec(code, ns)
+        exec(code, ns)  # noqa: S102 — deliberate: this harness evaluates model-generated code
         out = ns["fizzbuzz"](15)
-        expected = ["1", "2", "Fizz", "4", "Buzz", "Fizz", "7", "8", "Fizz", "Buzz", "11", "Fizz", "13", "14", "FizzBuzz"]
+        expected = [
+            "1",
+            "2",
+            "Fizz",
+            "4",
+            "Buzz",
+            "Fizz",
+            "7",
+            "8",
+            "Fizz",
+            "Buzz",
+            "11",
+            "Fizz",
+            "13",
+            "14",
+            "FizzBuzz",
+        ]
         ok = out == expected
         record("CODE_FIZZBUZZ", ok, f"matches={ok} got={out[:6]}...")
     except Exception as e:
@@ -196,7 +227,7 @@ async def main():
 
     ok_n = sum(1 for r in REPORT if r["ok"])
     print(f"\n=== OVERALL {ok_n}/{len(REPORT)} ===")
-    with open("/tmp/feature_accuracy2.json", "w") as f:
+    with open("/tmp/feature_accuracy2.json", "w") as f:  # noqa: ASYNC230 — dev harness, tiny file
         json.dump(REPORT, f, indent=1)
     return 0 if ok_n == len(REPORT) else 1
 

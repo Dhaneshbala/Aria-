@@ -2,12 +2,13 @@
 
 No Ollama needed — vision calls are covered by the live check, not unit tests.
 """
+
 import io
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from services.image_service import ImageService, _build_prompt, MAX_EDGE, MIN_EDGE
+from services.image_service import MAX_EDGE, MIN_EDGE, ImageService, _build_prompt
 
 svc = ImageService()
 
@@ -37,7 +38,7 @@ def _make_worksheet() -> bytes:
 
 
 def test_preprocess_downscales_huge_photo():
-    out, note = svc._preprocess_sync(_make_image(3000, 2000))
+    out, _note = svc._preprocess_sync(_make_image(3000, 2000))
     img = Image.open(io.BytesIO(out))
     assert max(img.size) == MAX_EDGE
     assert img.format == "JPEG"
@@ -58,7 +59,7 @@ def test_preprocess_boosts_dark_image():
 
 
 def test_preprocess_keeps_sane_image():
-    out, note = svc._preprocess_sync(_make_image(1200, 800))
+    out, _note = svc._preprocess_sync(_make_image(1200, 800))
     img = Image.open(io.BytesIO(out))
     assert img.size == (1200, 800)
 
