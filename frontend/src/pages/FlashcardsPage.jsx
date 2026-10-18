@@ -38,7 +38,7 @@ export default function FlashcardsPage() {
       setLoading(true)
       if (bg.topic && !topic) setTopic(bg.topic)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
   useEffect(() => {
     if (bg?.status === 'done' && cards.length === 0 && saved.cards?.length) {
@@ -52,7 +52,7 @@ export default function FlashcardsPage() {
       setLoading(false)
       if (bg.status === 'error' && bg.error) showToast(bg.error, 'error')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [bg?.status])
 
   useEffect(() => {
@@ -194,14 +194,14 @@ export default function FlashcardsPage() {
           <CreditCard size={36} className="text-white" />
         </div>
         <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Flashcards</h1>
-        <p className="text-sm text-[#555] mb-8 max-w-xs text-center">Generate AI-powered flashcards for any topic and memorise them with spaced repetition</p>
+        <p className="text-sm text-[#888] mb-8 max-w-xs text-center">Generate AI-powered flashcards for any topic and memorise them with spaced repetition</p>
 
         <div className="w-full max-w-sm space-y-4">
           <input value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && generate()}
             placeholder="What do you want to study?"
             className="w-full bg-[#1a1a2e] border border-[#2a2a40] rounded-xl px-4 py-3 text-sm text-[#e8e8e8] placeholder-[#555] outline-none focus:border-[#7c6af7] transition-colors" />
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[#666]">Number of cards</span>
+            <span className="text-xs text-[#888]">Number of cards</span>
             <div className="flex gap-1.5">
               {[5, 10, 15, 20].map(n => (
                 <button key={n} onClick={() => setCount(n)}
@@ -227,8 +227,8 @@ export default function FlashcardsPage() {
             <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden"
               onChange={e => { handleImportCsv(e.target.files[0]); e.target.value = '' }} />
           </div>
-          <p className="text-[10px] text-[#444] text-center">
-            CSV format: <code className="text-[#666]">front,back</code> — imports into Spaced Repetition
+          <p className="text-[10px] text-[#888] text-center">
+            CSV format: <code className="text-[#888]">front,back</code> — imports into Spaced Repetition
           </p>
         </div>
       </div>
@@ -245,7 +245,7 @@ export default function FlashcardsPage() {
         </div>
         <div className="text-center">
           <p className="text-sm text-[#e8e8e8] font-medium">Creating flashcards</p>
-          <p className="text-xs text-[#555] mt-1">for "{topic}" — keeps working if you leave this page</p>
+          <p className="text-xs text-[#888] mt-1">for "{topic}" — keeps working if you leave this page</p>
           <button onClick={cancelGenerate} className="mt-3 px-4 py-1.5 rounded-full bg-[#2a2a2e] text-xs text-[#888] hover:text-[#e8e8e8]">Cancel</button>
         </div>
       </div>
@@ -260,20 +260,20 @@ export default function FlashcardsPage() {
           <Check size={36} className="text-green-400" />
         </div>
         <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Session Complete!</h1>
-        <p className="text-sm text-[#555] mb-8">You reviewed all {order.length} cards</p>
+        <p className="text-sm text-[#888] mb-8">You reviewed all {order.length} cards</p>
 
         <div className="grid grid-cols-3 gap-4 mb-8 w-full max-w-sm">
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
+          <div className="bg-[#141414] border border-aria-border rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-green-400">{reviewed}</div>
-            <div className="text-[10px] text-[#555] mt-1">Known</div>
+            <div className="text-[10px] text-[#888] mt-1">Known</div>
           </div>
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
+          <div className="bg-[#141414] border border-aria-border rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-[#7c6af7]">{order.length - reviewed}</div>
-            <div className="text-[10px] text-[#555] mt-1">To Review</div>
+            <div className="text-[10px] text-[#888] mt-1">To Review</div>
           </div>
-          <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4 text-center">
+          <div className="bg-[#141414] border border-aria-border rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-[#f59e0b]">{accuracy}%</div>
-            <div className="text-[10px] text-[#555] mt-1">Accuracy</div>
+            <div className="text-[10px] text-[#888] mt-1">Accuracy</div>
           </div>
         </div>
 
@@ -287,7 +287,7 @@ export default function FlashcardsPage() {
             <RotateCcw size={14} /> Review Again
           </button>
           <button onClick={() => { setCards([]); setSessionDone(false) }}
-            className="w-full py-2 text-xs text-[#555] hover:text-[#888] transition-colors">
+            className="w-full py-2 text-xs text-[#888] hover:text-[#888] transition-colors">
             New Topic
           </button>
         </div>
@@ -312,7 +312,7 @@ export default function FlashcardsPage() {
               <Zap size={10} /> {streak} streak
             </span>
           )}
-          <button onClick={shuffle} className="p-1.5 rounded-lg text-[#666] hover:text-[#aaa] hover:bg-[#1a1a2e] transition-colors" title="Shuffle">
+          <button onClick={shuffle} className="p-1.5 rounded-lg text-[#888] hover:text-[#aaa] hover:bg-[#1a1a2e] transition-colors" title="Shuffle">
             <Shuffle size={14} />
           </button>
         </div>
@@ -329,7 +329,7 @@ export default function FlashcardsPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="flex items-center justify-between text-[10px] text-[#555] mb-4 flex-shrink-0">
+      <div className="flex items-center justify-between text-[10px] text-[#888] mb-4 flex-shrink-0">
         <span className="flex items-center gap-1"><Check size={10} className="text-green-400" /> {reviewed} known</span>
         <span>{remaining} remaining</span>
         <Target size={10} className="text-[#7c6af7]" />
@@ -339,6 +339,10 @@ export default function FlashcardsPage() {
       <div className="flex-1 flex items-center justify-center min-h-0 mb-4">
         <div
           onClick={() => setFlipped(!flipped)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFlipped(f => !f) } }}
+          aria-label="Flashcard — press Enter or Space to flip"
           className={`w-full max-w-lg aspect-[4/3] flex flex-col items-center justify-center text-center cursor-pointer rounded-2xl border-2 p-8 transition-all duration-300 select-none ${
             flipped
               ? 'bg-gradient-to-br from-[#7c6af7]/10 to-[#4f46e5]/10 border-[#7c6af7]/40 shadow-lg shadow-[#7c6af7]/10'
@@ -346,7 +350,7 @@ export default function FlashcardsPage() {
           }`}
         >
           <div className={`text-[10px] uppercase tracking-widest mb-4 font-medium ${
-            flipped ? 'text-[#7c6af7]' : 'text-[#444]'
+            flipped ? 'text-[#7c6af7]' : 'text-[#888]'
           }`}>
             {flipped ? 'Answer' : 'Question'}
           </div>
@@ -354,7 +358,7 @@ export default function FlashcardsPage() {
             {flipped ? currentCard.back : currentCard.front}
           </p>
           <div className="mt-auto pt-4">
-            <p className="text-[10px] text-[#333]">
+            <p className="text-[10px] text-[#777]">
               {flipped ? 'Press space or click to go back' : 'Click or press space to reveal'}
             </p>
           </div>
@@ -364,7 +368,7 @@ export default function FlashcardsPage() {
       {/* Controls */}
       <div className="flex items-center gap-3 flex-shrink-0 pb-2">
         <button onClick={prev} disabled={idx === 0}
-          className="p-3 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#666] hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+          className="p-3 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#888] hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
           <ChevronLeft size={18} />
         </button>
 
@@ -389,7 +393,7 @@ export default function FlashcardsPage() {
         </div>
 
         <button onClick={next} disabled={idx >= order.length - 1}
-          className="p-3 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#666] hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+          className="p-3 rounded-xl bg-[#1a1a2e] border border-[#2a2a40] text-[#888] hover:text-[#e8e8e8] hover:border-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-all">
           <ChevronRight size={18} />
         </button>
       </div>
@@ -400,13 +404,13 @@ export default function FlashcardsPage() {
           className="flex items-center gap-1.5 text-[10px] text-[#7c6af7] hover:text-[#a89bf8] transition-colors">
           <Send size={10} /> Send to Spaced Rep
         </button>
-        <div className="flex gap-3 text-[10px] text-[#444]">
+        <div className="flex gap-3 text-[10px] text-[#888]">
           <span><kbd className="px-1 py-0.5 rounded bg-[#1a1a2e] border border-[#2a2a40]">Space</kbd> flip</span>
           <span><kbd className="px-1 py-0.5 rounded bg-[#1a1a2e] border border-[#2a2a40]">Y</kbd> know</span>
           <span><kbd className="px-1 py-0.5 rounded bg-[#1a1a2e] border border-[#2a2a40]">N</kbd> don't know</span>
         </div>
         <button onClick={() => { setCards([]); setSessionDone(false) }}
-          className="text-[10px] text-[#555] hover:text-[#888] transition-colors">
+          className="text-[10px] text-[#888] hover:text-[#888] transition-colors">
           New Topic
         </button>
       </div>

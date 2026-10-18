@@ -2,14 +2,28 @@
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="ARIA — your offline-friendly AI study companion. Quizzes, flashcards, notes, voice tutor and more, running on your Mac." />
+  <meta name="theme-color" content="#131314" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ARIA" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta property="og:title" content="ARIA — AI Study Assistant" />
+  <meta property="og:description" content="Your offline-friendly AI study companion." />
+  <meta property="og:type" content="website" />
   <title>ARIA — AI Study Assistant</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+  <!-- KaTeX CSS is bundled via npm (src/main.jsx) so maths renders offline -->
 </head>
 <body class="bg-aria-bg text-aria-text">
   <div id="root"></div>
+  <noscript><div style="padding:2rem;text-align:center;font-family:sans-serif">ARIA needs JavaScript to run. Please enable it and reload.</div></noscript>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

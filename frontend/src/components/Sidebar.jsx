@@ -4,7 +4,7 @@ import { useStore } from '../store'
 import { deleteConversation, searchConversations } from '../services/api'
 import {
   MessageSquare, Settings, Plus, Search, Pin,
-  Trash2, Zap, LayoutDashboard, Wand2, X, Repeat, PanelLeft, Mic, Youtube, Sigma, Brain, Database,
+  Trash2, Zap, LayoutDashboard, Wand2, X, Repeat, PanelLeft, Mic, Youtube, Sigma, Brain, Database, GraduationCap,
 } from 'lucide-react'
 
 const NAV = [
@@ -14,6 +14,7 @@ const NAV = [
   { icon: Wand2, label: 'Create', path: '/create' },
   { icon: Sigma, label: 'Maths Accel', path: '/maths' },
   { icon: Repeat, label: 'Review', path: '/spaced' },
+  { icon: GraduationCap, label: 'Syllabus', path: '/syllabus' },
   { icon: Zap, label: 'Cheat Sheets', path: '/cheatsheets' },
   { icon: Youtube, label: 'YouTube', path: '/youtube' },
   { icon: Brain, label: 'Memory', path: '/memory' },
@@ -32,7 +33,6 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
   const [internalMobileOpen, setInternalMobileOpen] = useState(false)
   const collapsed = collapsedProp !== undefined ? collapsedProp : internalCollapsed
   const mobileOpen = mobileOpenProp !== undefined ? mobileOpenProp : internalMobileOpen
-  const setCollapsed = onToggle || setInternalCollapsed
   const setMobileOpen = setMobileOpenProp || setInternalMobileOpen
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState(null)
@@ -64,8 +64,15 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
 
   const handleDelete = async (e, id) => {
     e.stopPropagation()
-    await deleteConversation(id)
-    setConversations(conversations.filter(c => c.id !== id))
+    if (!window.confirm('Delete this conversation? This cannot be undone.')) return
+    try {
+      await deleteConversation(id)
+      setConversations(conversations.filter(c => c.id !== id))
+      showToast('Conversation deleted', 'success', 2000)
+    } catch (err) {
+      console.warn('Delete conversation failed', err)
+      showToast('Could not delete conversation', 'error')
+    }
   }
 
   const handleNew = () => {
@@ -81,18 +88,18 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile-only scroll backdrop — hamburger button stays keyboard accessible */}
       {mobileOpen && !collapsed && (
-        <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />
+        <div onClick={() => setMobileOpen(false)} aria-hidden="true" className="fixed inset-0 bg-black/50 z-20 md:hidden" />
       )}
       {/* Mobile floating hamburger is now in header, keep overlay only */}
-      <div className={`flex flex-col bg-[#1e1f20] md:bg-[#1e1f20] border-r border-[#2d2e30] transition-all duration-200 shrink-0
+      <div className={`flex flex-col bg-aria-surface md:bg-aria-surface border-r border-aria-border transition-all duration-200 shrink-0
         ${mobileOpen ? 'fixed inset-y-0 left-0 z-30 flex' : 'hidden md:flex'}
         ${widthClass} ${!mobileOpen && collapsed ? 'hidden md:flex' : ''}`}>
         {/* Header — Gemini style minimal */}
         <div className="flex items-center justify-between h-[64px] px-3 shrink-0">
           {!collapsed ? (
-            <button onClick={() => setMobileOpen(false)} className="md:hidden p-2 rounded-full hover:bg-[#2d2e30] text-[#e3e3e3]">
+            <button onClick={() => setMobileOpen(false)} className="md:hidden p-2 rounded-full hover:bg-[#2d2e30] text-aria-text">
               <X size={20} />
             </button>
           ) : null}
@@ -100,7 +107,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
           <button
             onClick={() => (onToggle ? onToggle() : setInternalCollapsed(v => !v))}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="hidden md:flex p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors ml-auto"
+            className="hidden md:flex p-2 rounded-full hover:bg-[#2d2e30] text-aria-muted hover:text-aria-text transition-colors ml-auto"
           >
             <PanelLeft size={18} />
           </button>
@@ -111,9 +118,9 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
           {!collapsed ? (
             <button
               onClick={handleNew}
-              className="flex items-center gap-3 px-4 py-3 rounded-full bg-[#2d2e30] hover:bg-[#35363a] text-[#e3e3e3] text-sm font-medium transition-colors shadow-sm w-fit"
+              className="flex items-center gap-3 px-4 py-3 rounded-full bg-[#2d2e30] hover:bg-[#35363a] text-aria-text text-sm font-medium transition-colors shadow-sm w-fit"
             >
-              <span className="w-6 h-6 rounded-full bg-[#1e1f20] flex items-center justify-center">
+              <span className="w-6 h-6 rounded-full bg-aria-surface flex items-center justify-center">
                 <Plus size={14} />
               </span>
               New chat
@@ -121,7 +128,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
           ) : (
             <button
               onClick={handleNew}
-              className="w-10 h-10 rounded-full bg-[#2d2e30] hover:bg-[#35363a] flex items-center justify-center text-[#e3e3e3] shadow-sm"
+              className="w-10 h-10 rounded-full bg-[#2d2e30] hover:bg-[#35363a] flex items-center justify-center text-aria-text shadow-sm"
               title="New chat"
             >
               <Plus size={16} />
@@ -140,7 +147,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
                 className={`flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors relative w-full ${
                   isActive(path)
                     ? 'bg-[#004a77] text-[#c2e7ff]'
-                    : 'text-[#e3e3e3] hover:bg-[#2d2e30]'
+                    : 'text-aria-text hover:bg-[#2d2e30]'
                 } ${collapsed ? 'justify-center w-10 h-10 p-0 rounded-full' : ''}`}
                 title={collapsed ? label : undefined}
               >
@@ -156,7 +163,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
           {/* Hint card — Gemini info style */}
           {!collapsed && (
             <div className="mx-3 mt-3 px-3 py-2.5 rounded-xl bg-[#2d2e30] border border-[#35363a]">
-              <p className="text-[11px] leading-relaxed text-[#9aa0a6]">
+              <p className="text-[11px] leading-relaxed text-aria-muted">
                 Ask anything — quiz, flashcards, mind map, essay feedback, worksheet & more. Just chat.
               </p>
             </div>
@@ -167,13 +174,13 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
             <div className="mt-4">
               <div className="px-3 mb-2">
                 <div className="flex items-center gap-2 bg-[#2d2e30] rounded-full px-3 py-2 border border-transparent focus-within:border-[#5f6368] focus-within:bg-[#35363a] transition-colors">
-                  <Search size={14} className="text-[#9aa0a6] shrink-0" />
+                  <Search size={14} className="text-aria-muted shrink-0" />
                   <input
                     type="text"
                     placeholder="Search"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="bg-transparent text-sm text-[#e3e3e3] placeholder-[#9aa0a6] flex-1 outline-none min-w-0"
+                    className="bg-transparent text-sm text-aria-text placeholder-[#9aa0a6] flex-1 outline-none min-w-0"
                   />
                 </div>
               </div>
@@ -181,18 +188,18 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
               <div className="px-2 space-y-0.5 pb-2">
                 {pinned.length > 0 && (
                   <>
-                    <p className="text-[11px] font-medium text-[#9aa0a6] tracking-wide px-3 mb-1 mt-2">Pinned</p>
+                    <p className="text-[11px] font-medium text-aria-muted tracking-wide px-3 mb-1 mt-2">Pinned</p>
                     {pinned.map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} pinned />)}
                   </>
                 )}
                 {recent.length > 0 && (
                   <>
-                    <p className="text-[11px] font-medium text-[#9aa0a6] tracking-wide px-3 mb-1 mt-3">Recent</p>
+                    <p className="text-[11px] font-medium text-aria-muted tracking-wide px-3 mb-1 mt-3">Recent</p>
                     {recent.slice(0, 20).map(c => <ConvItem key={c.id} c={c} navigate={navigate} togglePin={togglePin} handleDelete={handleDelete} />)}
                   </>
                 )}
                 {filtered.length === 0 && conversations.length === 0 && (
-                  <p className="text-xs text-[#5f6368] px-3 py-2">No chats yet</p>
+                  <p className="text-xs text-aria-muted px-3 py-2">No chats yet</p>
                 )}
               </div>
             </div>
@@ -201,13 +208,13 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
         </div>
 
         {/* Bottom nav */}
-        <div className={`px-2 py-3 border-t border-[#2d2e30] space-y-0.5 ${collapsed ? 'flex flex-col items-center' : ''}`}>
+        <div className={`px-2 py-3 border-t border-aria-border space-y-0.5 ${collapsed ? 'flex flex-col items-center' : ''}`}>
           {BOTTOM_NAV.map(({ icon: Icon, label, path }) => (
             <button
               key={path}
               onClick={() => { setMobileOpen(false); navigate(path) }}
               className={`flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors w-full ${
-                isActive(path) ? 'bg-[#004a77] text-[#c2e7ff]' : 'text-[#9aa0a6] hover:text-[#e3e3e3] hover:bg-[#2d2e30]'
+                isActive(path) ? 'bg-[#004a77] text-[#c2e7ff]' : 'text-aria-muted hover:text-aria-text hover:bg-[#2d2e30]'
               } ${collapsed ? 'justify-center w-10 h-10 p-0' : ''}`}
               title={collapsed ? label : undefined}
             >
@@ -216,8 +223,8 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
             </button>
           ))}
           {!collapsed && (
-            <div className="px-3 pt-3 flex items-center gap-2 text-xs text-[#9aa0a6]">
-              <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-[#e3e3e3] text-[10px]">◉</div>
+            <div className="px-3 pt-3 flex items-center gap-2 text-xs text-aria-muted">
+              <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-aria-text text-[10px]">◉</div>
               <span className="truncate">Private · on-device</span>
             </div>
           )}
@@ -238,21 +245,21 @@ function ConvItem({ c, navigate, togglePin, handleDelete, pinned }) {
       className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-zinc-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#7c6af7]/50"
     >
       <div className="flex-1 min-w-0">
-        <span className="text-[13px] leading-none text-[#e3e3e3] truncate block">{c.title}</span>
+        <span className="text-[13px] leading-none text-aria-text truncate block">{c.title}</span>
         {c.snippet && (
-          <span className="text-[11px] text-[#9aa0a6] truncate block mt-0.5">{c.snippet}</span>
+          <span className="text-[11px] text-aria-muted truncate block mt-0.5">{c.snippet}</span>
         )}
       </div>
       <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
         <button
           onClick={e => { e.stopPropagation(); togglePin(c.id) }}
-          className={`p-1.5 rounded-full hover:bg-[#35363a] ${pinned ? 'text-[#8ab4f8]' : 'text-[#9aa0a6] hover:text-[#e3e3e3]'}`}
+          className={`p-1.5 rounded-full hover:bg-[#35363a] ${pinned ? 'text-[#8ab4f8]' : 'text-aria-muted hover:text-aria-text'}`}
         >
           <Pin size={12} />
         </button>
         <button
           onClick={e => handleDelete(e, c.id)}
-          className="p-1.5 rounded-full hover:bg-[#35363a] text-[#9aa0a6] hover:text-[#f28b82]"
+          className="p-1.5 rounded-full hover:bg-[#35363a] text-aria-muted hover:text-[#f28b82]"
         >
           <Trash2 size={12} />
         </button>

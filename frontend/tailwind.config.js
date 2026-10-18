@@ -6,13 +6,13 @@ export default {
     extend: {
       colors: {
         aria: {
-          bg: '#0f0f0f',
-          surface: '#1a1a1a',
+          bg: '#131314',
+          surface: '#1e1f20',
           border: '#2a2a2a',
           accent: '#7c6af7',
           'accent-light': '#a89bf8',
-          text: '#e8e8e8',
-          muted: '#888',
+          text: '#e3e3e3',
+          muted: '#9aa0a6',
           green: '#4ade80',
           yellow: '#fbbf24',
           red: '#f87171',

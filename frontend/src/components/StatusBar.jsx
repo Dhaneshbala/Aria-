@@ -1,6 +1,6 @@
 import { useStore } from '../store'
-import { getHealth } from '../services/api'
-import { useState } from 'react'
+import { getHealth, getDiagnostics } from '../services/api'
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 const INTENT_LABELS = {
@@ -31,11 +31,14 @@ const MODE_LABELS = {
   think:  '🧠 Think',
   fast:   '⚡ Fast',
   hype:   '🔥 Hype',
+  socratic: '💭 Socratic',
+  roleplay: '🎭 Roleplay',
 }
 
 export default function StatusBar() {
   const { ollamaStatus, currentIntents, config, isStreaming, mode, setOllamaStatus } = useStore()
   const [checking, setChecking] = useState(false)
+  const [memLow, setMemLow] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -47,8 +50,32 @@ export default function StatusBar() {
     } catch {
       setOllamaStatus('error')
     }
+    try {
+      const d = await getDiagnostics()
+      setMemLow(d?.checks?.memory?.ok === false)
+    } catch {
+      // diagnostics is best-effort; health dot already covers outages
+    }
     setChecking(false)
   }
+
+  // Poll RAM pressure alongside health — silent unless degraded.
+  useEffect(() => {
+    let cancelled = false
+    const checkMem = async () => {
+      try {
+        const d = await getDiagnostics()
+        if (!cancelled) setMemLow(d?.checks?.memory?.ok === false)
+      } catch {
+        // best-effort
+      }
+    }
+    checkMem()
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') checkMem()
+    }, 120000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
 
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#1e1e1e] bg-[#111] text-xs min-h-[34px]">
@@ -60,13 +87,24 @@ export default function StatusBar() {
           ollamaStatus === 'error'    ? 'bg-red-400' :
                                         'bg-yellow-400 animate-pulse'
         }`} />
-        <span className={`${checking ? 'text-[#666]' : 'text-[#3a3a3a] group-hover:text-[#888] transition-colors'}`}>
+        <span className={`${checking ? 'text-[#888]' : 'text-[#3a3a3a] group-hover:text-[#888] transition-colors'}`}>
           {checking ? 'Checking...' :
            ollamaStatus === 'ok'    ? (config.reasoning_model || 'Ollama') :
            ollamaStatus === 'error' ? 'Ollama offline — click to retry (ollama serve)' :
                                       'Connecting...'}
         </span>
       </button>
+
+      {/* RAM pressure — early crash warning; click jumps to Admin → Memory */}
+      {memLow && (
+        <button
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-1.5 flex-shrink-0 text-amber-300 hover:text-amber-200 transition-colors"
+          title="RAM nearly full — click for Admin → Memory → Unload AI models">
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span>RAM low — risk of crash</span>
+        </button>
+      )}
 
       {/* Streaming — clickable to jump back to chat */}
       {isStreaming && (

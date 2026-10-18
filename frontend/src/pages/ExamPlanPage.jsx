@@ -34,9 +34,9 @@ export default function ExamPlanPage() {
   const refresh = () => listExamPlans().then(plans => {
     setPlans(plans)
     plans.forEach(p => {
-      getPlanReadiness(p.id).then(r => setReadiness(prev => ({ ...prev, [p.id]: r }))).catch(() => {})
+      getPlanReadiness(p.id).then(r => setReadiness(prev => ({ ...prev, [p.id]: r }))).catch((e) => console.warn('plan readiness failed', e))
     })
-  }).catch(() => {})
+  }).catch((e) => console.warn('exam plans refresh failed', e))
   // Remount always refreshes — picks up plans created in the background
   // while we were on another page. Mirror a running background task locally.
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function ExamPlanPage() {
       setBusy(false)
       refresh()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [bg?.status])
 
   const create = async () => {
@@ -140,25 +140,37 @@ export default function ExamPlanPage() {
   }
 
   const remove = async (id) => {
-    await deleteExamPlan(id).catch(() => {})
+    if (!window.confirm('Delete this exam plan? Study todos created from it stay but will no longer appear on the plan.')) return
+    try {
+      await deleteExamPlan(id)
+      showToast('Exam plan deleted', 'success', 2000)
+    } catch (e) {
+      console.warn('delete plan failed', e)
+      showToast('Could not delete the exam plan', 'error')
+    }
     await refresh()
   }
 
   const toggleDay = async (plan, day) => {
-    await updateTodo(day.todo_id, { completed: !day.completed }).catch(() => {})
+    try {
+      await updateTodo(day.todo_id, { completed: !day.completed })
+    } catch (e) {
+      console.warn('toggle todo failed', e)
+      showToast('Could not update that study day', 'error')
+    }
     await refresh()
   }
 
   return (
     <div className="w-full max-w-2xl mx-auto px-6 py-8">
       <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Exam Countdown</h1>
-      <p className="text-sm text-[#555] mb-8 text-center">Give an exam date. ARIA plans every day — weak topics first — as real todos.</p>
+      <p className="text-sm text-[#888] mb-8 text-center">Give an exam date. ARIA plans every day — weak topics first — as real todos.</p>
 
       {/* New plan form */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-6">
+      <div className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4 mb-6">
         {/* Assessment notification upload */}
         <div className="mb-3 p-3 rounded-xl bg-[#141414] border border-dashed border-[#3a3a3a]">
-          <p className="text-xs font-medium text-[#ccc] mb-1">Assessment notification <span className="text-[#666] font-normal">(optional — ARIA plans from what's actually in it)</span></p>
+          <p className="text-xs font-medium text-[#ccc] mb-1">Assessment notification <span className="text-[#888] font-normal">(optional — ARIA plans from what's actually in it)</span></p>
           <div className="flex items-center gap-2">
             <input
               ref={fileRef}
@@ -174,9 +186,9 @@ export default function ExamPlanPage() {
             >
               {parsing ? 'Reading…' : notifName ? '↻ Replace file' : '📎 Upload notification (PDF / photo)'}
             </button>
-            {notifName && <span className="text-[11px] text-[#666] truncate flex-1">{notifName}</span>}
+            {notifName && <span className="text-[11px] text-[#888] truncate flex-1">{notifName}</span>}
             {notif && (
-              <button onClick={clearNotif} className="text-[11px] text-[#666] hover:text-red-400 shrink-0">Remove</button>
+              <button onClick={clearNotif} className="text-[11px] text-[#888] hover:text-red-400 shrink-0">Remove</button>
             )}
           </div>
           {notif && (
@@ -203,21 +215,21 @@ export default function ExamPlanPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Exam name (e.g. Maths Task 2)"
-            className="bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+            className="bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+            className="bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
           <input value={subjects} onChange={e => setSubjects(e.target.value)} placeholder="Subjects, comma separated"
-            className="bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+            className="bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#666]">Mins/day</span>
+            <span className="text-xs text-[#888]">Mins/day</span>
             <input type="number" min={15} max={180} step={15} value={mins} onChange={e => setMins(e.target.value)}
-              className="w-20 bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
-            <span className="text-xs text-[#666] ml-2">Weight %</span>
+              className="w-20 bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+            <span className="text-xs text-[#888] ml-2">Weight %</span>
             <input type="number" min={0} max={100} value={weighting} onChange={e => setWeighting(e.target.value)} placeholder="25"
-              className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-xl px-2 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+              className="w-16 bg-[#141414] border border-aria-border rounded-xl px-2 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
           </div>
           <input value={taskType} onChange={e => setTaskType(e.target.value)} placeholder="Task type (e.g. In-class test) — optional"
-            className="sm:col-span-2 bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
+            className="sm:col-span-2 bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60" />
         </div>
         <button onClick={create} disabled={busy}
           className="mt-3 w-full text-sm py-2.5 rounded-xl bg-[#7c6af7] text-white hover:bg-[#6a59e0] disabled:opacity-50 transition-colors">
@@ -228,24 +240,24 @@ export default function ExamPlanPage() {
       {/* Plans */}
       <div className="space-y-3">
         {plans.length === 0 && (
-          <p className="text-xs text-[#555] text-center py-6">No exam plans yet — add your first exam above.</p>
+          <p className="text-xs text-[#888] text-center py-6">No exam plans yet — add your first exam above.</p>
         )}
         {plans.map(plan => {
           const done = plan.days.filter(d => d.completed).length
           const open = openId === plan.id
           return (
-            <div key={plan.id} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+            <div key={plan.id} className="bg-[#1a1a1a] border border-aria-border rounded-2xl overflow-hidden">
               <button onClick={() => setOpenId(open ? null : plan.id)}
                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#161616] transition-colors">
                 <span className="text-2xl font-bold text-[#7c6af7] min-w-[3rem]">{plan.days_left}</span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-[#e8e8e8] truncate">{plan.exam_name}</span>
-                  <span className="block text-[11px] text-[#666]">{plan.exam_date} · {daysLeftLabel(plan)} · {done}/{plan.days.length} done</span>
+                  <span className="block text-[11px] text-[#888]">{plan.exam_date} · {daysLeftLabel(plan)} · {done}/{plan.days.length} done</span>
                 </span>
-                <span className="text-xs text-[#555]">{open ? '▲' : '▼'}</span>
+                <span className="text-xs text-[#888]">{open ? '▲' : '▼'}</span>
               </button>
               {open && (
-                <div className="border-t border-[#2a2a2a] px-4 py-2">
+                <div className="border-t border-aria-border px-4 py-2">
                   {(plan.weighting || plan.task_type) && (
                     <div className="flex flex-wrap gap-1.5 pt-2">
                       {plan.weighting ? <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10px] text-amber-300">{plan.weighting}% weighting</span> : null}
@@ -253,10 +265,10 @@ export default function ExamPlanPage() {
                     </div>
                   )}
                   {readiness[plan.id] && (
-                    <div className="mt-2 p-2.5 rounded-xl bg-[#141414] border border-[#2a2a2a]">
+                    <div className="mt-2 p-2.5 rounded-xl bg-[#141414] border border-aria-border">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-[#aaa]">Readiness {readiness[plan.id].readiness}% · {readiness[plan.id].done}/{readiness[plan.id].total} days</span>
-                        <span className="text-[#666]">{readiness[plan.id].verdict}</span>
+                        <span className="text-[#888]">{readiness[plan.id].verdict}</span>
                       </div>
                       <div className="mt-1.5 h-1.5 rounded-full bg-[#2a2a2a] overflow-hidden">
                         <div className={`h-1.5 rounded-full ${readiness[plan.id].readiness >= 85 ? 'bg-green-500' : readiness[plan.id].readiness >= 60 ? 'bg-blue-500' : readiness[plan.id].readiness >= 30 ? 'bg-amber-500' : 'bg-red-500'}`}
@@ -271,12 +283,12 @@ export default function ExamPlanPage() {
                       </button>
                       {practice[plan.id]?.questions?.length > 0 && (
                         <div className="mt-2 space-y-1.5">
-                          <p className="text-[10px] text-[#666]">Topic: {practice[plan.id].topic} · {practice[plan.id].level}</p>
+                          <p className="text-[10px] text-[#888]">Topic: {practice[plan.id].topic} · {practice[plan.id].level}</p>
                           {practice[plan.id].questions.map((q, qi) => (
-                            <div key={qi} className="p-2 rounded-lg bg-[#0f0f0f] border border-[#2a2a2a] text-[11px] text-[#aaa]">
+                            <div key={qi} className="p-2 rounded-lg bg-[#0f0f0f] border border-aria-border text-[11px] text-[#aaa]">
                               <span className="text-[#ccc]">Q{qi + 1}. {q.question}</span>
                               {q.options?.length > 0 && (
-                                <span className="block mt-1 text-[#666]">{q.options.map((o, oi) => `${'ABCD'[oi]}) ${o}`).join('  ')}</span>
+                                <span className="block mt-1 text-[#888]">{q.options.map((o, oi) => `${'ABCD'[oi]}) ${o}`).join('  ')}</span>
                               )}
                             </div>
                           ))}
@@ -309,13 +321,13 @@ export default function ExamPlanPage() {
                         {d.completed && <span className="block text-center text-[10px] leading-4 text-white">✓</span>}
                       </span>
                       <span className="flex-1 min-w-0">
-                        <span className={`block text-xs truncate ${d.completed ? 'line-through text-[#555]' : 'text-[#ccc]'}`}>{d.focus}</span>
-                        <span className="block text-[10px] text-[#555]">{d.date} · {d.minutes}m</span>
+                        <span className={`block text-xs truncate ${d.completed ? 'line-through text-[#888]' : 'text-[#ccc]'}`}>{d.focus}</span>
+                        <span className="block text-[10px] text-[#888]">{d.date} · {d.minutes}m</span>
                       </span>
                     </button>
                   ))}
                   <button onClick={() => remove(plan.id)}
-                    className="my-2 text-[11px] text-[#666] hover:text-red-400 transition-colors">Delete plan</button>
+                    className="my-2 text-[11px] text-[#888] hover:text-red-400 transition-colors">Delete plan</button>
                 </div>
               )}
             </div>

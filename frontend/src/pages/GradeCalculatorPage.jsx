@@ -94,7 +94,7 @@ export default function GradeCalculatorPage() {
       <p className="text-sm text-[#888] mb-6">Plug in your marks + weightings. ARIA tells you exactly what you need on the final to hit your target.</p>
 
       {/* Completed assessments */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+      <div className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4 mb-4">
         <p className="text-xs font-semibold text-[#aaa] uppercase tracking-wide mb-3">Done so far</p>
         <div className="space-y-2">
           {rows.map(r => (
@@ -103,25 +103,25 @@ export default function GradeCalculatorPage() {
                 value={r.name}
                 onChange={e => setRow(r.id, 'name', e.target.value)}
                 placeholder="Assignment / test name"
-                className="bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 min-w-0"
+                className="bg-[#141414] border border-aria-border rounded-xl px-3 py-2 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 min-w-0"
               />
-              <label className="flex items-center gap-1 bg-[#141414] border border-[#2a2a2a] rounded-xl px-2 py-2">
+              <label className="flex items-center gap-1 bg-[#141414] border border-aria-border rounded-xl px-2 py-2">
                 <input
                   type="number" min={0} max={100} value={r.score}
                   onChange={e => setRow(r.id, 'score', e.target.value)}
                   className="w-full bg-transparent text-sm text-[#e8e8e8] outline-none text-center"
                 />
-                <span className="text-[10px] text-[#555]">%</span>
+                <span className="text-[10px] text-[#888]">%</span>
               </label>
-              <label className="flex items-center gap-1 bg-[#141414] border border-[#2a2a2a] rounded-xl px-2 py-2">
+              <label className="flex items-center gap-1 bg-[#141414] border border-aria-border rounded-xl px-2 py-2">
                 <input
                   type="number" min={0} max={100} value={r.weight}
                   onChange={e => setRow(r.id, 'weight', e.target.value)}
                   className="w-full bg-transparent text-sm text-[#e8e8e8] outline-none text-center"
                 />
-                <span className="text-[10px] text-[#555]">wt</span>
+                <span className="text-[10px] text-[#888]">wt</span>
               </label>
-              <button onClick={() => delRow(r.id)} className="p-2 text-[#555] hover:text-red-400 transition-colors" title="Remove">
+              <button onClick={() => delRow(r.id)} className="p-2 text-[#888] hover:text-red-400 transition-colors" title="Remove">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -133,45 +133,45 @@ export default function GradeCalculatorPage() {
         >
           <Plus size={13} /> Add assessment
         </button>
-        <p className="text-[11px] text-[#555] mt-2">Score = your mark as %. Weight = % of the final grade (e.g. mid-term worth 30).</p>
+        <p className="text-[11px] text-[#888] mt-2">Score = your mark as %. Weight = % of the final grade (e.g. mid-term worth 30).</p>
       </div>
 
       {/* Final + target */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+      <div className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4 mb-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <p className="text-xs font-semibold text-[#aaa] uppercase tracking-wide mb-1.5">Final exam</p>
             <input
               value={finalName}
               onChange={e => patch({ finalName: e.target.value })}
-              className="w-full bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 mb-2"
+              className="w-full bg-[#141414] border border-aria-border rounded-xl px-3 py-2 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 mb-2"
             />
-            <label className="flex items-center gap-2 bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2">
+            <label className="flex items-center gap-2 bg-[#141414] border border-aria-border rounded-xl px-3 py-2">
               <input
                 type="number" min={0} max={100} value={finalWeight}
                 onChange={e => patch({ finalWeight: e.target.value })}
                 className="w-full bg-transparent text-sm text-[#e8e8e8] outline-none"
               />
-              <span className="text-[11px] text-[#555]">% weight</span>
+              <span className="text-[11px] text-[#888]">% weight</span>
             </label>
           </div>
           <div>
             <p className="text-xs font-semibold text-[#aaa] uppercase tracking-wide mb-1.5">Target grade</p>
-            <label className="flex items-center gap-2 bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2 mb-2">
+            <label className="flex items-center gap-2 bg-[#141414] border border-aria-border rounded-xl px-3 py-2 mb-2">
               <Calculator size={14} className="text-[#7c6af7] shrink-0" />
               <input
                 type="number" min={0} max={100} value={target}
                 onChange={e => patch({ target: e.target.value })}
                 className="w-full bg-transparent text-sm text-[#e8e8e8] outline-none"
               />
-              <span className="text-[11px] text-[#555]">%</span>
+              <span className="text-[11px] text-[#888]">%</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
               {GRADE_PRESETS.map(g => (
                 <button
                   key={g.label}
                   onClick={() => patch({ target: g.value })}
-                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${Number(target) === g.value ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-[#2a2a2a] hover:border-[#7c6af7]/50'}`}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${Number(target) === g.value ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-aria-border hover:border-[#7c6af7]/50'}`}
                 >
                   {g.label}
                 </button>
@@ -210,24 +210,24 @@ export default function GradeCalculatorPage() {
       )}
 
       {/* What-if table */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4">
+      <div className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4">
         <p className="text-xs font-semibold text-[#aaa] uppercase tracking-wide mb-2">What do I need for…</p>
         <div className="grid grid-cols-5 gap-2 text-center">
           {scenarios.map(s => (
             <button
               key={s.grade}
               onClick={() => patch({ target: s.grade })}
-              className={`rounded-xl border py-2 transition-colors ${Number(target) === s.grade ? 'border-[#7c6af7]/60 bg-[#7c6af7]/10' : 'border-[#2a2a2a] bg-[#141414] hover:border-[#3a3a3a]'}`}
+              className={`rounded-xl border py-2 transition-colors ${Number(target) === s.grade ? 'border-[#7c6af7]/60 bg-[#7c6af7]/10' : 'border-aria-border bg-[#141414] hover:border-[#3a3a3a]'}`}
               title={`Set target to ${s.grade}%`}
             >
               <span className="block text-[11px] text-[#888]">{s.grade}%</span>
-              <span className={`block text-sm font-bold ${s.need === null ? 'text-[#555]' : s.need <= 0 ? 'text-green-400' : s.need > 100 ? 'text-red-400' : 'text-[#e8e8e8]'}`}>
+              <span className={`block text-sm font-bold ${s.need === null ? 'text-[#888]' : s.need <= 0 ? 'text-green-400' : s.need > 100 ? 'text-red-400' : 'text-[#e8e8e8]'}`}>
                 {s.need === null ? '—' : s.need <= 0 ? '✓' : s.need > 100 ? '💀' : `${s.need.toFixed(0)}%`}
               </span>
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-[#555] mt-2 text-center">Tap a grade to set it as your target. ✓ = already secured, 💀 = impossible.</p>
+        <p className="text-[11px] text-[#888] mt-2 text-center">Tap a grade to set it as your target. ✓ = already secured, 💀 = impossible.</p>
       </div>
     </div>
   )

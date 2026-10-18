@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 /**
  * NapkinDiagram — Napkin AI-style visual, rendered INLINE in chat (not a page).
@@ -106,7 +106,7 @@ export default function NapkinDiagram({ spec: initialSpec }) {
 
   const body = useMemo(
     () => renderBody(vtype, nodes, theme),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [vtype, JSON.stringify(nodes), themeId],
   )
 
@@ -168,7 +168,6 @@ export default function NapkinDiagram({ spec: initialSpec }) {
       ctx.drawImage(img, 0, 0, W, H)
       const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' })
       const pw = pdf.internal.pageSize.getWidth()
-      const ph = pdf.internal.pageSize.getHeight()
       pdf.setFontSize(14)
       pdf.text(title, 40, 40)
       pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 40, 55, pw - 80, ((pw - 80) * H) / W)
@@ -181,13 +180,13 @@ export default function NapkinDiagram({ spec: initialSpec }) {
 
   return (
     <div className="w-full my-3">
-      <div className="flex items-center justify-between bg-[#161616] border border-[#2a2a2a] border-b-0 rounded-t-xl px-3 py-1.5">
+      <div className="flex items-center justify-between bg-[#161616] border border-aria-border border-b-0 rounded-t-xl px-3 py-1.5">
         <span className="text-[10px] text-[#888] font-mono uppercase tracking-wider">
           ✨ visual · {vtype} · {theme.label}
         </span>
         <div className="flex items-center gap-1">
           <button onClick={() => setScale(s => Math.max(0.6, s - 0.15))} className="w-6 h-6 rounded-full text-[#777] hover:text-white text-xs">−</button>
-          <span className="text-[10px] font-mono text-[#666] min-w-[34px] text-center">{Math.round(scale * 100)}%</span>
+          <span className="text-[10px] font-mono text-[#888] min-w-[34px] text-center">{Math.round(scale * 100)}%</span>
           <button onClick={() => setScale(s => Math.min(2, s + 0.15))} className="w-6 h-6 rounded-full text-[#777] hover:text-white text-xs">+</button>
           <button onClick={() => setCustomize(c => !c)} className={`text-[11px] px-2.5 h-6 rounded-full ml-1 transition-colors ${customize ? 'bg-[#7c6af7] text-white' : 'bg-[#2a2a2a] text-[#aaa] hover:text-white'}`}>
             {customize ? 'Done' : 'Customize'}
@@ -195,7 +194,7 @@ export default function NapkinDiagram({ spec: initialSpec }) {
         </div>
       </div>
 
-      <div className="border border-[#2a2a2a] border-t-0 rounded-b-xl overflow-hidden" style={{ background: theme.bg }}>
+      <div className="border border-aria-border border-t-0 rounded-b-xl overflow-hidden" style={{ background: theme.bg }}>
         <div className="overflow-auto flex justify-center p-2">
           <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center', transition: 'transform 0.15s ease' }}>
             <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width={W} style={{ maxWidth: '100%', height: 'auto', fontFamily: theme.font }}>
@@ -360,21 +359,6 @@ function CurvedArrow({ x1, y1, x2, y2, color }) {
       <polygon
         points="0,-4 8,0 0,4"
         transform={`translate(${x2},${y2}) rotate(${Math.atan2(y2 - cy, x2 - cx) * 180 / Math.PI})`}
-        fill={color} opacity={0.8}
-      />
-    </g>
-  )
-}
-
-function StraightArrow({ x1, y1, x2, y2, color }) {
-  const mx = (x1 + x2) / 2
-  const my = (y1 + y2) / 2
-  return (
-    <g>
-      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={2} opacity={0.6} strokeLinecap="round" />
-      <polygon
-        points="0,-4 8,0 0,4"
-        transform={`translate(${x2},${y2}) rotate(${Math.atan2(y2 - my, x2 - mx) * 180 / Math.PI})`}
         fill={color} opacity={0.8}
       />
     </g>

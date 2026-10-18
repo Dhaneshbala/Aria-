@@ -15,6 +15,17 @@ function getCachedMsgs(convId) {
   return loadMsgCache()[convId] || []
 }
 
+// Pinned chats — small list, always in localStorage so pins survive reload
+function loadPins() {
+  try {
+    const v = JSON.parse(localStorage.getItem('aria_pinned_chats') || '[]')
+    return Array.isArray(v) ? v : []
+  } catch { return [] }
+}
+function savePins(pins) {
+  try { localStorage.setItem('aria_pinned_chats', JSON.stringify(pins)) } catch {}
+}
+
 export const useStore = create((set, get) => ({
   // Current conversation
   conversationId: null,
@@ -31,11 +42,11 @@ export const useStore = create((set, get) => ({
 
   // Config — single main model (gemma) + nomic for embeddings
   config: {
-    model: 'gemma4:e4b-mlx',
-    reasoning_model: 'gemma4:e4b-mlx',
-    vision_model: 'gemma4:e4b-mlx',
-    fallback_model: 'gemma4:e4b-mlx',
-    coding_model: 'gemma4:e4b-mlx',
+    model: 'gemma3:12b',
+    reasoning_model: 'gemma3:12b',
+    vision_model: 'gemma3:12b',
+    fallback_model: 'gemma3:12b',
+    coding_model: 'gemma3:12b',
     embedding_model: 'nomic-embed-text',
     student_name: 'Student',
     student_age: 13,
@@ -55,7 +66,7 @@ export const useStore = create((set, get) => ({
 
   // Sidebar
   conversations: [],
-  pinnedChats: [],
+  pinnedChats: loadPins(),
 
   // ── Study Tool Persistence ──────────────────────────────────────────────────
   // Persists generated content across page navigations (planner/studyTools removed → brain)
@@ -134,6 +145,7 @@ export const useStore = create((set, get) => ({
     const pinned = s.pinnedChats.includes(id)
       ? s.pinnedChats.filter(p => p !== id)
       : [...s.pinnedChats, id]
+    savePins(pinned)
     return { pinnedChats: pinned }
   }),
   // Adaptive title — live update from SSE / optimistic heuristic (Gemini: active chat bubbles to top)

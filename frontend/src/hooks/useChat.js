@@ -61,66 +61,73 @@ export function useChat() {
     }
   }, [])
 
-  const sendMessage = useCallback(async ({ text, image, document, documents }) => {
+  const sendMessage = useCallback(async ({ text, image, document, documents, isRetry }) => {
     // Normalize to array — supports single or multiple PDFs
     const docList = documents && documents.length ? documents : (document ? [document] : [])
     const { isStreaming: streamingNow, conversationId: liveConvId } = useStore.getState()
     if (streamingNow) return
-    if (!text?.trim() && !image && docList.length === 0) return
+    if (!isRetry && !text?.trim() && !image && docList.length === 0) return
     const conversationId = liveConvId
 
-    // pending doc from library (if any) — merges with attached docs
-    let docFiles = [...docList]
-    const pendingDocRaw = sessionStorage.getItem('aria_pending_doc')
-    if (pendingDocRaw && docFiles.length === 0) {
-      try {
-        const pending = JSON.parse(pendingDocRaw)
-        sessionStorage.removeItem('aria_pending_doc')
-        text = `[Document: ${pending.name}]\n\n${(pending.text || '').slice(0, 3000)}\n\n---\n\n${text || 'Please summarise this document and tell me the key points.'}`
-      } catch {
-        sessionStorage.removeItem('aria_pending_doc')
+    // Attached docs (single or multi)
+    const docFiles = [...docList]
+
+    // User message bubble — support multiple doc names
+    // (skipped on retry: the earlier user message is still on screen)
+    if (!isRetry) {
+      const imagePreview = image ? URL.createObjectURL(image) : null
+      if (imagePreview) blobUrlsRef.current.push(imagePreview)
+      const userMsg = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text || '',
+        imagePreview,
+        docName: docFiles[0]?.name || null,
+        docNames: docFiles.map(f => f.name),
+        timestamp: Date.now(),
+      }
+      addMessage(userMsg)
+
+      // Optimistic adaptive title (Gemini-style: title evolves as chat progresses)
+      if (conversationId) {
+        try {
+          const { messages: curMsgs } = useStore.getState()
+          // curMsgs already includes the new userMsg we just added
+          const users = curMsgs.filter(m => m.role === 'user').map(m => m.content)
+          const optimistic = heuristicTitle(users)
+          useStore.getState().upsertConversationTitle?.(conversationId, optimistic, new Date().toISOString())
+          // Also update via quick heuristic; server will refine with LLM later
+        } catch {}
       }
     }
 
-    // User message bubble — support multiple doc names
-    const imagePreview = image ? URL.createObjectURL(image) : null
-    if (imagePreview) blobUrlsRef.current.push(imagePreview)
-    const userMsg = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: text || '',
-      imagePreview,
-      docName: docFiles[0]?.name || null,
-      docNames: docFiles.map(f => f.name),
-      timestamp: Date.now(),
-    }
-    addMessage(userMsg)
-
-    // Optimistic adaptive title (Gemini-style: title evolves as chat progresses)
-    if (conversationId) {
-      try {
-        const { messages: curMsgs } = useStore.getState()
-        // curMsgs already includes the new userMsg we just added
-        const users = curMsgs.filter(m => m.role === 'user').map(m => m.content)
-        const optimistic = heuristicTitle(users)
-        useStore.getState().upsertConversationTitle?.(conversationId, optimistic, new Date().toISOString())
-        // Also update via quick heuristic; server will refine with LLM later
-      } catch {}
-    }
-
-    // AI placeholder
+    // AI placeholder — on retry, reset the failed bubble instead of stacking a new one
     const aiId = `ai-${Date.now()}`
-    addMessage({
-      id: aiId,
-      role: 'assistant',
-      content: '',
-      streaming: true,
-      tools: [],
-      extras: null,
-      generatedImage: null,
-      generatedDiagram: null,
-      timestamp: Date.now(),
-    })
+    if (isRetry) {
+      useStore.setState(s => {
+        const msgs = [...s.messages]
+        const idx = msgs.findLastIndex?.(m => m.role === 'assistant')
+          ?? msgs.map(m => m.role).lastIndexOf('assistant')
+        if (idx >= 0) {
+          msgs[idx] = { ...msgs[idx], content: '', streaming: true, failed: false, retryPayload: null, tools: [], extras: null, generatedImage: null, generatedDiagram: null, timestamp: Date.now() }
+        } else {
+          msgs.push({ id: aiId, role: 'assistant', content: '', streaming: true, tools: [], extras: null, generatedImage: null, generatedDiagram: null, timestamp: Date.now() })
+        }
+        return { messages: msgs }
+      })
+    } else {
+      addMessage({
+        id: aiId,
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        tools: [],
+        extras: null,
+        generatedImage: null,
+        generatedDiagram: null,
+        timestamp: Date.now(),
+      })
+    }
     setIsStreaming(true)
 
     // Create an abort controller that outlives the component
@@ -317,6 +324,13 @@ export function useChat() {
           setIsStreaming(false)
           setCurrentIntents([])
           activeAbort = null
+          // Revoke stale blob URLs (keep previews still referenced by messages)
+          try {
+            const live = new Set(useStore.getState().messages.map(m => m.imagePreview).filter(Boolean))
+            blobUrlsRef.current.forEach(u => { if (!live.has(u)) { try { URL.revokeObjectURL(u) } catch {} } })
+            blobUrlsRef.current = blobUrlsRef.current.filter(u => live.has(u))
+            activeBlobUrls = blobUrlsRef.current
+          } catch {}
 
           const { conversationId: curId, messages: finalMsgs } = useStore.getState()
           if (newConvId && newConvId !== curId) {
@@ -333,12 +347,10 @@ export function useChat() {
               navigate(`/chat/${newConvId}`, { replace: true })
             }
             // Fetch authoritative titles (heuristic + LLM) — slight delay to let LLM title persist
-            setTimeout(() => getConversations().then(setConversations).catch(() => {}), 800)
-            getConversations().then(setConversations).catch(() => {})
+            setTimeout(() => getConversations().then(setConversations).catch((e) => console.warn('conversation refresh failed', e)), 800)
           } else if (newConvId) {
             // Existing chat — refresh list to pick up LLM-refined title (with small delay for background task)
-            setTimeout(() => getConversations().then(setConversations).catch(() => {}), 1200)
-            getConversations().then(setConversations).catch(() => {})
+            setTimeout(() => getConversations().then(setConversations).catch((e) => console.warn('conversation refresh failed', e)), 1200)
           }
         },
       })
@@ -359,15 +371,22 @@ export function useChat() {
         activeAbort = null
         return
       }
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      const hint = offline
+        ? 'You appear to be offline. Reconnect and try again — your chats are saved.'
+        : 'Check that ARIA is running on your Mac (`./start.sh`), then retry below.'
       useStore.setState(s => {
         const msgs = [...s.messages]
         const last = msgs[msgs.length - 1]
         if (last?.role === 'assistant') {
           msgs[msgs.length - 1] = {
             ...last,
-            content: `❌ Connection error: ${err.message}\n\nMake sure Ollama is running: \`ollama serve\``,
+            content: `⚠️ ${err.message || 'Request failed'}\n\n${hint}`,
             streaming: false,
-          }        }
+            failed: true,
+            retryPayload: { text, image, documents: docFiles.length ? docFiles : null },
+          }
+        }
         return { messages: msgs }
       })
       setIsStreaming(false)

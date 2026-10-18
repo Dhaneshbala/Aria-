@@ -74,18 +74,18 @@ export default function CheatSheetPage() {
       <p className="text-sm text-[#888] mb-6">One printable page per topic: formulas, definitions, gotchas. Made for the morning bus ride 🚌</p>
 
       {/* Generator form */}
-      <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4 mb-4">
+      <div className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4 mb-4">
         <input
           value={topic}
           onChange={e => setTopic(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') generate() }}
           placeholder="Topic — e.g. Quadratic equations"
-          className="w-full bg-[#141414] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 mb-2"
+          className="w-full bg-[#141414] border border-aria-border rounded-xl px-3 py-2.5 text-sm text-[#e8e8e8] outline-none focus:border-[#7c6af7]/60 mb-2"
         />
         <div className="flex flex-wrap gap-1.5 mb-3">
           <button
             onClick={() => setSubject('')}
-            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${!subject ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-[#2a2a2a]'}`}
+            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${!subject ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-aria-border'}`}
           >
             Any subject
           </button>
@@ -93,7 +93,7 @@ export default function CheatSheetPage() {
             <button
               key={s}
               onClick={() => setSubject(subject === s ? '' : s)}
-              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${subject === s ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-[#2a2a2a] hover:border-[#7c6af7]/50'}`}
+              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${subject === s ? 'bg-[#7c6af7] text-white border-[#7c6af7]' : 'bg-[#141414] text-[#999] border-aria-border hover:border-[#7c6af7]/50'}`}
             >
               {s}
             </button>
@@ -111,7 +111,7 @@ export default function CheatSheetPage() {
             <button
               key={ex}
               onClick={() => { setTopic(ex); generate(ex) }}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-[#141414] border border-[#2a2a2a] text-[#888] hover:text-[#ccc] hover:border-[#7c6af7]/40 transition-colors"
+              className="text-[11px] px-2.5 py-1 rounded-full bg-[#141414] border border-aria-border text-[#888] hover:text-[#ccc] hover:border-[#7c6af7]/40 transition-colors"
             >
               {ex}
             </button>
@@ -154,7 +154,7 @@ export default function CheatSheetPage() {
 function RecentSheets({ onOpen }) {
   let items = []
   try { items = JSON.parse(localStorage.getItem('aria_cheatsheets') || '[]') } catch {}
-  if (!items.length) return <p className="text-xs text-[#555] text-center py-6">No cheat sheets yet — generate your first one above.</p>
+  if (!items.length) return <p className="text-xs text-[#888] text-center py-6">No cheat sheets yet — generate your first one above.</p>
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-[#888] uppercase tracking-wide">Recent</p>
@@ -162,10 +162,10 @@ function RecentSheets({ onOpen }) {
         <button
           key={i}
           onClick={() => onOpen(r)}
-          className="w-full text-left bg-[#1a1a1a] border border-[#2a2a2a] hover:border-[#7c6af7]/40 rounded-xl px-4 py-2.5 transition-colors"
+          className="w-full text-left bg-[#1a1a1a] border border-aria-border hover:border-[#7c6af7]/40 rounded-xl px-4 py-2.5 transition-colors"
         >
           <span className="block text-sm text-[#e8e8e8] truncate">⚡ {r.topic}</span>
-          <span className="block text-[11px] text-[#666]">{r.subject || 'General'} · {new Date(r.ts).toLocaleDateString()}</span>
+          <span className="block text-[11px] text-[#888]">{r.subject || 'General'} · {new Date(r.ts).toLocaleDateString()}</span>
         </button>
       ))}
     </div>

@@ -24,7 +24,7 @@ export default class ErrorBoundary extends Component {
         <div className="flex flex-col items-center justify-center h-full px-6">
           <p className="text-5xl mb-4">⚠️</p>
           <h1 className="text-lg font-semibold text-[#e8e8e8] mb-2">Something went wrong</h1>
-          <p className="text-sm text-[#666] mb-4 text-center max-w-md">
+          <p className="text-sm text-[#888] mb-4 text-center max-w-md">
             {this.state.message || 'An unexpected error occurred while rendering this page.'}
           </p>
           <div className="flex gap-3">

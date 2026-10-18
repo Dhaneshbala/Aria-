@@ -1,0 +1,6 @@
+{
+  "$schema": "https://knip.dev/schema.json",
+  "entry": ["index.html"],
+  "project": ["src/**/*.{js,jsx}"],
+  "ignoreDependencies": ["katex"]
+}

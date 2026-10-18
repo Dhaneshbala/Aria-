@@ -42,7 +42,7 @@ export default function QuizPage() {
       if (bg.topic && !topic) setTopic(bg.topic)
       if (bg.verified != null) setProgress({ done: bg.verified, total: bg.total || count })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [])
   useEffect(() => {
     if (bg?.status === 'done' && questions.length === 0 && saved.questions?.length) {
@@ -59,7 +59,7 @@ export default function QuizPage() {
       if (bg.status === 'error' && bg.error) setError(bg.error)
       if (bg.status === 'cancelled') setError('Cancelled.')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [bg?.status])
 
   // Auto-persist to store
@@ -143,7 +143,14 @@ export default function QuizPage() {
     const correct = LETTER[i] === q.correct
     if (correct) setScore(s => s + 1)
     setAnswers(a => [...a, { correct, selected: i, question: q }])
-    try { await checkAnswer(topic, correct) } catch {}
+    try {
+      await checkAnswer(topic, correct, {
+        question: q.question,
+        correct_answer: (q.options || [])[['A', 'B', 'C', 'D'].indexOf(q.correct)] || '',
+        given_answer: (q.options || [])[i] || '',
+        topic,
+      })
+    } catch {}
   }
 
   const next = () => {
@@ -207,23 +214,24 @@ export default function QuizPage() {
       {questions.length === 0 && !loading && (
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-[#888] mb-1.5 block">Topic</label>
+            <label htmlFor="quiz-topic" className="text-xs text-[#888] mb-1.5 block">Topic</label>
             <input
+              id="quiz-topic"
               value={topic}
               onChange={e => setTopic(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && start()}
               placeholder="e.g. Quadratic equations, World War 2, Python lists..."
-              className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50"
+              className="w-full bg-[#1a1a1a] border border-aria-border rounded-xl px-4 py-2.5 text-sm text-[#e8e8e8] placeholder-[#444] outline-none focus:border-[#7c6af7]/50"
             />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="text-xs text-[#888] mb-1.5 block">Difficulty</label>
+            <p className="text-xs text-[#888] mb-1.5">Difficulty</p>
               <div className="flex gap-2">
                 {LEVELS.map(l => (
                   <button key={l} onClick={() => setLevel(l)}
                     className={`flex-1 py-2 rounded-lg text-xs capitalize transition-colors ${
-                      level === l ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]'
+                      level === l ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-aria-border text-[#888] hover:text-[#e8e8e8]'
                     }`}>
                     {l}
                   </button>
@@ -232,11 +240,11 @@ export default function QuizPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-xs text-[#888]">Questions:</label>
+            <p className="text-xs text-[#888]">Questions:</p>
             {[3, 5, 10, 15].map(n => (
               <button key={n} onClick={() => setCount(n)}
                 className={`w-10 h-8 rounded-lg text-xs transition-colors ${
-                  count === n ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]'
+                  count === n ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-aria-border text-[#888] hover:text-[#e8e8e8]'
                 }`}>
                 {n}
               </button>
@@ -263,12 +271,12 @@ export default function QuizPage() {
                 <div className="bg-[#7c6af7] h-1.5 rounded-full transition-all duration-300"
                   style={{ width: `${Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%` }} />
               </div>
-              <p className="text-center text-[11px] text-[#666] mt-1.5">
+              <p className="text-center text-[11px] text-[#888] mt-1.5">
                 {questions.length > 0 ? `${questions.length} ready — rest verifying…` : 'Checking answers…'}
               </p>
             </div>
           )}
-          <p className="text-[#555] text-xs">Verified mode • keeps working if you leave this page</p>
+          <p className="text-[#888] text-xs">Verified mode • keeps working if you leave this page</p>
           {elapsed > 12 && progress.done === 0 && <p className="text-[#f59e0b] text-xs">Still verifying — checking answers</p>}
           <button onClick={cancel} className="mt-2 px-4 py-1.5 rounded-full bg-[#2a2a2a] text-xs text-[#888] hover:text-[#e8e8e8]">Cancel</button>
         </div>
@@ -284,7 +292,7 @@ export default function QuizPage() {
             <span className="text-xs text-[#888]">Question {current + 1} of {questions.length}</span>
             <span className="text-xs text-[#888]">Score: {score}/{current + (selected !== null ? 1 : 0)}</span>
           </div>
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5">
+          <div className="bg-[#1a1a1a] border border-aria-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[#e8e8e8] text-base flex-1">{q.question}</p>
               {q.verified && (
@@ -300,21 +308,33 @@ export default function QuizPage() {
                 </span>
               )}
             </div>
-            <div className="space-y-2.5">
+            <p aria-live="assertive" className="sr-only">
+            {selected === null ? '' :
+              selected === LETTER.indexOf(q.correct)
+                ? `Correct. The answer was ${q.correct}, ${q.options[LETTER.indexOf(q.correct)]}`
+                : `Incorrect. You chose ${LETTER[selected]}. The correct answer was ${q.correct}, ${q.options[LETTER.indexOf(q.correct)]}`}
+          </p>
+          <div className="space-y-2.5">
               {q.options.map((opt, i) => (
                 <button key={i} onClick={() => handleSelect(i)}
                   className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                    selected === null ? 'border-[#2a2a2a] hover:border-[#7c6af7]/50 text-[#aaa]' :
+                    selected === null ? 'border-aria-border hover:border-[#7c6af7]/50 text-[#aaa]' :
                     LETTER[i] === q.correct ? 'border-green-500 bg-green-500/10 text-green-300' :
                     selected === i ? 'border-red-500 bg-red-500/10 text-red-400' :
-                    'border-[#1f1f1f] text-[#444]'
+                    'border-[#1f1f1f] text-[#888]'
                   }`}>
                   <span className="font-mono text-xs mr-2">{LETTER[i]})</span>{opt}
+                  {selected !== null && LETTER[i] === q.correct && (
+                    <span className="float-right text-green-400" aria-hidden="true">✓ Correct</span>
+                  )}
+                  {selected === i && LETTER[i] !== q.correct && (
+                    <span className="float-right text-red-400" aria-hidden="true">✗ Your answer</span>
+                  )}
                 </button>
               ))}
             </div>
             {selected !== null && q.explanation && (
-              <div className="mt-4 p-3 bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg text-xs text-[#888]">
+              <div className="mt-4 p-3 bg-[#0f0f0f] border border-aria-border rounded-lg text-xs text-[#888]">
                 💡 {q.explanation}
               </div>
             )}
@@ -368,7 +388,7 @@ export default function QuizPage() {
           )}
           {cardState.done && (
             <div className="mx-auto mb-6 max-w-md px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs">
-              ✓ {cardState.count} card{cardState.count>1?'s':''} added to spaced-repetition flashcards — review them in Study Tools → Spaced Repetition
+              ✓ {cardState.count} card{cardState.count>1?'s':''} added to spaced-repetition flashcards — review them on the <strong>Review</strong> page
             </div>
           )}
           <button onClick={() => { setQuestions([]); setTopic(''); setCardState({ sending: false, done: false, count: 0 }) }}

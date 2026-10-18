@@ -4,7 +4,7 @@ import {
   getKBCollections, searchKB
 } from '../services/api'
 import { showToast } from '../components/Toast'
-import { Database, Upload, Search, Trash2, FileText, Loader, X, FolderOpen } from 'lucide-react'
+import { Database, Upload, Search, Trash2, FileText, Loader, FolderOpen } from 'lucide-react'
 
 export default function KBPage() {
   const [documents, setDocuments] = useState([])
@@ -20,9 +20,9 @@ export default function KBPage() {
   const load = async () => {
     try {
       const [docs, st, cols] = await Promise.all([
-        listKBDocuments(activeCollection).catch(() => []),
-        getKBStats().catch(() => null),
-        getKBCollections().catch(() => []),
+        listKBDocuments(activeCollection).catch((e) => { console.warn('KB docs failed', e); return [] }),
+        getKBStats().catch((e) => { console.warn('KB stats failed', e); return null }),
+        getKBCollections().catch((e) => { console.warn('KB collections failed', e); return [] }),
       ])
       setDocuments(Array.isArray(docs) ? docs : [])
       setStats(st)
@@ -60,7 +60,7 @@ export default function KBPage() {
       setDocuments(prev => prev.filter(d => d.file_hash !== hash))
       showToast('Document deleted', 'success', 2500)
       load()
-    } catch (e) { showToast('Delete failed', 'error') }
+    } catch { showToast('Delete failed', 'error') }
   }
 
   const handleSearch = async (q) => {
@@ -75,15 +75,15 @@ export default function KBPage() {
   const items = searchResults || documents
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#131314]">
+    <div className="flex flex-col h-full w-full bg-aria-bg">
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6">
           {/* Header */}
           <div className="flex items-center gap-3 mb-4">
             <Database size={20} className="text-[#8ab4f8]" />
-            <h1 className="text-xl font-semibold text-[#e3e3e3]">Knowledge Base</h1>
+            <h1 className="text-xl font-semibold text-aria-text">Knowledge Base</h1>
             {stats && (
-              <span className="text-xs text-[#5f6368] ml-auto">
+              <span className="text-xs text-aria-muted ml-auto">
                 {stats.total_documents || 0} docs · {stats.total_chunks || 0} chunks
               </span>
             )}
@@ -100,10 +100,10 @@ export default function KBPage() {
             <input ref={fileRef} type="file" multiple className="hidden" onChange={handleUpload}
               accept=".pdf,.txt,.md,.docx,.csv,.json,.html" />
             <div className="flex-1 relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368]" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-aria-muted" />
               <input value={search} onChange={e => handleSearch(e.target.value)}
                 placeholder="Search knowledge base…"
-                className="w-full pl-9 pr-3 py-2 bg-[#1e1f20] border border-[#2d2e30] rounded-xl text-sm text-[#e3e3e3] placeholder-[#5f6368] outline-none focus:border-[#8ab4f8]" />
+                className="w-full pl-9 pr-3 py-2 bg-aria-surface border border-aria-border rounded-xl text-sm text-aria-text placeholder-[#5f6368] outline-none focus:border-[#8ab4f8]" />
             </div>
           </div>
 
@@ -112,14 +112,14 @@ export default function KBPage() {
             <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
               <button onClick={() => setActiveCollection(null)}
                 className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                  !activeCollection ? 'bg-[#8ab4f8]/15 border-[#8ab4f8] text-[#8ab4f8]' : 'border-[#2d2e30] text-[#9aa0a6] hover:border-[#3c4043]'
+                  !activeCollection ? 'bg-[#8ab4f8]/15 border-[#8ab4f8] text-[#8ab4f8]' : 'border-aria-border text-aria-muted hover:border-[#3c4043]'
                 }`}>
                 All
               </button>
               {collections.map(c => (
                 <button key={c.name || c} onClick={() => setActiveCollection(c.name || c)}
                   className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors capitalize ${
-                    activeCollection === (c.name || c) ? 'bg-[#8ab4f8]/15 border-[#8ab4f8] text-[#8ab4f8]' : 'border-[#2d2e30] text-[#9aa0a6] hover:border-[#3c4043]'
+                    activeCollection === (c.name || c) ? 'bg-[#8ab4f8]/15 border-[#8ab4f8] text-[#8ab4f8]' : 'border-aria-border text-aria-muted hover:border-[#3c4043]'
                   }`}>
                   {c.name || c}
                 </button>
@@ -130,12 +130,12 @@ export default function KBPage() {
           {/* Document list */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader size={18} className="text-[#5f6368] animate-spin" />
+              <Loader size={18} className="text-aria-muted animate-spin" />
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-12">
               <FolderOpen size={40} className="text-[#2d2e30] mx-auto mb-2" />
-              <p className="text-sm text-[#5f6368]">{search ? 'No results' : 'No documents yet'}</p>
+              <p className="text-sm text-aria-muted">{search ? 'No results' : 'No documents yet'}</p>
               <p className="text-xs text-[#3c4043] mt-1">Upload PDFs, notes, or text files</p>
             </div>
           ) : (
@@ -147,18 +147,18 @@ export default function KBPage() {
                 const chunks = doc.chunk_count || doc.chunks || '?'
                 return (
                   <div key={hash}
-                    className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#1e1f20] transition-colors">
-                    <FileText size={16} className="text-[#5f6368] shrink-0" />
+                    className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-aria-surface transition-colors">
+                    <FileText size={16} className="text-aria-muted shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#e3e3e3] truncate">{name}</p>
-                      <p className="text-[10px] text-[#5f6368]">
+                      <p className="text-sm text-aria-text truncate">{name}</p>
+                      <p className="text-[10px] text-aria-muted">
                         {collection && <span className="capitalize">{collection}</span>}
                         {collection && chunks !== '?' && ' · '}
                         {chunks !== '?' && `${chunks} chunks`}
                       </p>
                     </div>
                     <button onClick={() => handleDelete(hash, name)}
-                      className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-[#5f6368] hover:text-red-400 transition-all">
+                      className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-aria-muted hover:text-red-400 transition-all">
                       <Trash2 size={12} />
                     </button>
                   </div>

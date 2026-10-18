@@ -22,7 +22,7 @@ export default function ExportButton({ messages, conversationId }) {
           lines.push(`\n### Quiz\n`)
           msg.extras.quiz.forEach((q, i) => {
             lines.push(`**Q${i + 1}:** ${q.question}\n`)
-            q.options.forEach((o, j) => lines.push(`- ${'ABCD'[j]}) ${o}\n`))
+            q.options.forEach((o, j) => { const label = j < 26 ? String.fromCharCode(65+j) : (j+1); lines.push(`- ${label}) ${o}\n`) })
             lines.push(`**Answer:** ${q.correct}\n`)
           })
         }
@@ -66,7 +66,10 @@ export default function ExportButton({ messages, conversationId }) {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-[#555] hover:text-[#aaa] px-2 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors"
+        aria-label="Export conversation"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="flex items-center gap-1 text-xs text-[#888] hover:text-[#aaa] px-2 py-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors"
       >
         <Download size={13} />
         Export
@@ -75,8 +78,9 @@ export default function ExportButton({ messages, conversationId }) {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden shadow-xl w-40">
+          {/* Invisible click-away backdrop — dismisses the menu; keyboard users close via the menu's own buttons */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-[#1a1a1a] border border-aria-border rounded-xl overflow-hidden shadow-xl w-40">
             <button
               onClick={exportMarkdown}
               className="w-full text-left px-4 py-2.5 text-xs text-[#aaa] hover:bg-[#2a2a2a] hover:text-[#e8e8e8] transition-colors flex items-center gap-2"

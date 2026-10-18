@@ -1,7 +1,16 @@
-const BASE = '/api'
+const BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
 
-async function apiFetch(url, options = {}) {
-  const resp = await fetch(url, options)
+// Exposed so pages that build their own URLs (e.g. SyllabusPage) share one
+// base-URL definition and one auth/error path.
+export const API_BASE = BASE
+
+export async function apiFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) }
+  try {
+    const token = localStorage.getItem('aria_api_token')
+    if (token) headers.Authorization = `Bearer ${token}`
+  } catch {}
+  const resp = await fetch(url, { ...options, headers })
   if (!resp.ok) {
     const text = await resp.text().catch(() => resp.statusText)
     throw new Error(`API error ${resp.status}: ${text}`)
@@ -50,10 +59,13 @@ export async function streamChat({ message, conversationId, image, document, doc
   onDone(newConvId)
 }
 
+import { validate, Schemas } from './schemas'
+
 // ── Conversations ─────────────────────────────────────────────────────────────
 
 export const getConversations = () =>
-  apiFetch(`${BASE}/chat/conversations`).then(r => r.json())
+  apiFetch(`${BASE}/chat/conversations`).then(r => r.json()).then(d =>
+    Array.isArray(d) ? d.map(c => validate(Schemas.conversationSchema, c, 'conversation')) : d)
 
 export const getConversation = (id) =>
   apiFetch(`${BASE}/chat/conversations/${id}`).then(r => r.json())
@@ -63,22 +75,6 @@ export const deleteConversation = (id) =>
 
 export const searchConversations = (query) =>
   apiFetch(`${BASE}/chat/search?q=${encodeURIComponent(query)}`).then(r => r.json())
-
-export const getConversationsForDate = (date) =>
-  apiFetch(`${BASE}/chat/conversations/date/${date}`).then(r => r.json())
-
-export const getConversationTitle = (id) =>
-  apiFetch(`${BASE}/chat/conversations/${id}/title`).then(r => r.json())
-
-export const updateConversationTitle = (id, title) =>
-  apiFetch(`${BASE}/chat/conversations/${id}/title`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
-  }).then(r => r.json())
-
-export const regenerateConversationTitle = (id) =>
-  apiFetch(`${BASE}/chat/conversations/${id}/regenerate-title`, { method: 'POST' }).then(r => r.json())
 
 // ── Study ─────────────────────────────────────────────────────────────────────
 
@@ -104,18 +100,21 @@ export const generateFlashcards = (topic, count = 10, signal) => {
   return apiFetch(`${BASE}/study/flashcards`, opts).then(r => r.json())
 }
 
-export const checkAnswer = (subject, correct) =>
+export const checkAnswer = (subject, correct, extra = {}) =>
   apiFetch(`${BASE}/study/quiz/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subject, correct }),
+    body: JSON.stringify({ subject, correct, ...extra }),
   }).then(r => r.json())
 
-export const generateNotes = (topic, style = 'structured') =>
-  apiFetch(`${BASE}/study/notes`, {
+export const getDueMistakes = (limit = 20) =>
+  apiFetch(`${BASE}/v2/mistakes/due?limit=${limit}`).then(r => r.json())
+
+export const reviewMistake = (id, correct) =>
+  apiFetch(`${BASE}/v2/mistakes/${id}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, level: style }),
+    body: JSON.stringify({ correct }),
   }).then(r => r.json())
 
 export const generateCheatsheet = (topic, subject = '', signal) => {
@@ -131,16 +130,14 @@ export const generateCheatsheet = (topic, subject = '', signal) => {
 // ── Quiz streaming (each verified question arrives as it's done) ───────────
 
 export async function streamQuiz({ topic, level = 'medium', count = 5, signal, onTotal, onQuestion, onProgress }) {
-  const resp = await fetch(`${BASE}/study/quiz/stream`, {
+  // Same streaming reader as streamChat but over apiFetch so the LAN
+  // bearer token and central error handling apply here too.
+  const resp = await apiFetch(`${BASE}/study/quiz/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ topic, level, count, verify: true }),
     signal,
   })
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => resp.statusText)
-    throw new Error(`API error ${resp.status}: ${text}`)
-  }
   const reader = resp.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -210,11 +207,19 @@ export const generateMathsSet = (topic_id, tier = 'selective', count = 5, signal
   return apiFetch(`${BASE}/maths/generate`, opts).then(r => r.json())
 }
 
-export const submitMathsSet = (topic_id, tier, correct, total, mistakes = []) =>
+export const submitMathsSet = (
+  topic_id,
+  tier,
+  correct,
+  total,
+  mistakes = [],
+  session_id = null,
+  marks = []
+) =>
   apiFetch(`${BASE}/maths/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic_id, tier, correct, total, mistakes }),
+    body: JSON.stringify({ topic_id, tier, correct, total, mistakes, session_id, marks }),
   }).then(r => r.json())
 
 export const getMathsMastery = () =>
@@ -268,6 +273,7 @@ export const importSrCsv = (file, subject = 'general') => {
   return apiFetch(`${BASE}/v2/study/import-csv`, { method: 'POST', body: form }).then(r => r.json())
 }
 
+/** Returns raw Response (caller does .blob()) — unlike other helpers that return JSON. */
 export const exportSrCsv = (subject) =>
   apiFetch(`${BASE}/v2/study/export-csv${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`)
 
@@ -280,13 +286,6 @@ export const reviewSrCard = (card_id, quality) =>
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
-export const webSearch = (query) =>
-  apiFetch(`${BASE}/research/search`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  }).then(r => r.json())
-
 export const processYouTube = (url) =>
   apiFetch(`${BASE}/research/youtube`, {
     method: 'POST',
@@ -295,13 +294,6 @@ export const processYouTube = (url) =>
   }).then(r => r.json())
 
 // ── Image generation ──────────────────────────────────────────────────────────
-
-export const generateImage = (prompt) =>
-  apiFetch(`${BASE}/imagegen/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt }),
-  }).then(r => r.json())
 
 // ── Napkin-style diagrams (inline visuals, no separate page) ────────────────
 
@@ -335,9 +327,14 @@ export const saveConfig = (data) =>
     body: JSON.stringify(data),
   }).then(r => r.json())
 export const getModels = () => apiFetch(`${BASE}/admin/models`).then(r => r.json())
-export const getHealth = () => apiFetch(`${BASE}/admin/health`).then(r => r.json())
-export const getProfile = () => apiFetch(`${BASE}/admin/profile`).then(r => r.json())
-
+export const unloadModel = (model) => apiFetch(`${BASE}/admin/models/unload`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ model }),
+}).then(r => r.json())
+export const getDiagnostics = () => apiFetch(`${BASE}/system/diagnostics`).then(r => r.json())
+export const getHealth = () => apiFetch(`${BASE}/admin/health`).then(r => r.json()).then(d =>
+  validate(Schemas.healthSchema, d, 'health'))
 // ── Voice ─────────────────────────────────────────────────────────────────────
 
 export const transcribeAudio = (blob, language) => {
@@ -356,6 +353,7 @@ export const synthesizeSpeech = async (text) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: text.slice(0, 3500) }),
   })
+  if (!resp.ok) throw new Error(`TTS failed (${resp.status})`)
   const blob = await resp.blob()
   return URL.createObjectURL(blob)
 }
@@ -365,9 +363,6 @@ export const synthesizeSpeech = async (text) => {
 export const clearAllMemory = () =>
   apiFetch(`${BASE}/admin/memory/all`, { method: 'DELETE' }).then(r => r.json())
 
-export const exportConversation = (id) =>
-  apiFetch(`${BASE}/admin/export/${id}`).then(r => r.json())
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Intelligence API
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -376,74 +371,14 @@ const INTEL = `${BASE}/intelligence`
 
 // ── Knowledge Graph ──────────────────────────────────────────────────────────
 
-export const getKnowledgeGraph = () =>
-  apiFetch(`${INTEL}/knowledge-graph`).then(r => r.json())
-
-export const getKnowledgeGraphData = (maxNodes = 200) =>
-  apiFetch(`${INTEL}/knowledge-graph/graph?max_nodes=${maxNodes}`).then(r => r.json())
-
-export const getKnowledgeGraphStats = () =>
-  apiFetch(`${INTEL}/knowledge-graph/stats`).then(r => r.json())
-
-export const searchKnowledgeGraph = (q) =>
-  apiFetch(`${INTEL}/knowledge-graph/search?q=${encodeURIComponent(q)}`).then(r => r.json())
-
-export const getNodeConnections = (nodeId) =>
-  apiFetch(`${INTEL}/knowledge-graph/node/${encodeURIComponent(nodeId)}/connections`).then(r => r.json())
-
-export const getNodesByType = (type) =>
-  apiFetch(`${INTEL}/knowledge-graph/type/${type}`).then(r => r.json())
-
-export const clearKnowledgeGraph = () =>
-  apiFetch(`${INTEL}/knowledge-graph`, { method: 'DELETE' }).then(r => r.json())
-
 // ── Memory Intelligence ──────────────────────────────────────────────────────
 
-export const getMemoryTimeline = (days = 30) =>
-  apiFetch(`${INTEL}/memory/timeline?days=${days}`).then(r => r.json())
-
-export const globalMemorySearch = (q, limit = 20) =>
-  apiFetch(`${INTEL}/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`).then(r => r.json())
-
-export const compressMemory = (olderThanDays = 7) =>
-  apiFetch(`${INTEL}/memory/compress?older_than_days=${olderThanDays}`, { method: 'POST' }).then(r => r.json())
-
-export const cleanupMemory = (maxAgeDays = 90) =>
-  apiFetch(`${INTEL}/memory/cleanup?max_age_days=${maxAgeDays}`, { method: 'POST' }).then(r => r.json())
-
 // ── Background Agents ────────────────────────────────────────────────────────
-
-export const summariseFolder = (folderPath) =>
-  apiFetch(`${INTEL}/agents/summarise-folder?folder_path=${encodeURIComponent(folderPath)}`, { method: 'POST' }).then(r => r.json())
-
-export const autoResearch = (topic, depth = 3) =>
-  apiFetch(`${INTEL}/agents/auto-research?topic=${encodeURIComponent(topic)}&depth=${depth}`, { method: 'POST' }).then(r => r.json())
-
-export const getBackgroundTasks = (status) =>
-  apiFetch(`${INTEL}/agents/tasks${status ? `?status=${status}` : ''}`).then(r => r.json())
-
-export const clearCompletedTasks = () =>
-  apiFetch(`${INTEL}/agents/tasks/completed`, { method: 'DELETE' }).then(r => r.json())
 
 // ── Study Intelligence ───────────────────────────────────────────────────────
 
 export const getWeakTopics = () =>
   apiFetch(`${INTEL}/study/weak-topics`).then(r => r.json())
-
-export const suggestNextTopic = () =>
-  apiFetch(`${INTEL}/study/suggest-next`).then(r => r.json())
-
-export const getRevisionNeeds = () =>
-  apiFetch(`${INTEL}/study/revision-needs`).then(r => r.json())
-
-export const getLearnedFormulas = () =>
-  apiFetch(`${INTEL}/study/formulas`).then(r => r.json())
-
-export const getCurriculum = (subject) =>
-  apiFetch(`${INTEL}/study/curriculum/${encodeURIComponent(subject)}`).then(r => r.json())
-
-export const getAdaptiveRecommendations = () =>
-  apiFetch(`${INTEL}/study/adaptive`).then(r => r.json())
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // V2 API — Analytics, Gamification, Curriculum
@@ -455,12 +390,6 @@ const V2 = `${BASE}/v2`
 
 export const getHeatmap = (months = 6) =>
   apiFetch(`${V2}/analytics/heatmap?months=${months}`).then(r => r.json())
-
-export const getTrends = (days = 30) =>
-  apiFetch(`${V2}/analytics/trends?days=${days}`).then(r => r.json())
-
-export const getPredictedGrades = () =>
-  apiFetch(`${V2}/analytics/predicted-grades`).then(r => r.json())
 
 export const getFocusScore = () =>
   apiFetch(`${V2}/analytics/focus-score`).then(r => r.json())
@@ -481,37 +410,7 @@ export const getLeaderboard = () =>
 
 // ── NSW Curriculum ───────────────────────────────────────────────────────────
 
-export const getStages = () =>
-  apiFetch(`${V2}/curriculum/stages`).then(r => r.json())
-
-export const getKlas = () =>
-  apiFetch(`${V2}/curriculum/klas`).then(r => r.json())
-
-export const getSubjectContent = (kla, stage) =>
-  apiFetch(`${V2}/curriculum/subject/${kla}/stage/${stage}`).then(r => r.json())
-
-export const getHscSubjects = () =>
-  apiFetch(`${V2}/curriculum/hsc`).then(r => r.json())
-
-export const searchCurriculum = (q) =>
-  apiFetch(`${V2}/curriculum/search?q=${encodeURIComponent(q)}`).then(r => r.json())
-
-export const getCurriculumForAge = (age) =>
-  apiFetch(`${V2}/curriculum/age/${age}`).then(r => r.json())
-
-export const getProgression = (kla) =>
-  apiFetch(`${V2}/curriculum/progression/${kla}`).then(r => r.json())
-
 // ── Study Intelligence (V2) ─────────────────────────────────────────────────
-
-export const getExamReadiness = (subject, days = 14) =>
-  apiFetch(`${V2}/study/exam-readiness/${encodeURIComponent(subject)}?days=${days}`).then(r => r.json())
-
-export const getKnowledgeGaps = (subject) =>
-  apiFetch(`${V2}/study/knowledge-gaps/${encodeURIComponent(subject)}`).then(r => r.json())
-
-export const getLearningStyle = () =>
-  apiFetch(`${V2}/study/learning-style`).then(r => r.json())
 
 // ── Knowledge Base ──────────────────────────────────────────────────────────
 
@@ -522,14 +421,6 @@ export const uploadToKB = async (file, collection = null) => {
   form.append('file', file)
   if (collection) form.append('collection', collection)
   const resp = await apiFetch(`${KB}/upload`, { method: 'POST', body: form })
-  return resp.json()
-}
-
-export const uploadMultipleToKB = async (files, collection = null) => {
-  const form = new FormData()
-  for (const f of files) form.append('files', f)
-  if (collection) form.append('collection', collection)
-  const resp = await apiFetch(`${KB}/upload-multiple`, { method: 'POST', body: form })
   return resp.json()
 }
 
@@ -554,44 +445,38 @@ export const getKBStats = () =>
 export const getKBCollections = () =>
   apiFetch(`${KB}/collections`).then(r => r.json())
 
-export const rebuildKBIndex = () =>
-  apiFetch(`${KB}/rebuild`, { method: 'POST' }).then(r => r.json())
-
 // ── Memory / Conversation History ─────────────────────────────────────────────
+// Same endpoints as the Conversations helpers above — kept as aliases so
+// MemoryPage / VoiceTutorPage imports stay stable (and gain zod validation).
 
-const CHAT = `${BASE}/chat`
-
-export const getMemoryConversations = () =>
-  apiFetch(`${CHAT}/conversations`).then(r => r.json())
-
-export const searchMemoryConversations = (q) =>
-  apiFetch(`${CHAT}/search?q=${encodeURIComponent(q)}`).then(r => r.json())
-
-export const getMemoryConversation = (id) =>
-  apiFetch(`${CHAT}/conversations/${id}`).then(r => r.json())
-
-export const deleteMemoryConversation = (id) =>
-  apiFetch(`${CHAT}/conversations/${id}`, { method: 'DELETE' }).then(r => r.json())
+export const getMemoryConversations = getConversations
+export const searchMemoryConversations = searchConversations
+export const getMemoryConversation = getConversation
+export const deleteMemoryConversation = deleteConversation
 
 export const getMemoryProfile = () =>
   apiFetch(`${BASE}/admin/profile`).then(r => r.json())
+
+// ── AI usage ledger (server-side accounting) ─────────────────────────────────
+
+export const getUsageSummary = (days = 30) =>
+  apiFetch(`${BASE}/v2/usage/summary?days=${days}`).then(r => r.json())
 
 // ── Todos / Assignment Inbox (solo) ───────────────────────────────────────────
 
 const TODOS = `${BASE}/todos`
 
-export const getTodos = () => apiFetch(`${TODOS}`).then(r => r.json())
+export const getTodos = () => apiFetch(`${TODOS}`).then(r => r.json()).then(d => {
+  if (d && Array.isArray(d.todos)) {
+    return { ...d, todos: d.todos.map(t => validate(Schemas.todoSchema, t, 'todo')) }
+  }
+  return d
+})
 export const createTodo = (subject, task, due_date = null, estimated_mins = 30, priority = 'medium') =>
   apiFetch(`${TODOS}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subject, task, due_date, estimated_mins, priority }),
-  }).then(r => r.json())
-export const createTodoFromChat = (text) =>
-  apiFetch(`${TODOS}/from-chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
   }).then(r => r.json())
 export const updateTodo = (id, updates) =>
   apiFetch(`${TODOS}/${id}`, {

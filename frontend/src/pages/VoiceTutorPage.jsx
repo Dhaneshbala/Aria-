@@ -223,11 +223,11 @@ export default function VoiceTutorPage() {
       <div className="flex flex-col h-full w-full max-w-2xl mx-auto px-6 py-6">
         <div className="flex items-center gap-2 mb-4">
           <button onClick={() => { setShowHistory(false); setSelectedHistory(null); setHistoryTurns([]) }}
-            className="p-1.5 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6]">
+            className="p-1.5 rounded-full hover:bg-[#2d2e30] text-aria-muted">
             <X size={16} />
           </button>
           <History size={16} className="text-[#8ab4f8]" />
-          <h1 className="text-lg font-semibold text-[#e3e3e3]">Voice Sessions</h1>
+          <h1 className="text-lg font-semibold text-aria-text">Voice Sessions</h1>
         </div>
 
         {selectedHistory ? (
@@ -235,24 +235,24 @@ export default function VoiceTutorPage() {
             <div className="flex items-center gap-2 mb-3">
               <button onClick={() => { setSelectedHistory(null); setHistoryTurns([]) }}
                 className="text-xs text-[#8ab4f8] hover:underline">← Back</button>
-              <span className="text-xs text-[#5f6368]">{selectedHistory.title || 'Voice session'}</span>
+              <span className="text-xs text-aria-muted">{selectedHistory.title || 'Voice session'}</span>
             </div>
             {loadingHistory ? (
-              <div className="flex justify-center py-8"><Loader size={16} className="text-[#5f6368] animate-spin" /></div>
+              <div className="flex justify-center py-8"><Loader size={16} className="text-aria-muted animate-spin" /></div>
             ) : (
               <div className="space-y-3">
                 {historyTurns.map((turn, i) => (
                   <div key={i} className="space-y-2">
                     {turn.user && (
                       <div className="flex justify-end">
-                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-[#7c6af7]/10 border border-[#7c6af7]/20 text-sm text-[#e3e3e3]">
+                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-[#7c6af7]/10 border border-[#7c6af7]/20 text-sm text-aria-text">
                           🎤 {turn.user}
                         </div>
                       </div>
                     )}
                     {turn.ai && (
                       <div className="flex justify-start">
-                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#1a1a1a] border border-[#2a2a2a] text-sm text-[#ccc] whitespace-pre-wrap">
+                        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#1a1a1a] border border-aria-border text-sm text-[#ccc] whitespace-pre-wrap">
                           🔊 {turn.ai.slice(0, 300)}{turn.ai.length > 300 ? '…' : ''}
                         </div>
                       </div>
@@ -265,11 +265,11 @@ export default function VoiceTutorPage() {
         ) : (
           <div className="flex-1 overflow-y-auto">
             {loadingHistory ? (
-              <div className="flex justify-center py-8"><Loader size={16} className="text-[#5f6368] animate-spin" /></div>
+              <div className="flex justify-center py-8"><Loader size={16} className="text-aria-muted animate-spin" /></div>
             ) : history.length === 0 ? (
               <div className="text-center py-12">
                 <History size={32} className="text-[#2d2e30] mx-auto mb-2" />
-                <p className="text-sm text-[#5f6368]">No voice sessions yet</p>
+                <p className="text-sm text-aria-muted">No voice sessions yet</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -278,14 +278,18 @@ export default function VoiceTutorPage() {
                   return (
                     <div key={id}
                       onClick={() => openHistory(conv)}
-                      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#1e1f20] cursor-pointer transition-colors">
-                      <MessageSquare size={14} className="text-[#5f6368] shrink-0" />
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHistory(conv) } }}
+                      aria-label={`Open conversation ${conv.title || id}`}
+                      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-aria-surface cursor-pointer transition-colors">
+                      <MessageSquare size={14} className="text-aria-muted shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#e3e3e3] truncate">{conv.title || 'Voice session'}</p>
-                        <p className="text-[10px] text-[#5f6368]">{conv.turns || conv.turn_count || '?'} turns</p>
+                        <p className="text-sm text-aria-text truncate">{conv.title || 'Voice session'}</p>
+                        <p className="text-[10px] text-aria-muted">{conv.turns || conv.turn_count || '?'} turns</p>
                       </div>
                       <button onClick={e => { e.stopPropagation(); deleteHistory(id) }}
-                        className="p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-[#5f6368] hover:text-red-400 transition-all">
+                        className="p-1 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-aria-muted hover:text-red-400 transition-all">
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -305,21 +309,21 @@ export default function VoiceTutorPage() {
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-2xl font-bold text-[#e8e8e8] text-center flex-1">Voice Tutor</h1>
         <button onClick={loadHistory}
-          className="p-2 rounded-full hover:bg-[#2d2e30] text-[#9aa0a6] hover:text-[#e3e3e3] transition-colors"
+          className="p-2 rounded-full hover:bg-[#2d2e30] text-aria-muted hover:text-aria-text transition-colors"
           title="Session history">
           <History size={18} />
         </button>
       </div>
-      <p className="text-xs text-[#666] mb-4 text-center flex items-center justify-center gap-1.5">
+      <p className="text-xs text-[#888] mb-4 text-center flex items-center justify-center gap-1.5">
         {busy && phase !== 'idle' && <Loader size={11} className="animate-spin" />}
         {PHASE_LABEL[phase]}
-        {convRef.current && <span className="ml-1 text-[#5f6368]">(saved)</span>}
+        {convRef.current && <span className="ml-1 text-aria-muted">(saved)</span>}
       </p>
 
       {/* Turns */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4 min-h-[200px]">
         {turns.length === 0 && (
-          <div className="text-center text-xs text-[#555] py-10">
+          <div className="text-center text-xs text-[#888] py-10">
             Hands-free revision: talk, ARIA answers out loud, then listens again.<br />Best for definitions, times tables, vocab, explain-backs.
           </div>
         )}
@@ -328,7 +332,7 @@ export default function VoiceTutorPage() {
             <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${
               t.role === 'user'
                 ? 'bg-[#7c6af7]/15 border border-[#7c6af7]/20 text-[#e8e8e8] rounded-tr-sm'
-                : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#ccc] rounded-tl-sm'
+                : 'bg-[#1a1a1a] border border-aria-border text-[#ccc] rounded-tl-sm'
             }`}>
               {t.role === 'user' ? '🎤 ' : '🔊 '}{t.text}
             </div>
@@ -351,7 +355,7 @@ export default function VoiceTutorPage() {
           </button>
         )}
       </div>
-      <p className="text-center text-[11px] text-[#555]">ARIA can make mistakes — verify important work</p>
+      <p className="text-center text-[11px] text-[#888]">ARIA can make mistakes — verify important work</p>
     </div>
   )
 }

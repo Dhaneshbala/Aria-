@@ -1,5 +1,5 @@
-import { forwardRef, useRef, useState, useCallback } from 'react'
-import { Download, ZoomIn, ZoomOut, Maximize2, RotateCcw } from 'lucide-react'
+import { forwardRef, useRef, useState } from 'react'
+import { Download, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 
 /**
  * MindMapWidget — upgraded with collapsible nodes, zoom/pan, PNG export, radial layout.
@@ -21,7 +21,6 @@ export default function MindMapWidget({ data, compact = false, showDownload = tr
 
   if (!data) return null
 
-  const branches = data.branches || []
   const W = compact ? 600 : 900
   const H = compact ? 400 : 600
   const cx = W / 2
@@ -91,38 +90,40 @@ export default function MindMapWidget({ data, compact = false, showDownload = tr
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1">
             <button onClick={() => setLayout(l => l === 'radial' ? 'tree' : 'radial')}
-              className="text-xs text-[#555] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
+              className="text-xs text-[#888] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
               {layout === 'radial' ? '🌳 Tree' : '🔄 Radial'}
             </button>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setZoom(z => Math.min(z + 0.2, 3))}
-              className="p-1 rounded text-[#555] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
+              className="p-1 rounded text-[#888] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
               <ZoomIn size={14} />
             </button>
             <button onClick={() => setZoom(z => Math.max(z - 0.2, 0.4))}
-              className="p-1 rounded text-[#555] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
+              className="p-1 rounded text-[#888] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
               <ZoomOut size={14} />
             </button>
             <button onClick={resetView}
-              className="p-1 rounded text-[#555] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
+              className="p-1 rounded text-[#888] hover:text-[#aaa] hover:bg-[#1a1a1a] transition-colors">
               <Maximize2 size={14} />
             </button>
             <div className="w-px h-4 bg-[#2a2a2a] mx-1" />
             <button onClick={downloadSVG}
-              className="flex items-center gap-1 text-xs text-[#555] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
+              className="flex items-center gap-1 text-xs text-[#888] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
               <Download size={12} /> SVG
             </button>
             <button onClick={downloadPNG}
-              className="flex items-center gap-1 text-xs text-[#555] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
+              className="flex items-center gap-1 text-xs text-[#888] hover:text-[#aaa] px-2 py-1 rounded-lg hover:bg-[#1a1a1a] transition-colors">
               <Download size={12} /> PNG
             </button>
           </div>
         </div>
       )}
 
+      {/* Pan/zoom require mouse gestures by design; toolbar and collapse toggles remain keyboard-accessible */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        className="overflow-hidden rounded-2xl border border-[#2a2a2a] cursor-grab active:cursor-grabbing"
+        className="overflow-hidden rounded-2xl border border-aria-border cursor-grab active:cursor-grabbing"
         style={{ background: '#0a0a0a' }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -265,14 +266,13 @@ const MindMapSVG = forwardRef(function MindMapSVG(
 })
 
 const TreeView = forwardRef(function TreeView(
-  { ref, data, W, H, branches, fontSize, centerFontSize, nodeW, nodeH, collapsed, toggleCollapse, compact }, _
+  { data, W, H, branches, fontSize, centerFontSize, nodeW, nodeH, collapsed, toggleCollapse }, ref
 ) {
   const treeW = W
   const treeH = H
   const centerX = 80
   const centerY = treeH / 2
   const levelGap = (treeW - 160) / 3
-  const color = '#7c6af7'
 
   return (
     <svg ref={ref} viewBox={`0 0 ${treeW} ${treeH}`}

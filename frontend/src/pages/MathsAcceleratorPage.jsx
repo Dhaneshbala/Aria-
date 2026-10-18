@@ -32,6 +32,7 @@ export default function MathsAcceleratorPage() {
   const [timed, setTimed] = useState(true)
   const [secsLeft, setSecsLeft] = useState(0)
   const [questions, setQuestions] = useState([])
+  const [sessionId, setSessionId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [revealed, setRevealed] = useState({})
   const [marks, setMarks] = useState({}) // idx -> true/false self-mark
@@ -43,9 +44,9 @@ export default function MathsAcceleratorPage() {
       setTopics(d.topics || [])
       setTiers(d.tiers || {})
       if (d.topics?.length && !d.topics.find(t => t.id === topicId)) setTopicId(d.topics[0].id)
-    }).catch(() => {})
-    getMathsMastery().then(d => setMastery(d.mastery || {})).catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }).catch(() => { showToast("Couldn't load maths topics", 'error', 2500) })
+    getMathsMastery().then(d => setMastery(d.mastery || {})).catch(() => { showToast("Couldn't load maths mastery", 'error', 2500) })
+
   }, [])
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function MathsAcceleratorPage() {
     setSecsLeft(questions.reduce((a, q) => a + (q.marks || 2), 0) * 120)
     const t = setInterval(() => setSecsLeft(s => Math.max(0, s - 1)), 1000)
     return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [questions.length, submitted])
 
   const start = async () => {
@@ -61,10 +62,12 @@ export default function MathsAcceleratorPage() {
     setQuestions([])
     setRevealed({})
     setMarks({})
+    setSessionId(null)
     setSubmitted(false)
     try {
       const data = await generateMathsSet(topicId, tier, count)
       setQuestions(data.questions || [])
+      setSessionId(data.session_id || null)
       if (!data.questions?.length) showToast('No questions — try again', 'error')
       else if (data.source === 'fallback') showToast('Offline bank — still exam-sharp', 'info')
     } catch (e) {
@@ -86,8 +89,16 @@ export default function MathsAcceleratorPage() {
       .filter(m => !m.correct)
       .slice(0, 10)
     try {
-      await submitMathsSet(topicId, tier, correct, total, mistakes)
-      const m = await getMathsMastery().catch(() => null)
+      await submitMathsSet(
+        topicId,
+        tier,
+        correct,
+        total,
+        mistakes,
+        sessionId,
+        questions.map((q, i) => !!marks[i])
+      )
+      const m = await getMathsMastery().catch((e) => { console.warn('maths mastery refresh failed', e); return null })
       if (m) setMastery(m.mastery || {})
       setSubmitted(true)
       showToast(`Logged: ${correct}/${total} — mastery updated`, 'success')
@@ -107,7 +118,7 @@ export default function MathsAcceleratorPage() {
         <h1 className="text-lg font-semibold text-[#e8e8e8]">Maths Accelerator</h1>
         <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-[#7c6af7]/15 border border-[#7c6af7]/30 text-[#c4b5fd]">NSB selective level</span>
       </div>
-      <p className="text-xs text-[#666] mb-5">Stage 5.3 exam style + early Extension bridge. Full worked solutions, traps, shortcuts — self-mark honestly.</p>
+      <p className="text-xs text-[#888] mb-5">Stage 5.3 exam style + early Extension bridge. Full worked solutions, traps, shortcuts — self-mark honestly.</p>
 
       {/* Topic grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
@@ -115,9 +126,9 @@ export default function MathsAcceleratorPage() {
           const m = mastery[t.id]
           return (
             <button key={t.id} onClick={() => setTopicId(t.id)}
-              className={`text-left p-3 rounded-xl border text-xs transition-colors ${topicId === t.id ? 'border-[#7c6af7] bg-[#7c6af7]/10' : 'border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#444]'}`}>
+              className={`text-left p-3 rounded-xl border text-xs transition-colors ${topicId === t.id ? 'border-[#7c6af7] bg-[#7c6af7]/10' : 'border-aria-border bg-[#1a1a1a] hover:border-[#444]'}`}>
               <span className="block font-medium text-[#e8e8e8] text-[13px]">{t.name}</span>
-              <span className="block text-[10px] text-[#666] mt-0.5">{t.stage}</span>
+              <span className="block text-[10px] text-[#888] mt-0.5">{t.stage}</span>
               {m?.attempts > 0 && (
                 <span className="block mt-1.5 h-1 rounded-full bg-[#2a2a2a] overflow-hidden">
                   <span className={`block h-1 rounded-full ${m.accuracy >= 80 ? 'bg-green-500' : m.accuracy >= 60 ? 'bg-blue-500' : 'bg-amber-500'}`}
@@ -135,19 +146,19 @@ export default function MathsAcceleratorPage() {
       <div className="flex gap-2 mb-3">
         {TIERS.map(t => (
           <button key={t.id} onClick={() => setTier(t.id)}
-            className={`flex-1 py-2 rounded-xl text-xs transition-colors ${tier === t.id ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] hover:text-[#e8e8e8]'}`}>
+            className={`flex-1 py-2 rounded-xl text-xs transition-colors ${tier === t.id ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-aria-border text-[#888] hover:text-[#e8e8e8]'}`}>
             <span className="block font-medium capitalize">{t.label}</span>
             <span className="block text-[10px] opacity-70">{t.hint}</span>
           </button>
         ))}
       </div>
-      {tiers[tier] && <p className="text-[11px] text-[#666] mb-3">{tiers[tier].desc} · {tiers[tier].marks_hint}</p>}
+      {tiers[tier] && <p className="text-[11px] text-[#888] mb-3">{tiers[tier].desc} · {tiers[tier].marks_hint}</p>}
 
       <div className="flex items-center gap-3 mb-4">
         <span className="text-xs text-[#888]">Questions:</span>
         {[3, 5, 8].map(n => (
           <button key={n} onClick={() => setCount(n)}
-            className={`w-10 h-8 rounded-lg text-xs ${count === n ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888]'}`}>{n}</button>
+            className={`w-10 h-8 rounded-lg text-xs ${count === n ? 'bg-[#7c6af7] text-white' : 'bg-[#1a1a1a] border border-aria-border text-[#888]'}`}>{n}</button>
         ))}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-[#888] cursor-pointer">
           <input type="checkbox" checked={timed} onChange={e => setTimed(e.target.checked)} className="accent-[#7c6af7]" />
@@ -168,7 +179,7 @@ export default function MathsAcceleratorPage() {
       {/* Questions */}
       <div className="space-y-3">
         {questions.map((q, i) => (
-          <div key={i} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl p-4">
+          <div key={i} className="bg-[#1a1a1a] border border-aria-border rounded-2xl p-4">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm text-[#e8e8e8] flex-1">Q{i + 1}. <MathText>{q.question}</MathText></p>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2a2a2a] text-[#888] shrink-0">[{q.marks} marks]</span>
@@ -180,7 +191,7 @@ export default function MathsAcceleratorPage() {
               </button>
             ) : (
               <div className="mt-3 space-y-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-[#0f0f0f] border border-[#2a2a2a]">
+                <div className="p-2.5 rounded-lg bg-[#0f0f0f] border border-aria-border">
                   <p className="text-[#888] font-medium mb-1">Solution</p>
                   <ol className="list-decimal ml-4 space-y-1 text-[#aaa]">
                     {(q.solution_steps || []).map((s, j) => <li key={j}><MathText>{s}</MathText></li>)}
@@ -190,7 +201,7 @@ export default function MathsAcceleratorPage() {
                 {q.trap && <p className="flex gap-1.5 text-amber-300/90"><AlertTriangle size={12} className="shrink-0 mt-0.5" /><MathText>{q.trap}</MathText></p>}
                 {q.shortcut && <p className="flex gap-1.5 text-[#8ab4f8]"><Zap size={12} className="shrink-0 mt-0.5" /><MathText>{q.shortcut}</MathText></p>}
                 <div className="flex gap-2 pt-1">
-                  <span className="text-[11px] text-[#666] flex items-center gap-1"><Lightbulb size={11} /> Self-mark:</span>
+                  <span className="text-[11px] text-[#888] flex items-center gap-1"><Lightbulb size={11} /> Self-mark:</span>
                   <button onClick={() => toggleMark(i, true)}
                     className={`text-[11px] px-3 py-1 rounded-full border ${marks[i] === true ? 'bg-green-500/20 border-green-500/50 text-green-300' : 'border-[#333] text-[#888]'}`}>✓ Got it</button>
                   <button onClick={() => toggleMark(i, false)}

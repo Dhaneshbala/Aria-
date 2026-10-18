@@ -25,14 +25,14 @@ export default function CreatePage() {
         <span className="text-xs font-semibold text-[#7c6af7] mr-2">Create</span>
         {TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-colors ${tab===id ? 'bg-[#7c6af7] text-white' : 'text-[#666] hover:text-[#aaa] hover:bg-[#1a1a1a]'}`}>
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-colors ${tab===id ? 'bg-[#7c6af7] text-white' : 'text-[#888] hover:text-[#aaa] hover:bg-[#1a1a1a]'}`}>
             <Icon size={12}/>{label}
           </button>
         ))}
-        <span className="ml-auto text-[10px] text-[#333] hidden sm:block">Or just ask in Chat — everything works there too</span>
+        <span className="ml-auto text-[10px] text-[#777] hidden sm:block">Or just ask in Chat — everything works there too</span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <Suspense fallback={<div className="p-8 text-center text-sm text-[#555]">Loading…</div>}>
+        <Suspense fallback={<div className="p-8 text-center text-sm text-[#888]">Loading…</div>}>
           {Active && <Active />}
         </Suspense>
       </div>

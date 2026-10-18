@@ -23,10 +23,10 @@ export default function BgTasks() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 max-w-xs">
+    <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-4 left-4 z-50 flex flex-col gap-2 max-w-xs">
       {entries.map(([key, t]) => (
         <div key={key}
-          className="flex items-center gap-2.5 pl-3 pr-2 py-2 rounded-2xl border shadow-xl backdrop-blur-md bg-[#161616]/95 border-[#2a2a2a]">
+          className="flex items-center gap-2.5 pl-3 pr-2 py-2 rounded-2xl border shadow-xl backdrop-blur-md bg-[#161616]/95 border-aria-border">
           {t.status === 'running' && <Loader size={14} className="animate-spin text-[#7c6af7] flex-shrink-0" />}
           {t.status === 'done' && <Check size={14} className="text-green-400 flex-shrink-0" />}
           {(t.status === 'error' || t.status === 'cancelled') && (
@@ -34,7 +34,7 @@ export default function BgTasks() {
           )}
           <div className="min-w-0 flex-1">
             <p className="text-xs text-[#e8e8e8] truncate">{t.label || 'Task'}</p>
-            <p className="text-[10px] text-[#666]">
+            <p className="text-[10px] text-[#888]">
               {t.status === 'running' ? `Running in background · ${elapsed(t)}` :
                t.status === 'done' ? 'Finished — tap View' :
                t.error || t.status}
@@ -48,13 +48,13 @@ export default function BgTasks() {
           )}
           {t.status === 'running' && (
             <button onClick={() => cancelTask(key)} title="Cancel task"
-              className="p-1.5 rounded-full text-[#666] hover:text-white hover:bg-[#2a2a2a] flex-shrink-0">
+              className="p-1.5 rounded-full text-[#888] hover:text-white hover:bg-[#2a2a2a] flex-shrink-0">
               <X size={13} />
             </button>
           )}
           {t.status !== 'running' && (
             <button onClick={() => useStore.getState().clearBgTask(key)} title="Dismiss"
-              className="p-1.5 rounded-full text-[#555] hover:text-white hover:bg-[#2a2a2a] flex-shrink-0">
+              className="p-1.5 rounded-full text-[#888] hover:text-white hover:bg-[#2a2a2a] flex-shrink-0">
               <X size={13} />
             </button>
           )}
