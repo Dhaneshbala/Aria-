@@ -7,6 +7,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Load .env so local settings (models, keys, hosts) apply to Ollama,
+# backend and frontend below. Nothing here is committed (.env is gitignored).
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+  echo "  ✅ Loaded .env"
+fi
+
 # Colours
 GRN='\033[0;32m'; YLW='\033[1;33m'; RED='\033[0;31m'; BLU='\033[0;34m'; NC='\033[0m'
 
@@ -72,13 +82,13 @@ pull_if_missing() {
 }
 
 # Main model — handles chat, reasoning, coding, math, vision/multimodal (all Study Tools via brain)
-pull_if_missing "gemma4:e4b-mlx"   "main model (multimodal)" "5-6 GB"
+pull_if_missing "qwen3.5:9b"   "main model (multimodal, thinking)" "7.6 GB"
 
 # Embedding model — ONLY for memory/RAG retrieval (tiny, not for generation)
 pull_if_missing "nomic-embed-text" "embedding model" "274 MB"
 
 echo ""
-echo -e "  📊 Disk used by models: ~9.8 GB total (gemma4: 9.5 GB + nomic: 274 MB)"
+echo -e "  📊 Disk used by models: ~7.9 GB total (qwen3.5: 7.6 GB + nomic: 274 MB)"
 echo -e "  🖥  RAM: Ollama loads ONE generation model at a time (M4 Metal GPU active)"
 echo -e "  🧠 Main model handles vision + coding — no extra models needed"
 
@@ -111,15 +121,22 @@ pip install -r requirements.txt || { echo -e "${RED}  ❌ pip install failed${NC
 # Ensure pdfminer is installed for better PDF text extraction
 pip install -q pdfminer.six 2>/dev/null || true
 
-echo "       Starting FastAPI on port 8000..."
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload \
+echo "       Starting FastAPI on ${ARIA_HOST:-127.0.0.1}:${ARIA_PORT:-8000}..."
+python -m uvicorn main:app --host "${ARIA_HOST:-127.0.0.1}" --port "${ARIA_PORT:-8000}" --reload \
   --log-level warning &
 BACKEND_PID=$!
 
+if [[ -n "${ARIA_LAN:-}" || "${ARIA_HOST:-127.0.0.1}" != "127.0.0.1" ]]; then
+  echo -e "${YLW}  ⚠  LAN mode: backend reachable on your Wi-Fi network.${NC}"
+  echo -e "${YLW}     Agent terminal/file tools stay loopback-only; use trusted Wi-Fi only.${NC}"
+fi
+
 # Wait up to 15s for backend
+_HEALTH_HOST="127.0.0.1"
+_HEALTH_PORT="${ARIA_PORT:-8000}"
 for i in {1..15}; do
   sleep 1
-  curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1 && break
+  curl -sf "http://${_HEALTH_HOST}:${_HEALTH_PORT}/api/health" >/dev/null 2>&1 && break
 done
 echo -e "${GRN}  ✅ Backend ready (PID $BACKEND_PID)${NC}"
 
@@ -136,7 +153,12 @@ else
   npm ci --silent 2>/dev/null || true
 fi
 
-npm run dev &
+if [[ -n "${ARIA_LAN:-}" ]]; then
+  echo "       LAN mode: frontend reachable on your Wi-Fi network."
+  npm run dev -- --host &
+else
+  npm run dev &
+fi
 FRONTEND_PID=$!
 sleep 3
 
@@ -150,10 +172,15 @@ echo -e "${GRN}  ║                                     ║${NC}"
 echo -e "${GRN}  ║  Press Ctrl+C to stop               ║${NC}"
 echo -e "${GRN}  ╚════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Models loaded: gemma4:e4b-mlx (main, multimodal) + nomic-embed-text (embeddings)"
+echo -e "  Models loaded: qwen3.5:9b (main, multimodal) + nomic-embed-text (embeddings)"
 echo -e "  Image gen:     Pollinations.ai (free, no GPU needed)"
 echo -e "  Memory/RAG:    ChromaDB + nomic-embed-text saved to ~/.aria_data/"
 echo ""
+if command -v tailscale &>/dev/null; then
+  echo -e "  📱 Remote access (no Cloudflare): run this once, then open the URL on your phone anywhere:"
+  echo -e "     tailscale serve --bg 5173"
+  echo ""
+fi
 
 # Open browser automatically
 sleep 1

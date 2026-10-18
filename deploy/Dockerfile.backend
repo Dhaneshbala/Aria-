@@ -1,0 +1,34 @@
+# ARIA backend — Oracle Ampere ARM (linux/arm64, CPU-only Ollama)
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# ctranslate2/faster-whisper + chromadb need a compiler for any missing wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/backend
+
+COPY backend/requirements.txt ./
+RUN pip install -r requirements.txt \
+ && pip install -q pdfminer.six
+
+COPY backend/ ./
+
+# DATA_DIR (chats, memory, chromadb) lives on a docker volume
+ENV ARIA_DATA_DIR=/data \
+    OLLAMA_URL=http://ollama:11434 \
+    ARIA_MAIN_MODEL=gemma3:12b \
+    MODELS_MAIN=gemma3:12b \
+    REASONING_MODEL=gemma3:12b \
+    VISION_MODEL=gemma3:12b \
+    FALLBACK_MODEL=gemma3:12b \
+    CODING_MODEL=gemma3:12b \
+    ARIA_EMBED_MODEL=nomic-embed-text \
+    EMBEDDING_MODEL=nomic-embed-text
+
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

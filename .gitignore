@@ -12,10 +12,6 @@ venv/
 *.env
 
 # Runtime state — never commit local index/logs/backups
-backend/storage/organizer.db
-backend/storage/organizer.db-shm
-backend/storage/organizer.db-wal
-backend/storage/organizer.log
 backend/storage/backups/
 backend/storage/files/
 
@@ -48,6 +44,17 @@ backend/storage/cache.json
 backend/storage/embed_cache.json
 knowledge_base/
 chroma/
+
+# Local app bundle + CI/dev artifacts (regenerated, never review surface)
+Study Buddy.app/
+backend/.coverage
+frontend/.lhci/
+frontend/.lighthouseci/
+frontend/test-results/
+frontend/playwright-report/
+
+# User chat data — local-first by design; never commit transcripts
+backend/data/conversations.json
 
 # Training datasets — large binaries, reproducible via
 # download_highschool_ai_data.py (GitHub caps files at 100 MB)

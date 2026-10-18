@@ -1,0 +1,22 @@
+:80 {
+	# Login screen for the whole app (no third parties — Caddy basic-auth).
+	# Change credentials in .env.deploy (ADMIN_USER / ADMIN_HASH).
+	basicauth /* {
+		{$ADMIN_USER} {$ADMIN_HASH}
+	}
+
+	# API → backend (same-origin, so the frontend needs no CORS changes)
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Serve precompressed .gz/.br sidecars built by `npm run build`
+	encode gzip zstd
+
+	# Frontend static build (built by the frontend-build service)
+	handle {
+		root * /srv/frontend
+		file_server
+		try_files {path} /index.html
+	}
+}

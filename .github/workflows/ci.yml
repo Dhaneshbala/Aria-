@@ -1,0 +1,57 @@
+# ARIA CI — backend tests + frontend build/lint/tests on every push.
+name: ci
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'  # weekly dep audit (Mondays)
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q --ignore=tests/test_e2e_features.py
+      - run: python -m ruff format --check .
+      - run: python -m ruff check tests/test_hardening.py tests/test_ollama_respx.py
+      - name: ruff full tree (non-blocking; tracking pre-existing debt)
+        continue-on-error: true
+        run: python -m ruff check .
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - uses: browser-actions/setup-chrome@v1
+      - run: npm run lhci
+
+  audit:
+    # Weekly CVE scan; also runs on push but never blocks it.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install pip-audit && pip-audit -r backend/requirements.txt

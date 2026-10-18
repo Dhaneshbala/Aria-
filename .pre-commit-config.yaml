@@ -1,0 +1,51 @@
+# pre-commit gates — run `pre-commit install` once inside aria-2/, then these
+# run on every commit. (Install hooks dep: pip install -r backend/requirements.txt)
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint frontend
+        entry: bash -c 'cd frontend && ./node_modules/.bin/eslint src'
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        files: ^backend/(services|routers|models)/
+        args: [-q, -ll]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v9.0.0
+    hooks:
+      - id: cspell
+        # Backend excluded: multilingual strings, stemmed example content and
+        # identifiers trip the checker faster than humans can curate it.
+        # User-visible text (frontend/docs) is where typos matter.
+        files: ^(frontend/src|docs|README\.md|deploy/README\.md).*(\.(jsx?|css|html|json|md))?$
+        args: [--config, cspell.json, --no-progress]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=2000']

@@ -1,0 +1,67 @@
+# ARIA on one Oracle Always Free Ampere VM (4 OCPU / 24 GB RAM).
+# Only Caddy's port 80 is published. Backend + Ollama stay on the private
+# compose network. NOTE: agent terminal/file tools reject non-loopback
+# callers, so on this box they are effectively disabled — safer for a
+# public server.
+name: aria
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    # no ports published — backend reaches it at http://ollama:11434
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      ARIA_DATA_DIR: /data
+      ARIA_MAIN_MODEL: gemma3:12b
+      MODELS_MAIN: gemma3:12b
+      REASONING_MODEL: gemma3:12b
+      VISION_MODEL: gemma3:12b
+      FALLBACK_MODEL: gemma3:12b
+      CODING_MODEL: gemma3:12b
+      ARIA_EMBED_MODEL: nomic-embed-text
+      EMBEDDING_MODEL: nomic-embed-text
+    volumes:
+      - aria_data:/data
+    # no ports published — only reachable via Caddy
+
+  # Builds the PWA once into a shared volume, then exits.
+  frontend-build:
+    image: node:22-alpine
+    working_dir: /src
+    command: sh -c "npm ci --silent && VITE_API_URL=/api npm run build && rm -rf /out/* && cp -r dist/. /out/"
+    volumes:
+      - ../frontend:/src
+      - frontend_dist:/out
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/srv/frontend:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    env_file:
+      - .env.deploy
+
+volumes:
+  ollama_models:
+  aria_data:
+  frontend_dist:
+  caddy_data:
+  caddy_config:

@@ -26,8 +26,8 @@ timeout /t 3 /nobreak > nul
 echo [2/4] Checking AI models (gemma4 + nomic)...
 ollama list | findstr /i "gemma" > nul
 if %errorlevel% neq 0 (
-    echo       Pulling gemma4:e4b-mlx (this may take a while)...
-    ollama pull gemma4:e4b-mlx
+    echo       Pulling gemma3:12b (this may take a while)...
+    ollama pull gemma3:12b
 )
 ollama list | findstr /i "nomic" > nul
 if %errorlevel% neq 0 (

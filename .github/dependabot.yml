@@ -1,0 +1,16 @@
+# Dependabot — weekly npm + pip updates as PRs (review before merging;
+# major model-adjacent bumps like chromadb need a test run).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
