@@ -119,8 +119,9 @@ from the fix list).
   grading), dashboard honest data (heatmap streaks), a11y (aria-live quiz feedback, contrast mode fixed).
 
 ### Unverified (exists, not yet covered by regression tests)
-- `routers/docs.py`, `routers/research.py`, `routers/voice.py` — endpoints ship, but no router tests yet.
-- Frontend Playwright e2e (`frontend/e2e/`) — configured, not exercised in this session's runs.
+- Since 2026-10-19: routers `docs`/`research`/`voice` + frontend Playwright smoke e2e now have
+  regression coverage (23 router tests; e2e 11 passed desktop+mobile in 8.4s with self-managed
+  web servers).
 - Model routing plumbing (ai_providers/pricing) — module-level tests only (`test_ai_providers.py`);
   no multi-provider live check beyond Ollama.
 
@@ -178,6 +179,8 @@ cd backend && ../.venv/bin/python -m pytest tests/ -q    # 245 passed on 2026-10
 # Frontend
 cd frontend && npm test           # 8 suites
 cd frontend && npm run build      # succeeds
+cd frontend && npx playwright test  # e2e smoke: 11 passed / 3 skipped — starts its
+                                    # own backend+frontend when none is running
 
 # Lint/security gates (same ones pre-commit runs per commit)
 cd ../ && pre-commit run --all-files
@@ -199,7 +202,9 @@ Commit trail: `3845b05` backend wave+Stage A · `090db52` frontend Stage B+wave 
    solutions stays; server anchor prevents count inflation.
 4. **Scanned-PDF path** — either honest frontend UX (progressive notice + "cannot read, ask
    something else" affordance, surfacing existing backend) or opt-in OCR. Decide UX first.
-5. **Frontend Playwright e2e** — run and wire into CI (configs exist, currently unexercised).
+5. ~~Frontend Playwright e2e~~ — done 2026-10-19: `reuseExistingServer` web servers added to the
+   config (no collision with a running instance) and the suite passes: **11 passed / 3 skipped**
+   (desktop + Pixel 7 projects). CI wiring (GitHub workflow) still outstanding.
 6. **Phases 3–13 core builds (not started)** — unified student workflow, adaptive explanation
    styles, lesson-of-the-day, model routing with cost caps, deeper NSW outcome mapping.
 7. **Deferred by design**: subscription tiers/billing — no entitlement system exists; do not
