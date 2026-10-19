@@ -6,17 +6,21 @@ export default defineConfig({
   expect: { timeout: 10000 },
   // Start a real backend + frontend for the suite if none is already up
   // (reuses the user's running instance instead of colliding with it).
+  // CI overrides the backend command — see .github/workflows/ci.yml e2e job
+  // (CI runners have no ../.venv, so `python` from job setup is used).
   webServer: [
     {
-      command: 'cd ../backend && ../.venv/bin/python -m uvicorn main:app --port 8000',
+      command:
+        process.env.E2E_BACKEND_CMD ||
+        'cd ../backend && ../.venv/bin/python -m uvicorn main:app --port 8000',
       url: 'http://localhost:8000/api/health',
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
       command: 'npm run dev',
       url: 'http://localhost:5173',
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
   ],

@@ -21,10 +21,34 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q --ignore=tests/test_e2e_features.py
       - run: python -m ruff format --check .
-      - run: python -m ruff check tests/test_hardening.py tests/test_ollama_respx.py
-      - name: ruff full tree (non-blocking; tracking pre-existing debt)
-        continue-on-error: true
-        run: python -m ruff check .
+      # Full-tree lint is blocking: pre-existing debt was cleared 2026-10-19
+      # (DTZ deferred with documented ignores in pyproject).
+      - run: python -m ruff check .
+
+  e2e:
+    # Full deterministic hot-loop + visual smoke: starts its own backend
+    # (portable `python`, see E2E_BACKEND_CMD) and Vite dev server, then
+    # runs Playwright against real Chrome.
+    runs-on: ubuntu-latest
+    env:
+      E2E_BACKEND_CMD: "cd ../backend && python -m uvicorn main:app --port 8000"
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - uses: browser-actions/setup-chrome@v1
+      - run: npx playwright test
 
   frontend:
     runs-on: ubuntu-latest

@@ -1,0 +1,22 @@
+# Root-level ruff config for standalone dev scripts (Makefile helpers,
+# model benchmark, dataset downloader). Backend code has its own config —
+# backend/pyproject.toml — discovered per-directory by ruff.
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+ignore = [
+  # Root scripts wrap optional tools/models in broad guards by design —
+  # a single failing optional step must not kill the whole dev script.
+  # Same rationale as backend/pyproject.toml's ignores.
+  "BLE001",
+  "S110",
+  "S112",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# bench_models.py: scoring MODEL-GENERATED code via exec() IS the benchmark;
+# subprocess probes (`ollama ps`/pull) intentionally return non-zero when a
+# model isn't loaded, so no `check`; loop var `sys` shadows `import sys`.
+"bench_models.py" = ["S102", "PLW1510", "F402"]
