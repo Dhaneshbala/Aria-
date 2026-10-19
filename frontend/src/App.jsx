@@ -1,7 +1,9 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { ShieldAlert } from 'lucide-react'
 import { useStore } from './store'
 import { getHealth, getConversations, getConfig } from './services/api'
+import { fetchMe, clearToken } from './services/auth'
 import { getActiveAbort } from './hooks/useChat'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
@@ -75,6 +77,11 @@ const CreatePage = lazy(() => import('./pages/CreatePage'))
 const CheatSheetPage = lazy(() => import('./pages/CheatSheetPage'))
 const MathsAcceleratorPage = lazy(() => import('./pages/MathsAcceleratorPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const WalletPage = lazy(() => import('./pages/WalletPage'))
+const AccountPage = lazy(() => import('./pages/AccountPage'))
+const HelpPage = lazy(() => import('./pages/HelpPage'))
 const SpacedRepetitionPage = lazy(() => import('./pages/SpacedRepetitionPage'))
 const SyllabusPage = lazy(() => import('./pages/SyllabusPage'))
 const YouTubePage = lazy(() => import('./pages/YouTubePage'))
@@ -106,7 +113,11 @@ const ROUTE_TITLES = {
   '/flashcards': 'Flashcards — ARIA',
   '/memory': 'Memory — ARIA',
   '/kb': 'Knowledge Base — ARIA',
-  '/admin': 'Settings — ARIA',
+  '/admin': 'Admin — ARIA',
+  '/login': 'Sign in — ARIA',
+  '/wallet': 'Wallet — ARIA',
+  '/account': 'Account — ARIA',
+  '/help': 'Help — ARIA',
 }
 
 function RouteTitle() {
@@ -131,6 +142,32 @@ function NotFound() {
       </a>
     </div>
   )
+}
+
+/** Backend-enforced permissions are the real wall; this page only
+ * reflects the 403 the server would deliver anyway (Section 13C). */
+function Forbidden() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+      <ShieldAlert size={40} className="text-[#f28b82] mb-3" />
+      <h1 className="text-lg font-semibold text-[#e8e8e8] mb-2">Administrators only</h1>
+      <p className="text-sm text-[#888] max-w-sm mb-4">
+        This dashboard manages accounts, credits and system settings — your
+        student account does not have access (and neither does your
+        browser, only the server matters).
+      </p>
+      <a href="/" className="px-4 py-2 rounded-xl bg-[#7c6af7] hover:bg-[#6a59e0] text-white text-sm transition-colors">
+        Back to Dashboard
+      </a>
+    </div>
+  )
+}
+
+/** Route wrapper: admins and superadmins only (cosmetic — the backend
+ * independently returns 403 for every admin API). */
+function RequireRole({ user, children }) {
+  if (user?.role === 'admin' || user?.role === 'superadmin') return children
+  return <Forbidden />
 }
 
 function GeminiHeader({ onToggleSidebar }) {
@@ -174,13 +211,31 @@ function GeminiHeader({ onToggleSidebar }) {
 }
 
 export default function App() {
-  const { setOllamaStatus, setConversations, setConfig, uiPrefs } = useStore()
+  const { setOllamaStatus, setConversations, setConfig, uiPrefs, authUser, authReady, setAuth, clearAuth } = useStore()
   useRoutePreload()
   const fontClass = `aria-font-${uiPrefs.fontSize || 'md'}`
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true
     return window.innerWidth >= 768
   })
+
+  // ── Session boot (Section 13): who am I? ─────────────────────────────
+  // One unauthenticated probe decides the mode:
+  //   • local mode → 200, owner, no login UI (today's behaviour)
+  //   • accounts mode + valid session → signed-in user
+  //   • accounts mode without session → 401 → login page
+  useEffect(() => {
+    let cancelled = false
+    fetchMe()
+      .then(me => { if (!cancelled) setAuth(me) })
+      .catch(e => {
+        if (cancelled) return
+        if (e?.status === 401) clearToken()
+        clearAuth()
+      })
+    return () => { cancelled = true }
+  }, [])
+
   useEffect(() => {
     const onResize = () => {
       if (window.innerWidth < 768) setSidebarOpen(false)
@@ -205,11 +260,18 @@ export default function App() {
     const onVis = () => document.visibilityState === 'visible' && checkHealth()
     document.addEventListener('visibilitychange', onVis)
 
-    getConversations().then(setConversations).catch(() => { showToast("Couldn't load chats", 'error', 2500) })
-    getConfig().then(setConfig).catch(() => { showToast("Couldn't load settings", 'error', 2500) })
+    getConversations().then(setConversations).catch(() => {})
+
+    // Only admins/local owner read global config — students' requests
+    // would 403 and spam a toast every boot (the backend decides, so the
+    // browser check here is cosmetic; both must agree).
+    const role = authUser?.role
+    if (!authUser?.auth_mode || authUser.auth_mode !== 'accounts' || role === 'admin' || role === 'superadmin') {
+      getConfig().then(setConfig).catch(() => { showToast("Couldn't load settings", 'error', 2500) })
+    }
 
     return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVis) }
-  }, [])
+  }, [authUser?.auth_mode, authUser?.role])
 
   // High-contrast preference must reach <html>/<body> — the container div
   // alone can never satisfy the CSS body/element rules in index.css.
@@ -218,6 +280,29 @@ export default function App() {
     root.classList.toggle('aria-contrast', !!uiPrefs.contrast)
     return () => { root.classList.remove('aria-contrast') }
   }, [uiPrefs.contrast])
+
+  if (!authReady) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0b0b0b]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#7c6af7] border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  // Accounts mode without a session: sign-in over everything else.
+  if (!authUser && window.location.pathname !== '/login') {
+    return (
+      <BrowserRouter>
+        <RouteTitle />
+        <Suspense fallback={null}>
+          <LoginPage />
+        </Suspense>
+      </BrowserRouter>
+    )
+  }
+
+  const isAccountsMode = authUser?.auth_mode === 'accounts'
+  const isAdmin = authUser?.role === 'admin' || authUser?.role === 'superadmin'
 
   return (
     <BrowserRouter>
@@ -252,8 +337,24 @@ export default function App() {
                   <Route path="/flashcards" element={<SpacedRepetitionPage />} />
                   <Route path="/memory" element={<MemoryPage />} />
                   <Route path="/kb" element={<KBPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/profile" element={<Navigate to="/admin" replace />} />
+                  <Route
+                    path="/admin"
+                    element={
+                      isAccountsMode
+                        ? <RequireRole user={authUser}><AdminDashboard /></RequireRole>
+                        : <AdminPage />
+                    }
+                  />
+                  <Route path="/wallet" element={isAccountsMode ? <WalletPage /> : <Navigate to="/admin" replace />} />
+                  <Route
+                    path="/account"
+                    element={isAccountsMode ? <AccountPage /> : <Navigate to="/admin" replace />}
+                  />
+                  <Route path="/help" element={<HelpPage />} />
+                  <Route
+                    path="/profile"
+                    element={<Navigate to={isAdmin || !isAccountsMode ? '/admin' : '/account'} replace />}
+                  />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
@@ -263,8 +364,8 @@ export default function App() {
         <ToastContainer />
         <BgTasks />
         <MobileNav />
+        {!isAccountsMode || isAdmin ? <Onboarding /> : null}
         <InstallPrompt />
-        <Onboarding />
       </div>
     </BrowserRouter>
   )

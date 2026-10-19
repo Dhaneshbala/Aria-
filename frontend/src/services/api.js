@@ -7,12 +7,20 @@ export const API_BASE = BASE
 export async function apiFetch(url, options = {}) {
   const headers = { ...(options.headers || {}) }
   try {
-    const token = localStorage.getItem('aria_api_token')
+    // Section 13 session token first; legacy shared-host password second.
+    const session = localStorage.getItem('aria_session')
+    const legacy = localStorage.getItem('aria_api_token')
+    const token = session || legacy
     if (token) headers.Authorization = `Bearer ${token}`
   } catch {}
   const resp = await fetch(url, { ...options, headers })
   if (!resp.ok) {
     const text = await resp.text().catch(() => resp.statusText)
+    if (resp.status === 401) {
+      const e = new Error(`API error ${resp.status}: ${text}`)
+      e.authRequired = true
+      throw e
+    }
     throw new Error(`API error ${resp.status}: ${text}`)
   }
   return resp

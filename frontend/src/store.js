@@ -174,4 +174,13 @@ export const useStore = create((set, get) => ({
     }
     return { conversations: [{ id, title, timestamp: ts, last_timestamp: ts, turn_count: 1 }, ...s.conversations] }
   }),
+
+  // ── Accounts auth (Section 13) ────────────────────────────────────────────
+  // authReady: boot has asked /api/auth/me once and knows the mode.
+  // authUser: null until signed in (accounts mode); local mode has the
+  // implicit owner ({role:'superadmin', auth_mode:'local'}).
+  authReady: false,
+  authUser: null,
+  setAuth: (user) => set({ authUser: user, authReady: true }),
+  clearAuth: () => set({ authUser: null, authReady: true }),
 }))

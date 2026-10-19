@@ -21,6 +21,7 @@ CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
 PROFILE_FILE = DATA_DIR / "study_profile.json"
 COMPRESSED_FILE = DATA_DIR / "compressed_memory.json"
 TITLES_FILE = DATA_DIR / "titles.json"
+OWNERS_FILE = DATA_DIR / "conversation_owners.json"
 
 
 import tempfile
@@ -69,6 +70,83 @@ def _save_json(path: Path, data):
                     p.unlink()
                 except Exception:
                     pass
+
+
+# ── Conversation ownership (Section 13) ──────────────────────────────────
+# cid → username map in its own file. A conversation without an entry is
+# legacy (pre-accounts); accounts-mode migration assigns those to the
+# first admin so old chats stay with the operator, never with students.
+
+
+def _load_owners() -> dict[str, str]:
+    data = _load_json(OWNERS_FILE, {})
+    return data if isinstance(data, dict) else {}
+
+
+def owner_of(conversation_id: str) -> str | None:
+    return _load_owners().get(conversation_id)
+
+
+def ensure_conversation_owner(conversation_id: str, username: str) -> str:
+    """Bind a conversation to its first owner atomically. Returns the
+    current owner; raises if ownership would be stolen."""
+    with _lock_for(OWNERS_FILE):
+        owners = _load_owners()
+        existing = owners.get(conversation_id)
+        if existing is None:
+            owners[conversation_id] = username
+            _save_json(OWNERS_FILE, owners)
+            return username
+        if existing != username:
+            raise PermissionError("conversation_owned_by_other")
+        return existing
+
+
+def _owned_cids(username: str) -> set[str]:
+    owners = _load_owners()
+    return {cid for cid, owner in owners.items() if owner == username}
+
+
+def assign_legacy_conversations() -> int:
+    """One-time accounts-mode migration: unowned conversations become the
+    first admin's. Returns how many were assigned (idempotent)."""
+    try:
+        convs = _load_json(CONVERSATIONS_FILE, {})
+    except Exception:
+        return 0
+    if not isinstance(convs, dict):
+        return 0
+    with _lock_for(OWNERS_FILE):
+        owners = _load_owners()
+        unowned = [cid for cid in convs if cid not in owners]
+        if not unowned:
+            return 0
+        admin_username = _first_admin_username()
+        if not admin_username:
+            logger.warning(
+                "Legacy conversations exist but no admin account yet; "
+                "they stay unowned until one is bootstrapped."
+            )
+            return 0
+        for cid in unowned:
+            owners[cid] = admin_username
+        _save_json(OWNERS_FILE, owners)
+        logger.info(
+            "Assigned %d legacy conversations to %s", len(unowned), admin_username
+        )
+        return len(unowned)
+
+
+def _first_admin_username() -> str | None:
+    try:
+        from services.accounts import list_users
+
+        for u in list_users(include_local=True):
+            if u["role"] in ("superadmin", "admin") and u["status"] == "active":
+                return u["username"]
+    except Exception as e:
+        logger.debug("admin lookup failed: %s", e)
+    return None
 
 
 def _rerank_local(query: str, docs: list[str], top_k: int | None = None) -> list[str]:
@@ -464,7 +542,9 @@ class MemoryService:
             pass
         return all_memories[: k + 6]
 
-    async def search_global(self, query: str, limit: int = 20) -> list[dict]:
+    async def search_global(
+        self, query: str, limit: int = 20, user: str | None = None
+    ) -> list[dict]:
         """Semantic search across ALL conversations."""
         results_list = []
         if self._chroma_available and self._global_collection:
@@ -508,10 +588,18 @@ class MemoryService:
                             }
                         )
 
+        if user is not None:
+            # Ownership filter applied to BOTH halves (chroma + json).
+            allowed = _owned_cids(user)
+            results_list = [
+                r for r in results_list if r.get("conversation_id") in allowed
+            ]
         return results_list[:limit]
 
-    async def get_conversations(self) -> list[dict]:
+    async def get_conversations(self, user: str | None = None) -> list[dict]:
         convs = _load_json(CONVERSATIONS_FILE, {})
+        if user is not None:
+            convs = {cid: t for cid, t in convs.items() if cid in _owned_cids(user)}
         titles = _load_titles()
         result = []
         for cid, turns in convs.items():
@@ -543,9 +631,14 @@ class MemoryService:
             pass
         return sorted(result, key=lambda x: x["last_timestamp"], reverse=True)
 
-    async def search_conversations(self, query: str) -> list[dict]:
+    async def search_conversations(
+        self, query: str, user: str | None = None
+    ) -> list[dict]:
         """Search across all conversation content."""
         convs = _load_json(CONVERSATIONS_FILE, {})
+        if user is not None:
+            allowed = _owned_cids(user)
+            convs = {cid: t for cid, t in convs.items() if cid in allowed}
         titles = _load_titles()
         query_lower = query.lower()
         results = []
@@ -576,11 +669,15 @@ class MemoryService:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:20]
 
-    async def get_conversation(self, conversation_id: str) -> list[dict]:
+    async def get_conversation(self, conversation_id: str, user: str | None = None):
+        if user is not None and conversation_id not in _owned_cids(user):
+            raise PermissionError("conversation_owned_by_other")
         convs = _load_json(CONVERSATIONS_FILE, {})
         return convs.get(conversation_id, [])
 
-    async def delete_conversation(self, conversation_id: str):
+    async def delete_conversation(self, conversation_id: str, user: str | None = None):
+        if user is not None and conversation_id not in _owned_cids(user):
+            raise PermissionError("conversation_owned_by_other")
         convs = _load_json(CONVERSATIONS_FILE, {})
         if conversation_id in convs:
             del convs[conversation_id]
@@ -596,9 +693,12 @@ class MemoryService:
 
     # ── Memory Timeline ───────────────────────────────────────────────────────
 
-    async def get_timeline(self, days: int = 30) -> list[dict]:
+    async def get_timeline(self, days: int = 30, user: str | None = None) -> list[dict]:
         """Get a timeline of learning activity over time."""
         convs = _load_json(CONVERSATIONS_FILE, {})
+        if user is not None:
+            allowed = _owned_cids(user)
+            convs = {cid: t for cid, t in convs.items() if cid in allowed}
         from datetime import timedelta
 
         cutoff = datetime.now(UTC) - timedelta(days=days)
@@ -640,9 +740,14 @@ class MemoryService:
 
         return sorted(daily.values(), key=lambda d: d["date"])
 
-    async def get_conversations_for_date(self, date: str) -> list[dict]:
+    async def get_conversations_for_date(
+        self, date: str, user: str | None = None
+    ) -> list[dict]:
         """Get all conversations that have turns on a specific date."""
         convs = _load_json(CONVERSATIONS_FILE, {})
+        if user is not None:
+            allowed = _owned_cids(user)
+            convs = {cid: t for cid, t in convs.items() if cid in allowed}
         titles = _load_titles()
         results = []
         for cid, turns in convs.items():

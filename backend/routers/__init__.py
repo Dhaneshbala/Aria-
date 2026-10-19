@@ -1,5 +1,7 @@
 from routers.admin import router as admin_router
+from routers.adminapi import router as adminapi_router
 from routers.agent import router as agent_router
+from routers.auth import router as auth_router
 from routers.chat import router as chat_router
 from routers.diagram import router as diagram_router
 from routers.docs import router as docs_router

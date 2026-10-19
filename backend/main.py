@@ -18,7 +18,9 @@ from config.settings import settings
 from models.database import DATA_DIR
 from routers import (
     admin_router,
+    adminapi_router,
     agent_router,
+    auth_router,
     chat_router,
     diagram_router,
     docs_router,
@@ -255,6 +257,8 @@ for router in [
     admin_router,
     agent_router,
     v2_router,
+    auth_router,
+    adminapi_router,
     kb_router,
     intelligence_router,
     notebooks_router,
@@ -268,6 +272,12 @@ for router in [
     syllabus_router,
 ]:
     app.include_router(router)
+
+# Section 13 Stage 1: accounts gate — installed before CORS so 401/403
+# responses still carry CORS headers. Local mode keeps today's behaviour.
+from services.gate import install as _install_gate
+
+_install_gate(app)
 
 
 @app.get("/api/health")

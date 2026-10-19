@@ -5,6 +5,7 @@ import { deleteConversation, searchConversations } from '../services/api'
 import {
   MessageSquare, Settings, Plus, Search, Pin,
   Trash2, Zap, LayoutDashboard, Wand2, X, Repeat, PanelLeft, Mic, Youtube, Sigma, Brain, Database, GraduationCap,
+  Wallet as WalletIcon, UserCog, ShieldCheck, LifeBuoy,
 } from 'lucide-react'
 
 const NAV = [
@@ -25,10 +26,25 @@ const BOTTOM_NAV = [
   { icon: Settings, label: 'Settings', path: '/admin' },
 ]
 
+/** Section 13: bottom nav adapts to the signed-in account. Local mode
+ * keeps exactly the old single "Settings" entry; accounts mode gives
+ * students Wallet/Account/Help and admins the admin dashboard. */
+function bottomNavFor(user) {
+  const isLocal = user?.auth_mode !== 'accounts'
+  if (isLocal) return BOTTOM_NAV
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  return [
+    ...(isAdmin ? [{ icon: ShieldCheck, label: 'Admin', path: '/admin' }] : []),
+    { icon: WalletIcon, label: 'Wallet', path: '/wallet' },
+    { icon: UserCog, label: 'Account', path: '/account' },
+    { icon: LifeBuoy, label: 'Help', path: '/help' },
+  ]
+}
+
 export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen: mobileOpenProp, setMobileOpen: setMobileOpenProp }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { conversations, pinnedChats, newConversation, togglePin, setConversations, isStreaming } = useStore()
+  const { conversations, pinnedChats, newConversation, togglePin, setConversations, isStreaming, authUser } = useStore()
   const [internalCollapsed, setInternalCollapsed] = useState(false)
   const [internalMobileOpen, setInternalMobileOpen] = useState(false)
   const collapsed = collapsedProp !== undefined ? collapsedProp : internalCollapsed
@@ -209,7 +225,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
 
         {/* Bottom nav */}
         <div className={`px-2 py-3 border-t border-aria-border space-y-0.5 ${collapsed ? 'flex flex-col items-center' : ''}`}>
-          {BOTTOM_NAV.map(({ icon: Icon, label, path }) => (
+          {bottomNavFor(authUser).map(({ icon: Icon, label, path }) => (
             <button
               key={path}
               onClick={() => { setMobileOpen(false); navigate(path) }}
@@ -223,10 +239,19 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, mobileOpen
             </button>
           ))}
           {!collapsed && (
-            <div className="px-3 pt-3 flex items-center gap-2 text-xs text-aria-muted">
-              <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-aria-text text-[10px]">◉</div>
-              <span className="truncate">Private · on-device</span>
-            </div>
+            authUser?.auth_mode === 'accounts' && authUser?.username ? (
+              <div className="px-3 pt-3 flex items-center gap-2 text-xs text-aria-muted">
+                <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-aria-text text-[10px] truncate">
+                  {authUser.display_name?.[0] || authUser.username[0]}
+                </div>
+                <span className="truncate">{authUser.username} · {authUser.role}</span>
+              </div>
+            ) : (
+              <div className="px-3 pt-3 flex items-center gap-2 text-xs text-aria-muted">
+                <div className="w-6 h-6 rounded-full bg-[#35363a] flex items-center justify-center text-aria-text text-[10px]">◉</div>
+                <span className="truncate">Private · on-device</span>
+              </div>
+            )
           )}
         </div>
       </div>

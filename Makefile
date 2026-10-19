@@ -10,7 +10,7 @@ BACKEND := $(CURDIR)/backend
 # deps, else system python3.
 PY := $(shell (.venv/bin/python -c 'import pytest' 2>/dev/null && echo "$(CURDIR)/.venv/bin/python") || (venv/bin/python -c 'import pytest' 2>/dev/null && echo "$(CURDIR)/venv/bin/python") || echo "$$(command -v python3)")
 
-.PHONY: help deps test fast cov audit dead verify verify-live check
+.PHONY: help deps test fast cov audit dead verify verify-live check superadmin
 
 help: ## Show targets
 	@echo "Targets:"
@@ -53,3 +53,6 @@ verify-live: ## 12 live feature-accuracy checks against local Ollama
 	cd $(BACKEND) && $(PY) scripts/feature_accuracy_harness2.py
 
 check: test ## Alias for the full suite
+
+superadmin: ## Create/promote the first admin: make superadmin USER=name
+	cd $(BACKEND) && $(PY) -m tools.superadmin $(USER)

@@ -21,6 +21,7 @@ def _record_usage(
 ):
     """Best-effort usage capture — a ledger failure must never break a chat."""
     try:
+        from services.request_scope import current_username
         from services.usage_service import record_usage
 
         record_usage(
@@ -31,6 +32,7 @@ def _record_usage(
             duration_ms=duration_ms,
             ok=ok,
             cached=cached,
+            user=current_username(),
         )
     except Exception as e:
         logger.debug("usage record failed: %s", e)

@@ -10,8 +10,12 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from models.database import get_config
+from services import accounts, gate
 from services.document_service import DocumentService
-from services.memory_service import MemoryService
+from services.memory_service import (
+    MemoryService,
+    ensure_conversation_owner,
+)
 from services.orchestrator import orchestrate
 from services.rate_limit import chat_limit
 
@@ -20,6 +24,18 @@ doc_svc = DocumentService()
 mem_svc = MemoryService()
 
 _chat_limit = chat_limit
+
+
+def _owner(request: Request) -> str | None:
+    """Username for ownership scoping — only meaningful in accounts mode."""
+    if accounts.accounts_enabled():
+        return gate.current_user(request)["username"]
+    return None
+
+
+def _deny_other(e: PermissionError) -> HTTPException:
+    return HTTPException(403, "This conversation belongs to another account.")
+
 
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 MAX_DOC_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -50,6 +66,13 @@ async def chat(
         raise HTTPException(400, "Invalid conversation_id")
     if not conversation_id:
         conversation_id = str(uuid.uuid4())
+    # Ownership: first writer becomes the single owner (Section 13).
+    try:
+        ensure_conversation_owner(
+            conversation_id, gate.current_user(request)["username"]
+        )
+    except PermissionError:
+        raise _deny_other(PermissionError())
 
     config = get_config()
 
@@ -179,39 +202,59 @@ async def chat(
 
 
 @router.get("/conversations")
-async def get_conversations():
-    return await mem_svc.get_conversations()
+async def get_conversations(request: Request):
+    return await mem_svc.get_conversations(user=_owner(request))
 
 
 @router.get("/search")
-async def search_conversations(q: str = ""):
+async def search_conversations(request: Request, q: str = ""):
     if not q.strip():
         return []
-    return await mem_svc.search_conversations(q)
+    return await mem_svc.search_conversations(q, user=_owner(request))
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
-    return await mem_svc.get_conversation(conversation_id)
+async def get_conversation(request: Request, conversation_id: str):
+    try:
+        return await mem_svc.get_conversation(conversation_id, user=_owner(request))
+    except PermissionError as e:
+        raise _deny_other(e)
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    await mem_svc.delete_conversation(conversation_id)
+async def delete_conversation(request: Request, conversation_id: str):
+    try:
+        await mem_svc.delete_conversation(conversation_id, user=_owner(request))
+    except PermissionError as e:
+        raise _deny_other(e)
     return {"deleted": True}
 
 
 @router.get("/conversations/date/{date}")
-async def get_conversations_for_date(date: str):
-    return await mem_svc.get_conversations_for_date(date)
+async def get_conversations_for_date(request: Request, date: str):
+    return await mem_svc.get_conversations_for_date(date, user=_owner(request))
 
 
 @router.get("/conversations/{conversation_id}/title")
-async def get_title(conversation_id: str):
+async def get_title(request: Request, conversation_id: str):
+    if accounts.accounts_enabled() and conversation_id not in (
+        await _owned_title_scope(request)
+    ):
+        raise HTTPException(403, "This conversation belongs to another account.")
     title = await mem_svc.get_title(conversation_id)
     if title is None:
         raise HTTPException(404, "Conversation not found")
     return {"id": conversation_id, "title": title}
+
+
+async def _owned_title_scope(request: Request) -> set:
+    from services.memory_service import _owned_cids
+
+    user = _owner(request)
+    return _owned_cids(user) if user else {_ALL_STAR}  # local mode: no check
+
+
+_ALL_STAR = "__all__"
 
 
 @router.put("/conversations/{conversation_id}/title")
@@ -225,8 +268,11 @@ async def set_title(conversation_id: str, request: Request):
         raise HTTPException(400, "Title cannot be empty")
     if len(title) > 60:
         title = title[:60]
-    # verify conversation exists
-    conv = await mem_svc.get_conversation(conversation_id)
+    # verify conversation exists (and belongs to the caller)
+    try:
+        conv = await mem_svc.get_conversation(conversation_id, user=_owner(request))
+    except PermissionError as e:
+        raise _deny_other(e)
     if not conv:
         raise HTTPException(404, "Conversation not found")
     new_title = await mem_svc.set_title(conversation_id, title)
@@ -234,8 +280,11 @@ async def set_title(conversation_id: str, request: Request):
 
 
 @router.post("/conversations/{conversation_id}/regenerate-title")
-async def regenerate_title(conversation_id: str):
-    conv = await mem_svc.get_conversation(conversation_id)
+async def regenerate_title(conversation_id: str, request: Request):
+    try:
+        conv = await mem_svc.get_conversation(conversation_id, user=_owner(request))
+    except PermissionError as e:
+        raise _deny_other(e)
     if not conv:
         raise HTTPException(404, "Conversation not found")
     new_title = await mem_svc.regenerate_title(conversation_id, use_llm=True)

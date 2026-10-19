@@ -94,7 +94,12 @@
     "timezone",
     "unexercised",
     "pytest",
-    "tradeoff"
+    "tradeoff",
+    "superadmin",
+    "superadmins",
+    "tokenless",
+    "tamper",
+    "wallet"
   ],
   "ignorePaths": [
     "node_modules/**",

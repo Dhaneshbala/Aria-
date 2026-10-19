@@ -42,6 +42,49 @@ class ProviderDisabledError(RuntimeError):
     """Raised when a cloud model is requested without consent/credential."""
 
 
+class CreditsExhaustedError(RuntimeError):
+    """Raised in accounts mode when a wallet has no credit for a cloud call."""
+
+
+def _cloud_precheck() -> None:
+    """Budget + wallet gates, both enforced before any cloud dispatch.
+
+    - Global daily cloud budget (admin-dashboard-controlled). Local
+      Ollama is never capped — offline study always stays free.
+    - Wallet (accounts mode only): the caller needs at least some
+      credit. Deduction happens after the exact provider-reported usage
+      is captured, so a short overshoot is bounded by max_tokens.
+    """
+    try:
+        from services.budget_service import cloud_spending_allowed
+
+        allowed, message = cloud_spending_allowed()
+        if not allowed:
+            raise ProviderDisabledError(message)
+    except ProviderDisabledError:
+        raise
+    except Exception as e:  # budget subsystem failure must not soft-block
+        logger.debug("budget check skipped: %s", e)
+    try:
+        from services import accounts, credits
+
+        if accounts.accounts_enabled():
+            from services.request_scope import current_username
+
+            user = accounts.get_user_by_username(current_username())
+            if user is None:
+                raise ProviderDisabledError("Session user is not resolvable.")
+            if user["role"] != "superadmin" and not credits.reserve_enough(user["id"]):
+                raise CreditsExhaustedError(
+                    "Your Cloud Boost wallet is empty. Local models remain "
+                    "always free; an admin can grant credits."
+                )
+    except (CreditsExhaustedError, ProviderDisabledError):
+        raise
+    except Exception as e:
+        logger.debug("wallet check skipped: %s", e)
+
+
 def resolve_provider(model: str) -> tuple[str, str]:
     """("ollama"|"anthropic", model_id) from a possibly-prefixed model string.
 
@@ -81,6 +124,7 @@ class AnthropicProvider:
                 "To use Anthropic models you must set ANTHROPIC_API_KEY and "
                 "ARIA_CLOUD_CONSENT=1 — this sends student content to Anthropic."
             )
+        _cloud_precheck()
 
     def _headers(self) -> dict:
         return {
@@ -109,6 +153,7 @@ class AnthropicProvider:
     @staticmethod
     def _record(model: str, usage: dict, duration_ms: float, ok: bool = True) -> None:
         try:
+            from services.request_scope import current_username
             from services.usage_service import record_usage
 
             record_usage(
@@ -118,9 +163,44 @@ class AnthropicProvider:
                 completion_tokens=usage.get("output_tokens", 0),
                 duration_ms=duration_ms,
                 ok=ok,
+                user=current_username(),
             )
         except Exception as e:
             logger.debug("usage record (anthropic) failed: %s", e)
+            return
+        # Credit deduction — only for successful cloud calls, accounts
+        # mode, non-superadmin. Base-price estimate (cache discounts
+        # ignored → never undercharges). One ledger row per call.
+        if not ok:
+            return
+        try:
+            from config.pricing import price_for
+            from services import accounts, credits
+            from services.request_scope import current_username
+
+            if not accounts.accounts_enabled():
+                return
+            user = accounts.get_user_by_username(current_username())
+            if user is None or user["role"] == "superadmin":
+                return
+            p_in, p_out = price_for("anthropic", model)
+            if p_in <= 0 and p_out <= 0:
+                return
+            cost = (
+                max(0, int(usage.get("input_tokens", 0))) / 1_000_000 * p_in
+                + max(0, int(usage.get("output_tokens", 0))) / 1_000_000 * p_out
+            )
+            micro = round(cost * 1_000_000)
+            if micro > 0:
+                credits.apply(
+                    user["id"],
+                    -micro,
+                    "usage",
+                    f"Cloud {model} ({usage.get('input_tokens', 0)}in/"
+                    f"{usage.get('output_tokens', 0)}out tok)",
+                )
+        except Exception as e:
+            logger.debug("credit deduction skipped: %s", e)
 
     async def complete(
         self,

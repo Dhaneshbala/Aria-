@@ -3,7 +3,7 @@ Intelligence router — Knowledge Graph, Memory Timeline, Semantic Search,
 Context Compression, Smart Cleanup, Background Agents, Study Intelligence.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -99,24 +99,48 @@ async def clear_knowledge_graph():
 
 
 @router.get("/memory/timeline")
-async def get_memory_timeline(days: int = 30):
-    return await _get_mem().get_timeline(days)
+async def get_memory_timeline(request: Request, days: int = 30):
+    from services import accounts, gate
+
+    user = (
+        gate.current_user(request)["username"] if accounts.accounts_enabled() else None
+    )
+    return await _get_mem().get_timeline(days, user=user)
 
 
 @router.get("/memory/search")
-async def global_memory_search(q: str = "", limit: int = 20):
+async def global_memory_search(request: Request, q: str = "", limit: int = 20):
     if not q.strip():
         return []
-    return await _get_mem().search_global(q, limit)
+    from services import accounts, gate
+
+    user = (
+        gate.current_user(request)["username"] if accounts.accounts_enabled() else None
+    )
+    return await _get_mem().search_global(q, limit, user=user)
 
 
 @router.post("/memory/compress")
-async def compress_memory(older_than_days: int = 7):
+async def compress_memory(request: Request, older_than_days: int = 7):
+    from services import accounts, gate
+
+    user = gate.current_user(request)
+    if accounts.accounts_enabled() and user["role"] not in ("admin", "superadmin"):
+        raise HTTPException(
+            403, "Memory maintenance is admin-only when accounts are enabled."
+        )
     return await _get_mem().compress_old_conversations(older_than_days)
 
 
 @router.post("/memory/cleanup")
-async def cleanup_memory(max_age_days: int = 90):
+async def cleanup_memory(request: Request, max_age_days: int = 90):
+    from services import accounts, gate
+
+    user = gate.current_user(request)
+    if accounts.accounts_enabled() and user["role"] not in ("admin", "superadmin"):
+        raise HTTPException(
+            403, "Memory maintenance is admin-only when accounts are enabled."
+        )
     return await _get_mem().cleanup_old_memory(max_age_days)
 
 

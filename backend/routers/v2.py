@@ -3,7 +3,9 @@ Extended Intelligence router — Analytics, Gamification, Automation,
 NSW Curriculum, Advanced Study Intelligence.
 """
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from datetime import UTC
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -317,23 +319,53 @@ async def export_csv(subject: str | None = None):
 
 
 @router.get("/usage/summary")
-async def usage_summary(days: int = 30):
+async def usage_summary(request: Request, days: int = 30):
     """Aggregate AI usage for the last N days (tokens, requests, est. cost).
 
     Token counts are provider-reported (exact). Cost figures are estimates
     from config/pricing.py — Ollama is $0 unless a cloud provider is enabled.
+    Accounts mode: the signed-in student gets THEIR usage only; admins use
+    /api/v2/admin/overview for fleet-wide numbers.
     """
-    from services.usage_service import get_summary
+    from services import accounts, gate
+    from services.usage_service import get_summary, user_summary
 
+    if accounts.accounts_enabled():
+        return user_summary(gate.current_user(request)["username"], days)
     return get_summary(days)
 
 
 @router.get("/usage/today")
-async def usage_today():
-    """Today's per-provider/model AI usage rollup."""
-    from services.usage_service import get_today
+async def usage_today(request: Request):
+    """Today's per-provider/model AI usage rollup (own data in accounts mode)."""
+    from services import accounts, gate
+    from services.usage_service import get_today, user_summary
 
+    if accounts.accounts_enabled():
+        from datetime import datetime
+
+        username = gate.current_user(request)["username"]
+        mine = user_summary(username, days=1)
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        return {"date": today, "usage": mine["by_day"].get(today, {"providers": {}})}
     return {"date": _today_iso(), "usage": get_today()}
+
+
+@router.post("/feedback")
+async def submit_feedback(request: Request):
+    """Help & feedback (Section 13A): any signed-in user can report."""
+    from services import feedback as feedback_svc
+    from services import gate
+
+    body = await request.json()
+    try:
+        return feedback_svc.submit(
+            gate.current_user(request),
+            str(body.get("kind", "feedback")),
+            str(body.get("message", "")),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 def _today_iso():

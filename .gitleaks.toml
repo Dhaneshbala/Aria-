@@ -1,0 +1,14 @@
+# Gitleaks configuration for ARIA.
+#
+# The only allowlist is the deterministic test-suite fixture tree: those
+# files contain intentionally fake credentials (e.g. "SturdyPass123")
+# created and verified by tests in-process against a temporary data
+# directory. No real secret ever lives in the repository — real keys are
+# provided at runtime via the environment (see .env.example).
+title = "ARIA secret scanning"
+
+[allowlist]
+  description = "Backend test fixtures: fake, throwaway credentials used by the test-suite only."
+  paths = [
+    '''(^|/)backend/tests/''',
+  ]
