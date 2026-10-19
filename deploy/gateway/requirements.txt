@@ -1,0 +1,5 @@
+# ARIA Gateway runtime deps (deploy/gateway/).
+# Test extras (pytest, respx) are installed by CI and dev tooling, not here.
+fastapi>=0.115.0
+uvicorn[standard]>=0.20.0
+httpx>=0.24.0

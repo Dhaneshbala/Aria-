@@ -123,10 +123,13 @@ on request), and a support email.
 ## 6. Product work needed (I can build most of this now, $0)
 
 Now (no card, no parent needed):
-- [ ] **Gateway service** (FastAPI inside this repo's `deploy/` path): one
-  upstream key in env, user-token table, daily/monthly quota, per-user
-  metering + spend log, model allowlist, batch of one queue to smooth
-  bursts. Testable end-to-end with a mock upstream.
+
+- [x] **Gateway service** (FastAPI in `deploy/gateway/`): one upstream
+  key in env, hashed user-token table, daily/monthly cost caps, per-token
+  metering + spend ledger, model allowlist, kill switch; 18
+  mocked-upstream e2e tests green (2026-10-19). The "batch of one queue"
+  is *deliberately not built yet* — batched requests cost less but take
+  ~1h, the wrong shape for interactive chat; revisit later.
 - [ ] **ARIA client "cloud brain" toggle** (off by default): points at a
   gateway base URL + user token; falls back to local brain on any failure.
   The existing `ARIA_API_TOKEN` pattern, reused.

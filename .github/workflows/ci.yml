@@ -25,6 +25,20 @@ jobs:
       # (DTZ deferred with documented ignores in pyproject).
       - run: python -m ruff check .
 
+  gateway:
+    # Cloud Boost proxy (deploy/gateway) — mocked-upstream e2e + lint.
+    # Phase 0 gate from docs/BUSINESS.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install fastapi httpx uvicorn pytest respx ruff
+      - run: python -m pytest deploy/gateway/tests -q
+      - run: python -m ruff check deploy/gateway
+      - run: python -m ruff format --check deploy/gateway
+
   e2e:
     # Full deterministic hot-loop + visual smoke: starts its own backend
     # (portable `python`, see E2E_BACKEND_CMD) and Vite dev server, then
