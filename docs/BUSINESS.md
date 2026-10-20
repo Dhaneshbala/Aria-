@@ -142,6 +142,9 @@ Pilot phase (needs parent):
 
 Paid phase:
 - [ ] Stripe (parent), $8.99/month automation, refund flow.
+      → designed first in `docs/PAYMENTS_DESIGN.md` (top-ups via Checkout
+        webhook, idempotent, kill-switched; subscriptions only after
+        the pilot proves repayments).
 
 ---
 
