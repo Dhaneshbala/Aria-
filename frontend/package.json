@@ -30,7 +30,7 @@
     "web-vitals": "^6.2.3",
     "workbox-window": "^7.4.1",
     "zod": "^4.6.7",
-    "zustand": "^4.5.2"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@lhci/cli": "^0.15.1",
