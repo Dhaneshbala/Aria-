@@ -61,4 +61,4 @@ tenacity>=9.0.0
 pydantic-settings>=2.0.0
 
 # Observability (Oracle box)
-prometheus-client>=0.20.0
+prometheus-client>=0.26.0
