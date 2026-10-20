@@ -36,11 +36,16 @@ const MODE_LABELS = {
 }
 
 export default function StatusBar() {
-  const { ollamaStatus, currentIntents, config, isStreaming, mode, setOllamaStatus } = useStore()
+  const { ollamaStatus, currentIntents, config, isStreaming, mode, setOllamaStatus, authUser } = useStore()
   const [checking, setChecking] = useState(false)
   const [memLow, setMemLow] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+
+  // /api/system/diagnostics is an operator surface (accounts mode denies
+  // students) — only poll it for admins/local owner; the health dot
+  // still covers connectivity for everyone.
+  const canProbeSystem = !authUser || authUser.role === 'admin' || authUser.role === 'superadmin'
 
   const recheck = async () => {
     setChecking(true)
@@ -50,17 +55,20 @@ export default function StatusBar() {
     } catch {
       setOllamaStatus('error')
     }
-    try {
-      const d = await getDiagnostics()
-      setMemLow(d?.checks?.memory?.ok === false)
-    } catch {
-      // diagnostics is best-effort; health dot already covers outages
+    if (canProbeSystem) {
+      try {
+        const d = await getDiagnostics()
+        setMemLow(d?.checks?.memory?.ok === false)
+      } catch {
+        // diagnostics is best-effort; health dot already covers outages
+      }
     }
     setChecking(false)
   }
 
   // Poll RAM pressure alongside health — silent unless degraded.
   useEffect(() => {
+    if (!canProbeSystem) return undefined
     let cancelled = false
     const checkMem = async () => {
       try {
@@ -75,7 +83,7 @@ export default function StatusBar() {
       if (document.visibilityState === 'visible') checkMem()
     }, 120000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [])
+  }, [canProbeSystem])
 
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 border-b border-[#1e1e1e] bg-[#111] text-xs min-h-[34px]">
