@@ -21,16 +21,24 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-PLANS_FILE = DATA_DIR / "exam_plans.json"
+PLANS_FILE = DATA_DIR / "exam_plans.json"  # legacy path; see _plans_file()
 
 _LOCK = threading.RLock()
 
 
+def _plans_file() -> Path:
+    """One exam-plans file per account (stage 2); base path in local mode."""
+    from services.scoping import store_path
+
+    return store_path("exam_plans.json")
+
+
 def _load() -> list[dict]:
     with _LOCK:
-        if PLANS_FILE.exists():
+        plans_file = _plans_file()
+        if plans_file.exists():
             try:
-                data = json.loads(PLANS_FILE.read_text(encoding="utf-8"))
+                data = json.loads(plans_file.read_text(encoding="utf-8"))
                 return data if isinstance(data, list) else []
             except Exception:
                 return []
@@ -39,7 +47,9 @@ def _load() -> list[dict]:
 
 def _save(plans: list[dict]) -> None:
     with _LOCK:
-        PLANS_FILE.write_text(
+        plans_file = _plans_file()
+        plans_file.parent.mkdir(parents=True, exist_ok=True)
+        plans_file.write_text(
             json.dumps(plans, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 

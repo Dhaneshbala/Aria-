@@ -22,9 +22,9 @@ _LOCK = threading.RLock()
 
 
 def _data_file() -> Path:
-    from models.database import DATA_DIR
+    from services.scoping import store_path
 
-    return DATA_DIR / "mistakes.json"
+    return store_path("mistakes.json")
 
 
 def _norm(question: str) -> str:

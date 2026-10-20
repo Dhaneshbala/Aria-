@@ -27,16 +27,24 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-MASTERY_FILE = DATA_DIR / "maths_mastery.json"
+MASTERY_FILE = DATA_DIR / "maths_mastery.json"  # legacy path; see _mastery_file()
 
 _LOCK = threading.RLock()
 
 
+def _mastery_file() -> Path:
+    """One mastery file per account (stage 2); base path in local mode."""
+    from services.scoping import store_path
+
+    return store_path("maths_mastery.json")
+
+
 def _load_mastery() -> dict:
     with _LOCK:
-        if MASTERY_FILE.exists():
+        mastery_file = _mastery_file()
+        if mastery_file.exists():
             try:
-                data = json.loads(MASTERY_FILE.read_text(encoding="utf-8"))
+                data = json.loads(mastery_file.read_text(encoding="utf-8"))
                 return data if isinstance(data, dict) else {}
             except Exception:
                 return {}
@@ -45,15 +53,17 @@ def _load_mastery() -> dict:
 
 def _save_mastery(data: dict) -> None:
     with _LOCK:
+        mastery_file = _mastery_file()
+        mastery_file.parent.mkdir(parents=True, exist_ok=True)
         tmp_fd, tmp_path = tempfile.mkstemp(
-            dir=str(DATA_DIR), prefix=".maths_mastery.tmp."
+            dir=str(mastery_file.parent), prefix=".maths_mastery.tmp."
         )
         try:
             with open(tmp_fd, "w", encoding="utf-8") as f:
                 f.write(json.dumps(data, indent=2, ensure_ascii=False))
                 f.flush()
                 os.fsync(f.fileno())
-            Path(tmp_path).replace(MASTERY_FILE)
+            Path(tmp_path).replace(mastery_file)
         finally:
             p = Path(tmp_path)
             if p.exists():
@@ -471,10 +481,28 @@ def _prune_locked() -> None:
         _SESSIONS.pop(oldest, None)
 
 
+def _session_owner() -> str | None | object:
+    """The account this request runs under; _UNSET when none could be
+    resolved (a bot/CLI call outside any request context) — such sessions
+    stay ownerless and remain usable by their creator by luck of the
+    random id, same as today."""
+    try:
+        from services.scoping import scoped_user
+
+        return scoped_user()
+    except Exception:
+        return _UNSET
+
+
+_UNSET = object()
+
+
 def register_session(topic_id: str, tier: str, questions: list[dict]) -> str:
     """Persist the generated set; returns the session id to pass to submit."""
     sid = _uuid.uuid4().hex
+    owner = _session_owner()
     payload = {
+        "owner": None if owner is _UNSET else owner,
         "topic_id": topic_id,
         "tier": tier,
         "created_ts": datetime.now(UTC).timestamp(),
@@ -495,8 +523,17 @@ def register_session(topic_id: str, tier: str, questions: list[dict]) -> str:
 
 
 def get_session(sid: str) -> dict | None:
+    """The session for THIS account. Another account's session id simply
+    does not exist for them (403-equivalent, without the extra tuple)."""
     with _SESSIONS_LOCK:
-        return _SESSIONS.get(sid)
+        session = _SESSIONS.get(sid)
+        if session is None:
+            return None
+        owner = _session_owner()
+        stored = session.get("owner")
+        if owner is _UNSET or stored is None:
+            return session  # legacy/anonymous session — creator-only by luck of the random id
+        return session if owner == stored else None
 
 
 def record_session_result(sid: str, marks: list[bool] | None = None) -> dict:

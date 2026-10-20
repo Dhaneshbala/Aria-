@@ -32,18 +32,29 @@ class NotebookService:
     _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
     def __init__(self):
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self._base_dir().mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _base_dir() -> Path:
+        """This account's notebooks directory (stage 2).
+
+        Local mode → the historic ``DATA_DIR/notebooks`` (unchanged);
+        accounts mode → ``DATA_DIR/users/<username>/notebooks``.
+        """
+        from services.scoping import store_dir
+
+        return store_dir("notebooks")
 
     def _safe_path(self, notebook_id: str) -> Path | None:
         """Notebook ids are used in filenames — never allow traversal or odd ids."""
         if not self._ID_RE.match(notebook_id or ""):
             return None
-        return DATA_DIR / f"{notebook_id}.json"
+        return self._base_dir() / f"{notebook_id}.json"
 
     def list_notebooks(self) -> list[dict]:
         """List all notebooks."""
         notebooks = []
-        for f in DATA_DIR.glob("*.json"):
+        for f in self._base_dir().glob("*.json"):
             try:
                 data = json.loads(f.read_text())
                 notebooks.append(
@@ -106,7 +117,7 @@ class NotebookService:
             "updated": datetime.now().isoformat(),
             "persona": "You are a helpful study assistant. Answer using ONLY the sources in this notebook. Always cite sources with [N] format.",
         }
-        path = DATA_DIR / f"{notebook_id}.json"
+        path = self._base_dir() / f"{notebook_id}.json"
         with self._LOCK:
             path.write_text(json.dumps(notebook, indent=2))
         return notebook
@@ -456,7 +467,7 @@ CITATION RULES:
 
     def _save_notebook(self, notebook: dict):
         """Atomic save for a notebook."""
-        path = DATA_DIR / f"{notebook['id']}.json"
+        path = self._base_dir() / f"{notebook['id']}.json"
         notebook["updated"] = datetime.now().isoformat()
         path.write_text(json.dumps(notebook, indent=2))
 

@@ -15,13 +15,20 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-KG_FILE = DATA_DIR / "knowledge_graph.json"
+LEGACY_KG_FILE = DATA_DIR / "knowledge_graph.json"
+
+
+def _kg_file():
+    """One knowledge-graph file per account (stage 2)."""
+    from services.scoping import store_path
+
+    return store_path("knowledge_graph.json")
 
 
 def _load():
-    if KG_FILE.exists():
+    if _kg_file().exists():
         try:
-            return json.loads(KG_FILE.read_text())
+            return json.loads(_kg_file().read_text())
         except Exception:
             pass
     return {"nodes": {}, "edges": [], "last_updated": None}
@@ -31,17 +38,17 @@ def _save(data):
     import tempfile
 
     data["last_updated"] = datetime.now(UTC).isoformat()
-    KG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _kg_file().parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, indent=2)
     fd, tmp_path = tempfile.mkstemp(
-        dir=str(KG_FILE.parent), prefix=".knowledge_graph.tmp."
+        dir=str(_kg_file().parent), prefix=".knowledge_graph.tmp."
     )
     try:
         with open(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        Path(tmp_path).replace(KG_FILE)
+        Path(tmp_path).replace(_kg_file())
     finally:
         p = Path(tmp_path)
         if p.exists():

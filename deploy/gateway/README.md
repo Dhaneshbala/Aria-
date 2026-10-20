@@ -144,3 +144,14 @@ are both live.
 
 18 tests, all against a mocked Anthropic via respx — the Phase 0 gate in
 `docs/BUSINESS.md` ("Mock-e2e green"). CI runs the same suite.
+
+## ARIA backend integration (Section 13 Stage 2)
+
+Setting `ARIA_GATEWAY_URL` + `ARIA_GATEWAY_TOKEN` in the ARIA backend
+routes **all** Anthropic traffic through the gateway instead of
+`api.anthropic.com` — the backend carries only its own `gw_` token,
+never a real API key. Cloud consent (`ARIA_CLOUD_CONSENT=1`) is still
+required. Two ledgers stay deliberately separate: the gateway meters
+real operator cost in dollar floats; the ARIA wallet (microdollars)
+debts each student's prepaid credit. Also note `/v1/usage` and the
+admin endpoints are the operator's — ARIA never calls them.

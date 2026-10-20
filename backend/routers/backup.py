@@ -114,6 +114,29 @@ async def create_backup(include_uploads: bool = False):
             _safe_add(zf, aria_dir / name, f"aria_data/{name}")
         _safe_add(zf, aria_dir / "chromadb", "aria_data/chromadb")
 
+        # Stage 2: everything else that holds user data — the flat
+        # per-user stores, the whole users/ tree (accounts-mode stage-2
+        # partitions) and the KB/notebook roots.
+        for name in (
+            "todos.json",
+            "mistakes.json",
+            "spaced_repetition.json",
+            "exam_plans.json",
+            "maths_mastery.json",
+            "gamification.json",
+            "learning_style.json",
+            "knowledge_graph.json",
+            "background_tasks.json",
+            "titles.json",
+            "conversation_owners.json",
+            "cache.json",
+            "embed_cache.json",
+        ):
+            _safe_add(zf, aria_dir / name, f"aria_data/{name}")
+        _safe_add(zf, aria_dir / "users", "aria_data/users")
+        _safe_add(zf, aria_dir / "knowledge_base", "aria_data/knowledge_base")
+        _safe_add(zf, aria_dir / "notebooks", "aria_data/notebooks")
+
         # App data
         data_dir = BACKEND_DIR / "data"
         for name in APP_DATA_FILES:

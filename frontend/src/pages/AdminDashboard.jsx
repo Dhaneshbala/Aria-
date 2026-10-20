@@ -355,6 +355,8 @@ function CreditsTab({ actions, reloadKey }) {
   }, [])
   useEffect(() => { load() }, [load, reloadKey])
 
+  const [kindMode, setKindMode] = useState('auto')
+
   function grant(e) {
     e.preventDefault()
     setErr('')
@@ -364,11 +366,16 @@ function CreditsTab({ actions, reloadKey }) {
       setErr('Enter the user id (shown in the Users tab) and a non-zero amount.')
       return
     }
+    const kind = kindMode === 'payment' ? 'payment' : (delta > 0 ? 'grant' : 'adjustment')
+    if (kind === 'payment' && delta <= 0) {
+      setErr('A payment records money RECEIVED — use a positive amount. Negative entries are adjustments or refunds.')
+      return
+    }
     actions.withStepUp(
-      `Credit ${delta > 0 ? 'grant' : 'adjustment'} of ${money(delta)} to user #${uid}`,
+      `Credit ${kind} of ${money(delta)} to user #${uid}`,
       async p => {
         const r = await p(`/credits/${uid}`, {
-          delta_dollars: delta, reason, kind: delta > 0 ? 'grant' : 'adjustment',
+          delta_dollars: delta, reason, kind,
         })
         setNote(`Done — new balance ${money(r.balance_usd)}.`)
       },
@@ -404,6 +411,14 @@ function CreditsTab({ actions, reloadKey }) {
             <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="5.00 or -2"
               className="mt-1 w-36 bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none" />
           </label>
+          <label>
+            <span className="text-[10px] text-[#888] block">Entry type</span>
+            <select value={kindMode} onChange={e => setKindMode(e.target.value)}
+              className="mt-1 bg-[#0f0f0f] border border-[#2a2a2a] rounded-lg px-3 py-2 text-xs text-[#e8e8e8] outline-none">
+              <option value="auto">Grant / adjustment</option>
+              <option value="payment">Payment (money received)</option>
+            </select>
+          </label>
           <label className="flex-1 min-w-40">
             <span className="text-[10px] text-[#888] block">Reason (required, audited)</span>
             <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. pilot starter grant"
@@ -414,6 +429,11 @@ function CreditsTab({ actions, reloadKey }) {
             <DollarSign size={12} /> Apply
           </button>
         </form>
+        <p className="text-[10px] text-[#777] mt-2">
+          Card payments (Stripe / Play Billing) are NOT implemented. The “Payment”
+          option records money you have verified outside ARIA (cash or bank
+          transfer) into the audited ledger — it charges nothing.
+        </p>
         {(note || err) && (
           <p className={`text-[11px] mt-2 ${err ? 'text-red-300' : 'text-green-300'}`}>{err || note}</p>
         )}

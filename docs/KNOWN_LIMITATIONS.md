@@ -35,11 +35,17 @@ relevant tests — not from filenames.
   only. There is no Capacitor wrapper, no signed Android project, no Billing
   integration, no Play data-safety paperwork. Everyone uses it via browser
   install today. See the "Android readiness" section in the README.
-* **Multi-user accounts (Stage K)** — ARIA is deliberately single-student on
-  one machine. There is no user-registration/login system; the optional
-  `ARIA_API_TOKEN`/`ARIA_AGENT_TOKEN` gates protect published servers.
-  Cross-account isolation is not applicable yet (documents/memory are shared
-  by design on the family machine).
+* **Multi-user accounts (Stage K)** — implemented opt-in in Section 13
+  (Stages 1–2): `ARIA_AUTH_MODE=accounts` adds registration (students by
+  default), CLI-bootstrapped admins, step-up-protected admin APIs, and
+  per-account stores for chats, usage, wallets, todos, mistakes, exam
+  plans, maths progress, study profile, notebooks, knowledge base and
+  prompt caches; system/backup/agent tools are admin-only. Honest edges
+  that remain: card payments (Stripe / Play Billing) are not implemented
+  — the wallet accepts verified manual `payment` records only;
+  `config.json` (model choice, cloud consent) stays a global operator
+  setting; and the default `local` mode remains the recommended posture
+  on a family machine until the pilot validates accounts mode.
 * **Voice TTS voices** — macOS `say` uses the system default voice; no voice
   picker.
 * **Research** — Google scrape → Wikipedia → DDG chain, no paid search API.

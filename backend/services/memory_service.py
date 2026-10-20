@@ -139,10 +139,17 @@ def assign_legacy_conversations() -> int:
 
 def _first_admin_username() -> str | None:
     try:
-        from services.accounts import list_users
+        from services.accounts import DEFAULT_LOCAL_USER, list_users
 
         for u in list_users(include_local=True):
-            if u["role"] in ("superadmin", "admin") and u["status"] == "active":
+            # Legacy data belongs to the human operator — never to the
+            # built-in local-mode account (role superadmin but not
+            # loggable, so anything assigned there is unreachable).
+            if (
+                u["role"] in ("superadmin", "admin")
+                and u["status"] == "active"
+                and u["username"] != DEFAULT_LOCAL_USER
+            ):
                 return u["username"]
     except Exception as e:
         logger.debug("admin lookup failed: %s", e)
@@ -596,10 +603,15 @@ class MemoryService:
             ]
         return results_list[:limit]
 
-    async def get_conversations(self, user: str | None = None) -> list[dict]:
+    async def raw_conversations(self, user: str | None = None) -> dict[str, list[dict]]:
+        """cid → owned turns, for aggregators (gamification streaks)."""
         convs = _load_json(CONVERSATIONS_FILE, {})
         if user is not None:
             convs = {cid: t for cid, t in convs.items() if cid in _owned_cids(user)}
+        return convs
+
+    async def get_conversations(self, user: str | None = None) -> list[dict]:
+        convs = await self.raw_conversations(user)
         titles = _load_titles()
         result = []
         for cid, turns in convs.items():
@@ -854,8 +866,10 @@ class MemoryService:
     # ── Study Profile ─────────────────────────────────────────────────────────
 
     async def get_profile(self) -> dict:
+        from services.scoping import store_path
+
         return _load_json(
-            PROFILE_FILE,
+            store_path("study_profile.json"),
             {
                 "subjects": {},
                 "streak": 0,
@@ -889,7 +903,9 @@ class MemoryService:
         profile["weak_areas"] = weak
         profile["strong_areas"] = strong
         profile["last_active"] = datetime.now(UTC).isoformat()
-        _save_json(PROFILE_FILE, profile)
+        from services.scoping import store_path
+
+        _save_json(store_path("study_profile.json"), profile)
         return profile
 
     # ── Adaptive Learning ─────────────────────────────────────────────────────

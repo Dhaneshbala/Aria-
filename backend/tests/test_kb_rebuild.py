@@ -47,7 +47,8 @@ def _sample_text() -> str:
 
 @pytest.fixture
 def svc():
-    return KnowledgeBaseService()
+    # Local-mode (base-path) partition — the standard Stage-2 accessor.
+    return KnowledgeBaseService.for_current_user()
 
 
 class TestIngestPersistence:

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ACHIEVEMENTS_FILE = DATA_DIR / "achievements.json"
-GAMIFICATION_FILE = DATA_DIR / "gamification.json"
-PROFILE_FILE = DATA_DIR / "study_profile.json"
+GAMIFICATION_FILE = DATA_DIR / "gamification.json"  # legacy path; see _gam_file()
+PROFILE_FILE = DATA_DIR / "study_profile.json"  # legacy path; see _profile_file()
 
 
 def _atomic_write(path: Path, text: str):
@@ -196,10 +196,23 @@ ACHIEVEMENT_DEFS = [
 ]
 
 
+def _gam_file():
+    """One gamification file per account (stage 2)."""
+    from services.scoping import store_path
+
+    return store_path("gamification.json")
+
+
+def _profile_file():
+    from services.scoping import store_path
+
+    return store_path("study_profile.json")
+
+
 class GamificationService:
     def __init__(self):
         self._data = _load_json(
-            GAMIFICATION_FILE,
+            _gam_file(),
             {
                 "achievements": [],
                 "xp": 0,
@@ -273,7 +286,7 @@ class GamificationService:
                     self._data["level"] = 1 + self._data["xp"] // 100
 
         if new_achievements:
-            _save_json(GAMIFICATION_FILE, self._data)
+            _save_json(_gam_file(), self._data)
 
         return new_achievements
 
@@ -295,7 +308,7 @@ class GamificationService:
 
     def get_challenge(self) -> dict:
         """Generate a random challenge for the student."""
-        profile = _load_json(PROFILE_FILE, {})
+        profile = _load_json(_profile_file(), {})
         profile.get("subjects", {})
 
         challenges = [
@@ -343,7 +356,7 @@ class GamificationService:
 
     def get_leaderboard(self) -> dict:
         """Get personal leaderboard (subject performance ranking)."""
-        profile = _load_json(PROFILE_FILE, {})
+        profile = _load_json(_profile_file(), {})
         subjects = profile.get("subjects", {})
 
         entries = []

@@ -13,6 +13,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
 import chromadb
 from chromadb.config import Settings
@@ -246,26 +247,52 @@ def _detect_collection(filepath: str, text: str) -> str:
 
 
 class KnowledgeBaseService:
-    """Core knowledge base with ChromaDB vector storage and Ollama embeddings."""
+    """Core knowledge base with ChromaDB vector storage and Ollama embeddings.
 
-    _instance = None
+    Stage 2: one instance per account partition. Local mode keeps the
+    historic ``DATA_DIR/knowledge_base`` root (unchanged); accounts mode
+    gives each account its own root under ``DATA_DIR/users/<username>/`` —
+    own chroma store, own documents metadata, own persisted upload files,
+    so no account can search, read or delete another's documents.
+    """
+
+    _instances: ClassVar[dict[str, "KnowledgeBaseService"]] = {}
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
+        raise RuntimeError(
+            "Use KnowledgeBaseService.for_current_user() — "
+            "one instance per account partition"
+        )
 
-    def __init__(self):
-        if self._initialized:
-            return
-        self._initialized = True
+    @classmethod
+    def for_current_user(cls) -> "KnowledgeBaseService":
+        from services import scoping
+
+        user = scoping.scoped_user()
+        key = user or "__base__"
+        inst = cls._instances.get(key)
+        if inst is None:
+            inst = object.__new__(cls)
+            inst._init_instance(user)
+            cls._instances[key] = inst
+        return inst
+
+    def _init_instance(self, user: str | None) -> None:
+        from services import scoping
+
+        self._user = user
+        if user is None:
+            self._root = KB_DIR  # local mode — historic path, unchanged
+        else:
+            self._root = scoping.store_dir("knowledge_base", user)
+        self._files_dir = self._root / "files"
+        self._files_dir.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(
-            path=str(KB_DIR / "chroma"),
+            path=str(self._root / "chroma"),
             settings=Settings(anonymized_telemetry=False),
         )
         self._collections: dict[str, chromadb.Collection] = {}
-        self._meta_path = KB_DIR / "documents.json"
+        self._meta_path = self._root / "documents.json"
         self._documents: dict[str, dict] = self._load_meta()
         self._init_collections()
 
@@ -375,10 +402,10 @@ class KnowledgeBaseService:
     ) -> dict:
         """Ingest a file into the knowledge base. Returns ingestion stats.
 
-        A permanent copy of the file is stored under KB_FILES_DIR (keyed by
-        content hash) so delete/rebuild flows keep working after the caller's
-        temp file is gone. `original_name` preserves the human-facing title
-        when re-ingesting a persisted copy.
+        A permanent copy of the file is stored under this instance's
+        files dir (keyed by content hash) so delete/rebuild flows keep
+        working after the caller's temp file is gone. `original_name`
+        preserves the human-facing title when re-ingesting a persisted copy.
         """
         from services.document_service import DocumentService
         from services.ollama_service import OllamaService
@@ -397,7 +424,7 @@ class KnowledgeBaseService:
 
         # Persist a permanent copy. If the caller passed one of our own
         # persisted copies (rebuild path), re-use it as-is.
-        persistent = KB_FILES_DIR / f"{file_hash}{original_suffix}"
+        persistent = self._files_dir / f"{file_hash}{original_suffix}"
         if Path(filepath) != persistent and not persistent.exists():
             try:
                 shutil.copyfile(filepath, persistent)
@@ -598,7 +625,7 @@ class KnowledgeBaseService:
         if delete_file:
             try:
                 fp = Path(str(doc.get("file_path", "")))
-                if fp and fp.parent == KB_FILES_DIR:
+                if fp and fp.parent == self._files_dir:
                     fp.unlink(missing_ok=True)
             except Exception as e:
                 logger.debug("Could not remove persisted copy %s: %s", file_hash, e)

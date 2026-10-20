@@ -125,6 +125,18 @@ async def clear_all_memory():
             except Exception:
                 pass
             p.unlink()
+    # Stage 2: also wipe every account's per-user study profile (backed up).
+    users_root = DATA_DIR / "users"
+    if users_root.is_dir():
+        for udir in sorted(users_root.iterdir()):
+            p = udir / "study_profile.json"
+            ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            if p.exists():
+                try:
+                    shutil.copy2(p, udir / f"study_profile.json.bak-{ts}")
+                except Exception:
+                    pass
+                p.unlink()
     return {"cleared": True}
 
 

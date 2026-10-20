@@ -5,9 +5,10 @@
   everything is attributed to the built-in ``local-owner`` account.
 - ``accounts``: every /api call needs `Authorization: Bearer ses_…`.
   Opening paths: /api/health, /api/auth/register, /api/auth/login.
-  ``/api/admin*`` and ``/api/v2/admin*`` additionally require the
-  admin/superadmin role, and **mutating** admin calls require a fresh
-  step-up (``POST /api/auth/admin/unlock``, 15-minute window).
+  ``/api/admin*``/``/api/v2/admin*`` plus the operator surfaces
+  (``/api/system*``, ``/api/backup*``, ``/api/agent*``) require the
+  admin/superadmin role, and **mutating** calls on those paths require a
+  fresh step-up (``POST /api/auth/admin/unlock``, 15-minute window).
 
 Pure-ASGI middleware (BaseHTTPMiddleware would run handlers in a separate
 task and lose the user ContextVar). It stamps:
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 _OPEN_PREFIXES = ("/api/health", "/api/auth/register", "/api/auth/login")
 _ADMIN_PREFIXES = ("/api/admin", "/api/v2/admin")
+# Operator surfaces (stage 2): system logs/diagnostics, full-data backups
+# and the agent's server-side terminal/file tools are the operator's
+# instruments — never a student's. Admin role required in accounts mode,
+# and mutations additionally need the step-up window.
+_OPERATOR_PREFIXES = ("/api/system", "/api/backup", "/api/agent")
 
 
 def _err(status: int, type_: str, message: str) -> JSONResponse:
@@ -65,6 +71,9 @@ def init() -> None:
     accounts.ensure_local_user()
     if accounts.accounts_enabled():
         _migrate_legacy_conversations()
+        from services.scoping import migrate_legacy_stores
+
+        migrate_legacy_stores()
 
 
 def current_user(request: Any) -> dict[str, Any]:
@@ -127,11 +136,27 @@ class GateMiddleware:
         request_scope.set_user(data["username"])
 
         is_admin_path = any(path.startswith(p) for p in _ADMIN_PREFIXES)
+        is_operator_path = any(path.startswith(p) for p in _OPERATOR_PREFIXES)
         mutating = scope.get("method", "GET").upper() not in (
             "GET",
             "HEAD",
             "OPTIONS",
         )
+        if is_operator_path and role not in ("admin", "superadmin"):
+            audit_log(
+                data["id"],
+                data["username"],
+                "operator_path_denied",
+                target=path,
+                outcome="denied",
+            )
+            await _err(
+                403,
+                "forbidden",
+                "Operator tools (system, backups, agent) require an"
+                " administrator account.",
+            )(scope, receive, send)
+            return
         if is_admin_path and role not in ("admin", "superadmin"):
             audit_log(
                 data["id"],
@@ -146,7 +171,11 @@ class GateMiddleware:
                 "Administrator role required for this endpoint.",
             )(scope, receive, send)
             return
-        if is_admin_path and mutating and not data.get("admin_unlocked"):
+        if (
+            (is_admin_path or is_operator_path)
+            and mutating
+            and not data.get("admin_unlocked")
+        ):
             await _err(
                 403,
                 "admin_locked",

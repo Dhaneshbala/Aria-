@@ -1,7 +1,9 @@
 """
-Todo / Assignment Inbox — solo student organization.
+Todo / Assignment Inbox — per-student organization.
 
-Stores personal todos in ~/.aria_data/todos.json with atomic writes + RLock.
+Each account's todos live in their own store (services/scoping.py):
+accounts mode → DATA_DIR/users/<username>/todos.json, local mode → the
+historic ~/.aria_data/todos.json, unchanged. Atomic writes + RLock.
 Used by chat brain ("add maths HW due Fri") and Dashboard ring.
 """
 
@@ -21,11 +23,18 @@ TODO_FILE = DATA_DIR / "todos.json"
 _LOCK = threading.RLock()
 
 
+def _todo_file() -> Path:
+    """One file per account (stage 2); base path in local mode."""
+    from services.scoping import store_path
+
+    return store_path("todos.json")
+
+
 def _load() -> list[dict]:
     with _LOCK:
-        if TODO_FILE.exists():
+        if _todo_file().exists():
             try:
-                return json.loads(TODO_FILE.read_text(encoding="utf-8"))
+                return json.loads(_todo_file().read_text(encoding="utf-8"))
             except Exception:
                 return []
         return []
@@ -33,14 +42,16 @@ def _load() -> list[dict]:
 
 def _save(todos: list[dict]):
     with _LOCK:
+        file = _todo_file()
+        file.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(todos, indent=2, ensure_ascii=False)
-        fd, tmp = tempfile.mkstemp(dir=str(TODO_FILE.parent), prefix=".todos.tmp.")
+        fd, tmp = tempfile.mkstemp(dir=str(file.parent), prefix=".todos.tmp.")
         try:
             with open(fd, "w", encoding="utf-8") as f:
                 f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
-            Path(tmp).replace(TODO_FILE)
+            Path(tmp).replace(file)
         finally:
             p = Path(tmp)
             if p.exists():

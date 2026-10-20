@@ -14,7 +14,16 @@ from services.ollama_service import OllamaService
 from services.untrusted import UNTRUSTED_RULES, wrap_untrusted
 
 router = APIRouter(prefix="/api/kb", tags=["knowledge-base"])
-kb_svc = KnowledgeBaseService()
+
+
+def kb_svc():
+    """The KnowledgeBaseService partition for the CURRENT account.
+
+    Local mode → the historic shared instance; accounts mode → the
+    requesting account's own store (stage 2 isolation)."""
+    return KnowledgeBaseService.for_current_user()
+
+
 ollama = OllamaService()
 
 MAX_KB_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -54,7 +63,11 @@ async def upload_to_kb(
         tmp_path = tmp.name
 
     try:
-        result = await kb_svc.ingest_file(tmp_path, collection=collection)
+        result = await kb_svc().ingest_file(
+            tmp_path,
+            collection=collection,
+            original_name=os.path.basename(file.filename or "file"),
+        )
         return result
     finally:
         os.unlink(tmp_path)
@@ -74,7 +87,11 @@ async def upload_multiple(
             tmp.write(data)
             tmp_path = tmp.name
         try:
-            result = await kb_svc.ingest_file(tmp_path, collection=collection)
+            result = await kb_svc().ingest_file(
+                tmp_path,
+                collection=collection,
+                original_name=os.path.basename(file.filename or "file"),
+            )
             results.append(result)
         except Exception as e:
             results.append(
@@ -95,7 +112,7 @@ async def search_kb(
 ):
     """Semantic search across the knowledge base."""
     col_list = [c.strip() for c in collections.split(",")] if collections else None
-    results = await kb_svc.search(q, collections=col_list, n_results=n)
+    results = await kb_svc().search(q, collections=col_list, n_results=n)
     results = _cap_results(results)
     return {"query": q, "results": results, "count": len(results)}
 
@@ -103,7 +120,7 @@ async def search_kb(
 @router.get("/documents")
 async def list_documents(collection: str | None = Query(default=None)):
     """List all ingested documents."""
-    docs = kb_svc.list_documents(collection=collection)
+    docs = kb_svc().list_documents(collection=collection)
     truncated = len(docs) > MAX_RESULTS
     docs = docs[:MAX_RESULTS]
     return {"documents": docs, "count": len(docs), "truncated": truncated}
@@ -112,7 +129,7 @@ async def list_documents(collection: str | None = Query(default=None)):
 @router.delete("/documents/{file_hash}")
 async def delete_document(file_hash: str):
     """Delete a document and its chunks from the knowledge base."""
-    ok = kb_svc.delete_document(file_hash)
+    ok = kb_svc().delete_document(file_hash)
     if ok:
         return {"status": "deleted", "file_hash": file_hash}
     return JSONResponse(status_code=404, content={"error": "Document not found"})
@@ -121,7 +138,7 @@ async def delete_document(file_hash: str):
 @router.get("/stats")
 async def get_stats():
     """Get knowledge base statistics."""
-    return kb_svc.get_stats()
+    return kb_svc().get_stats()
 
 
 @router.get("/collections")
@@ -133,7 +150,7 @@ async def list_collections():
 @router.post("/rebuild")
 async def rebuild_index():
     """Rebuild all embeddings (e.g. after changing embedding model)."""
-    result = await kb_svc.rebuild_index()
+    result = await kb_svc().rebuild_index()
     return result
 
 
@@ -149,7 +166,7 @@ async def ask_kb(
     except Exception:
         n = 6
     col_list = [c.strip() for c in collections.split(",")] if collections else None
-    results = await kb_svc.search(question, collections=col_list, n_results=n)
+    results = await kb_svc().search(question, collections=col_list, n_results=n)
     results = _cap_results(results)
 
     if not results:

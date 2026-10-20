@@ -52,12 +52,17 @@ try:
     memory_svc = MemoryService()
 except Exception:
     memory_svc = None
-try:
-    from services.knowledge_base_service import KnowledgeBaseService
 
-    kb_svc = KnowledgeBaseService()
-except Exception:
-    kb_svc = None
+
+def _kb_svc():
+    """The KB partition for THIS request (stage 2) — resolved lazily, so
+    accounts/local mode follows the request's scope, not import order."""
+    try:
+        from services.knowledge_base_service import KnowledgeBaseService
+
+        return KnowledgeBaseService.for_current_user()
+    except Exception:
+        return None
 
 
 # ── Retrieval speed budget (Option 1: 5x time-to-answer) ─────────────────────
@@ -540,7 +545,7 @@ async def orchestrate(
         return ""
 
     async def _fetch_kb():
-        if not config.get("knowledge_base_enabled") or kb_svc is None:
+        if not config.get("knowledge_base_enabled") or _kb_svc() is None:
             return [], ""
         try:
             kb_n = 6 if is_hard else 4
@@ -558,13 +563,13 @@ async def orchestrate(
                 kb_cols = None
             try:
                 results = await asyncio.wait_for(
-                    kb_svc.search(message, collections=kb_cols, n_results=kb_n),
+                    _kb_svc().search(message, collections=kb_cols, n_results=kb_n),
                     timeout=RETRIEVAL_TIMEOUT,
                 )
             except TypeError:
                 # Test fakes / legacy KB without `collections` kwarg.
                 results = await asyncio.wait_for(
-                    kb_svc.search(message, n_results=kb_n),
+                    _kb_svc().search(message, n_results=kb_n),
                     timeout=RETRIEVAL_TIMEOUT,
                 )
             if results:
@@ -1555,7 +1560,9 @@ async def orchestrate(
         game_svc = GamificationService()
         mem_tmp = _MS()
         profile = await mem_tmp.get_profile()
-        convs = await mem_tmp.get_conversations()
+        from services.scoping import scoped_user
+
+        convs = await mem_tmp.raw_conversations(scoped_user())
         new_achievements = game_svc.check_and_award_achievements(profile, convs)
         if new_achievements:
             progress = game_svc.get_progress()
@@ -1587,6 +1594,24 @@ async def orchestrate(
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 
+def _persona_name(config: dict) -> str:
+    """The student's name for prompts — their ACCOUNT display name in
+    accounts mode (each student sees their own name, not the operator's
+    global config value); the config value in local mode, unchanged."""
+    try:
+        from services.accounts import get_user_by_username
+        from services.request_scope import current_username
+        from services.scoping import accounts_mode
+
+        if accounts_mode():
+            u = get_user_by_username(current_username())
+            if u and u.get("display_name"):
+                return str(u["display_name"]).strip() or "Student"
+    except Exception:
+        pass
+    return config.get("student_name", "Student")
+
+
 def _build_system_prompt(
     intents,
     search_results,
@@ -1598,7 +1623,7 @@ def _build_system_prompt(
     cross_check=None,
     kb_context=None,
 ) -> str:
-    name = config.get("student_name", "Student")
+    name = _persona_name(config)
     age = config.get("student_age", 13)
     try:
         from models.database import get_student_grade as _get_grade

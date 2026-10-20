@@ -8,10 +8,16 @@ balance. Admin grants require a reason and are audited at the router.
 There is deliberately **no API that moves a balance without a ledger
 row**.
 
-Payment rails (Stripe / purchases / refunds) are NOT implemented in
-Stage 1 — those are BUSINESS.md milestone 2/3 work and the UI says so.
-What exists: admin grants, cloud-usage deductions and manual
-adjustments, all ledgered with exact balances.
+Payment rails (Stripe / Play Billing purchases) are NOT implemented —
+those are milestone 2/3 work and the UI says so. What DOES exist:
+admin grants, cloud-usage deductions, manual adjustments, and the
+**``payment`` ledger kind** — a manually verified top-up (bank transfer,
+cash receipt) recorded by an operator through the admin API with a
+reason. Recording a payment is bookkeeping: no card is charged and no
+gateway is called; it simply credits the wallet with a proper ledger row.
+
+Admin grants, cloud-usage deductions and manual adjustments are all
+ledgered with exact balances.
 """
 
 from __future__ import annotations
@@ -25,7 +31,8 @@ from typing import Any
 
 _LOCK = threading.Lock()
 
-_KINDS = ("grant", "usage", "adjustment", "refund")
+# ``payment`` = manually verified money received (operator bookkeeping).
+_KINDS = ("grant", "usage", "adjustment", "refund", "payment")
 _MIN_REASON = 3
 
 
@@ -55,7 +62,7 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
   ts TEXT NOT NULL,
   user_id INTEGER NOT NULL REFERENCES users(id),
   delta_micro INTEGER NOT NULL,
-  kind TEXT NOT NULL,          -- grant | usage | adjustment | refund
+  kind TEXT NOT NULL,          -- grant | usage | adjustment | refund | payment
   actor_id INTEGER,
   reason TEXT NOT NULL,
   balance_after_micro INTEGER NOT NULL
@@ -141,6 +148,11 @@ def apply(
         or delta_micro == 0
     ):
         raise ValueError("Amount must be a non-zero integer (micro-dollars).")
+    if kind == "payment" and delta_micro < 0:
+        raise ValueError(
+            "A payment records money received — the amount must be positive."
+            " Deductions are adjustments or refunds."
+        )
     if len(str(reason).strip()) < _MIN_REASON:
         raise ValueError("A reason of at least 3 characters is required.")
     reason = str(reason).strip()[:500]

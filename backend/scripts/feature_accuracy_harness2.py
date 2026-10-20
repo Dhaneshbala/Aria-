@@ -153,7 +153,7 @@ async def check_syllabus():
 
 
 async def check_kb_rag():
-    kb = KnowledgeBaseService()
+    kb = KnowledgeBaseService.for_current_user()
     content = (
         "The mitochondria is the powerhouse of the cell and produces ATP "
         "through cellular respiration."

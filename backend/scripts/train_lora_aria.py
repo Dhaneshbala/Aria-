@@ -121,7 +121,7 @@ def rebuild_chroma():
     try:
         from services.knowledge_base_service import KnowledgeBaseService
 
-        svc = KnowledgeBaseService()
+        svc = KnowledgeBaseService.for_current_user()
         stats = svc.get_stats()
         log_msg(f"Chroma stats before rebuild: {stats['total_chunks']} chunks")
         # Rebuild is heavy; we just log that new CHUNK 800/120 will apply to new ingests

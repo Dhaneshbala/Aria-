@@ -33,14 +33,28 @@ DATA_DIR = __import__("pathlib").Path(
         "ARIA_DATA_DIR", __import__("pathlib").Path.home() / ".aria_data"
     )
 )
-SR_FILE = DATA_DIR / "spaced_repetition.json"
-LEARNING_STYLE_FILE = DATA_DIR / "learning_style.json"
+SR_FILE = DATA_DIR / "spaced_repetition.json"  # legacy path; see _sr_file()
+LEARNING_STYLE_FILE = DATA_DIR / "learning_style.json"  # legacy path; see _style_file()
 KNOWLEDGE_MAP_FILE = DATA_DIR / "knowledge_map.json"
 
 
 import os
 import tempfile
 import threading
+
+
+def _sr_file():
+    """One spaced-repetition file per account (stage 2)."""
+    from services.scoping import store_path
+
+    return store_path("spaced_repetition.json")
+
+
+def _style_file():
+    from services.scoping import store_path
+
+    return store_path("learning_style.json")
+
 
 _JSON_LOCKS: dict[str, threading.RLock] = {}
 _JSON_LOCKS_LOCK = threading.Lock()
@@ -240,7 +254,7 @@ class AdvancedStudyIntelligence:
         self, front: str, back: str, subject: str = "general"
     ) -> dict:
         """Add a flashcard to the spaced repetition system."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         card = {
             "id": f"card_{int(datetime.now().timestamp() * 1000)}",
             "front": front,
@@ -254,7 +268,7 @@ class AdvancedStudyIntelligence:
             "created_at": datetime.now(UTC).isoformat(),
         }
         cards.append(card)
-        _save_json(SR_FILE, cards)
+        _save_json(_sr_file(), cards)
         return card
 
     async def review_flashcard(self, card_id: str, quality: int) -> dict:
@@ -262,7 +276,7 @@ class AdvancedStudyIntelligence:
         Update flashcard using SM-2 algorithm.
         quality: 0-5 (0=complete blackout, 5=perfect response)
         """
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         for card in cards:
             if card["id"] == card_id:
                 # SM-2 algorithm
@@ -303,7 +317,7 @@ class AdvancedStudyIntelligence:
                 if len(history) > 200:
                     card["review_history"] = history[-200:]
 
-                _save_json(SR_FILE, cards)
+                _save_json(_sr_file(), cards)
                 return card
 
         return {"error": "Card not found"}
@@ -312,7 +326,7 @@ class AdvancedStudyIntelligence:
         self, subject: str | None = None, limit: int = 20
     ) -> list[dict]:
         """Get cards due for review."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         now = datetime.now(UTC)
         due = []
         for card in cards:
@@ -331,7 +345,7 @@ class AdvancedStudyIntelligence:
 
     async def get_sr_stats(self) -> dict:
         """Get spaced repetition statistics."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         now = datetime.now(UTC)
 
         due = 0
@@ -371,11 +385,11 @@ class AdvancedStudyIntelligence:
 
     async def delete_flashcard(self, card_id: str) -> dict:
         """Delete a flashcard by ID."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         before = len(cards)
         cards = [c for c in cards if c["id"] != card_id]
         if len(cards) < before:
-            _save_json(SR_FILE, cards)
+            _save_json(_sr_file(), cards)
             return {"status": "deleted", "id": card_id}
         return {"error": "Card not found"}
 
@@ -383,7 +397,7 @@ class AdvancedStudyIntelligence:
         self, flashcards: list[dict], subject: str = "general"
     ) -> list[dict]:
         """Add multiple flashcards at once (e.g. from generated flashcard set)."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         added = []
         for fc in flashcards:
             card = {
@@ -400,12 +414,12 @@ class AdvancedStudyIntelligence:
             }
             cards.append(card)
             added.append(card)
-        _save_json(SR_FILE, cards)
+        _save_json(_sr_file(), cards)
         return added
 
     async def get_all_cards(self, subject: str | None = None) -> list[dict]:
         """Get all flashcards (not just due ones)."""
-        cards = _load_json(SR_FILE, [])
+        cards = _load_json(_sr_file(), [])
         if subject:
             cards = [c for c in cards if c.get("subject") == subject]
         return cards
@@ -507,7 +521,7 @@ class AdvancedStudyIntelligence:
         }
 
         # Save
-        _save_json(LEARNING_STYLE_FILE, result)
+        _save_json(_style_file(), result)
         return result
 
     # ═══════════════════════════════════════════════════════════════════════════

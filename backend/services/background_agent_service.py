@@ -21,13 +21,20 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-TASKS_FILE = DATA_DIR / "background_tasks.json"
+LEGACY_TASKS_FILE = DATA_DIR / "background_tasks.json"
+
+
+def _tasks_file():
+    """One background-tasks file per account (stage 2)."""
+    from services.scoping import store_path
+
+    return store_path("background_tasks.json")
 
 
 def _load_tasks():
-    if TASKS_FILE.exists():
+    if _tasks_file().exists():
         try:
-            return json.loads(TASKS_FILE.read_text())
+            return json.loads(_tasks_file().read_text())
         except Exception:
             pass
     return []
@@ -37,17 +44,17 @@ def _save_tasks(tasks):
     """Crash-safe atomic write (mkdir + tmp+rename+fsync)."""
     import tempfile
 
-    TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _tasks_file().parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(tasks, indent=2)
     fd, tmp_path = tempfile.mkstemp(
-        dir=str(TASKS_FILE.parent), prefix=".background_tasks.tmp."
+        dir=str(_tasks_file().parent), prefix=".background_tasks.tmp."
     )
     try:
         with open(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        Path(tmp_path).replace(TASKS_FILE)
+        Path(tmp_path).replace(_tasks_file())
     finally:
         p = Path(tmp_path)
         if p.exists():

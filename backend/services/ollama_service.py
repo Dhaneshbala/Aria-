@@ -130,6 +130,28 @@ def _atomic_write_json(path: _Path, data: dict):
                 pass
 
 
+def _ns() -> str:
+    """Per-user cache namespace (stage 2): accounts never share cached
+    completions or embeddings, local mode keeps the historic keys."""
+    try:
+        from services.scoping import scoped_user
+
+        u = scoped_user()
+        return f"u:{u}:" if u else ""
+    except Exception:
+        return ""
+
+
+def _embed_key(model: str, text: str) -> str:
+    """Stable, per-user-namespaced embed cache key."""
+    import hashlib
+
+    return (
+        f"{_ns()}{model}:"
+        f"{hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()}"
+    )
+
+
 def _load_cache():
     global _CACHE, _EMBED_CACHE
     with _CACHE_LOCK:
@@ -437,7 +459,8 @@ class OllamaService:
             f"{system}\n{prompt}\n{max_tokens}\n{think}\n{json_mode}\n{context_window}"
         )
         cache_key = (
-            f"complete:{model}:{_hashlib.sha256(_key_raw.encode()).hexdigest()[:16]}"
+            f"complete:{_ns()}{model}:"
+            f"{_hashlib.sha256(_key_raw.encode()).hexdigest()[:16]}"
         )
         cached = _CACHE.get(cache_key)
         if (
@@ -678,9 +701,8 @@ class OllamaService:
         """Generate embedding vector for a single text.
         Tries modern /api/embed (with 'input') first, falls back to legacy /api/embeddings (with 'prompt').
         Handles :latest alias and 60s cold-start timeout. Uses hashlib for stable cache keys."""
-        import hashlib
 
-        ek = f"{model}:{hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()}"
+        ek = _embed_key(model, text)
         if ek in _EMBED_CACHE:
             return _EMBED_CACHE[ek]
         # Candidates: with and without :latest
@@ -743,14 +765,13 @@ class OllamaService:
         Falls back to sequential embed() if batch fails."""
         if not texts:
             return []
-        import hashlib
 
         # Check cache for all texts first
         uncached_indices: list[int] = []
         uncached_texts: list[str] = []
         cached_embeddings: dict[int, list[float]] = {}
         for i, t in enumerate(texts):
-            ek = f"{model}:{hashlib.md5(t.encode(), usedforsecurity=False).hexdigest()}"
+            ek = _embed_key(model, t)
             if ek in _EMBED_CACHE:
                 cached_embeddings[i] = _EMBED_CACHE[ek]
             else:
@@ -780,7 +801,7 @@ class OllamaService:
                                 new_embeddings = embs
                                 batch_ok = True
                                 for txt, emb in zip(uncached_texts, embs):
-                                    ek = f"{model}:{hashlib.md5(txt.encode(), usedforsecurity=False).hexdigest()}"
+                                    ek = _embed_key(model, txt)
                                     _EMBED_CACHE[ek] = emb
                                 if len(_EMBED_CACHE) > 2000:
                                     while len(_EMBED_CACHE) > 2000:

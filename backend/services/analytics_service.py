@@ -14,7 +14,16 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(os.environ.get("ARIA_DATA_DIR", Path.home() / ".aria_data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONVERSATIONS_FILE = DATA_DIR / "conversations.json"
-PROFILE_FILE = DATA_DIR / "study_profile.json"
+PROFILE_FILE = DATA_DIR / "study_profile.json"  # legacy path; see _profile_file()
+
+
+def _profile_file():
+    """One study-profile file per account (stage 2)."""
+    from services.scoping import store_path
+
+    return store_path("study_profile.json")
+
+
 ANALYTICS_FILE = DATA_DIR / "analytics.json"
 
 
@@ -82,7 +91,7 @@ class AnalyticsService:
 
     def get_trends(self, days: int = 30) -> dict:
         """Performance trends over time."""
-        profile = _load_json(PROFILE_FILE, {})
+        profile = _load_json(_profile_file(), {})
         convs = _load_json(CONVERSATIONS_FILE, {})
         now = datetime.now(UTC)
         cutoff = now - timedelta(days=days)
@@ -125,7 +134,7 @@ class AnalyticsService:
 
     def get_predicted_grades(self) -> dict:
         """Predict grades based on current performance trajectory."""
-        profile = _load_json(PROFILE_FILE, {})
+        profile = _load_json(_profile_file(), {})
         subjects = profile.get("subjects", {})
         predictions = {}
 
@@ -173,7 +182,7 @@ class AnalyticsService:
     def get_focus_score(self) -> dict:
         """Measure study session quality."""
         convs = _load_json(CONVERSATIONS_FILE, {})
-        _load_json(PROFILE_FILE, {})
+        _load_json(_profile_file(), {})
         now = datetime.now(UTC)
 
         # Analyse last 7 days
@@ -231,7 +240,7 @@ class AnalyticsService:
 
     def get_weekly_summary(self) -> dict:
         """Generate a weekly learning summary."""
-        profile = _load_json(PROFILE_FILE, {})
+        profile = _load_json(_profile_file(), {})
         subjects = profile.get("subjects", {})
 
         total_q = profile.get("total_questions", 0)

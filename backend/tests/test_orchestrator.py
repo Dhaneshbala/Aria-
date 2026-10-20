@@ -352,7 +352,7 @@ def fakes(monkeypatch):
     fake = {
         "ollama": FakeOllama(),
         "memory_svc": FakeMemory(),
-        "kb_svc": FakeKB(),
+        "_kb_svc": lambda: FakeKB(),
         "research_svc": FakeResearch(),
         "youtube_svc": FakeYouTube(),
         "study_svc": FakeStudy(),

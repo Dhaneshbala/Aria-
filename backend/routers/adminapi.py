@@ -274,11 +274,18 @@ async def providers(request: Request):
         key_configured = bool(str(getattr(settings, "anthropic_api_key", "")).strip())
     except Exception:
         key_configured = False
+    gateway_url = str(getattr(settings, "aria_gateway_url", "") or "").strip()
+    gateway_token_set = bool(
+        str(getattr(settings, "aria_gateway_token", "") or "").strip()
+    )
     return {
         "allowlist_models": sorted(MODEL_PRICES.keys()) if MODEL_PRICES else [],
         "pricing": MODEL_PRICES,
         "anthropic_key_configured": key_configured,
         "cloud_consent": bool(getattr(settings, "aria_cloud_consent", False)),
+        # Stage 2: gateway routing state (presence only — never values).
+        "gateway_configured": bool(gateway_url) and gateway_token_set,
+        "gateway_url": gateway_url or None,
         "budget_state": current_budget_state(),
         "secret_note": "API keys live only in the server environment/settings;"
         " values are never returned or displayed.",
@@ -324,8 +331,14 @@ async def admin_health(request: Request):
     try:
         import json as _json
 
-        tasks_file = DATA_DIR / "background_tasks.json"
-        if tasks_file.exists():
+        # Stage 2: per-account task files plus the legacy global file.
+        candidates = [DATA_DIR / "background_tasks.json"]
+        users_root = DATA_DIR / "users"
+        if users_root.is_dir():
+            candidates.extend(sorted(users_root.glob("*/background_tasks.json")))
+        for tasks_file in candidates:
+            if not tasks_file.exists():
+                continue
             tasks = _json.loads(tasks_file.read_text())
             items = tasks if isinstance(tasks, list) else list(tasks.values())
             for t in items:

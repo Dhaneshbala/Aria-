@@ -100,33 +100,68 @@ def _cloud_enabled() -> bool:
     try:
         from config.settings import settings
 
-        return bool(settings.anthropic_api_key) and bool(settings.aria_cloud_consent)
+        consent = bool(settings.aria_cloud_consent)
+        gateway = _gateway_url() is not None
+        direct = bool(settings.anthropic_api_key)
+        return consent and (direct or gateway)
     except Exception:
         return False
 
 
+def _gateway_url() -> str | None:
+    """The Cloud Boost gateway base URL, or None for direct Anthropic
+    traffic. The gateway holds the real API key; the backend only carries
+    its own gw_ token — never an Anthropic credential."""
+    try:
+        from config.settings import settings
+
+        url = (settings.aria_gateway_url or "").strip()
+        return url.rstrip("/") if url else None
+    except Exception:
+        return None
+
+
 class AnthropicProvider:
-    """Server-side adapter for the Anthropic Messages API."""
+    """Server-side adapter for the Anthropic Messages API.
+
+    Routes direct to Anthropic, or through the Cloud Boost gateway when
+    ``ARIA_GATEWAY_URL`` is set (gateway auth is ``Authorization: Bearer
+    gw_…``; direct auth stays ``x-api-key`` on the real credential).
+    """
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self._base = (base_url or ANTHROPIC_BASE).rstrip("/")
-        if api_key is not None:
-            self._key = api_key
-        else:
-            from config.settings import settings
+        from config.settings import settings
 
-            self._key = settings.anthropic_api_key
+        gw_url = _gateway_url() if base_url is None else None
+        if gw_url:
+            self._base = gw_url
+            self._key = settings.aria_gateway_token
+            self._via_gateway = True
+        else:
+            self._base = (base_url or ANTHROPIC_BASE).rstrip("/")
+            if api_key is not None:
+                self._key = api_key
+            else:
+                self._key = settings.anthropic_api_key
+            self._via_gateway = False
 
     def _require_enabled(self):
         if not _cloud_enabled():
             raise ProviderDisabledError(
                 "Cloud AI is disabled. ARIA runs fully offline by default. "
-                "To use Anthropic models you must set ANTHROPIC_API_KEY and "
-                "ARIA_CLOUD_CONSENT=1 — this sends student content to Anthropic."
+                "To use Anthropic models set ANTHROPIC_API_KEY (or route via "
+                "ARIA_GATEWAY_URL) and consent with ARIA_CLOUD_CONSENT=1 — "
+                "this sends student content to Anthropic."
             )
         _cloud_precheck()
 
     def _headers(self) -> dict:
+        if self._via_gateway:
+            return {
+                "Authorization": f"Bearer {self._key}",
+                "anthropic-version": ANTHROPIC_VERSION,
+                "content-type": "application/json",
+            }
         return {
             "x-api-key": self._key,
             "anthropic-version": ANTHROPIC_VERSION,

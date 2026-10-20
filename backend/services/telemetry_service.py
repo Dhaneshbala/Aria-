@@ -66,6 +66,9 @@ def record_event(name: str, **props) -> None:
             "type": "event",
             "name": name[:80],
             "ts": time.time(),
+            # Stage 2: local, operator-only attribution — the telemetry
+            # file never leaves the machine, and only /api/admin reads it.
+            "user": _scoped_user_label(),
             **safe,
         }
     )
@@ -82,9 +85,21 @@ def record_crash(component: str, error: Exception | str) -> None:
             "error_class": type(error).__name__
             if isinstance(error, Exception)
             else "str",
+            "user": _scoped_user_label(),
             "ts": time.time(),
         }
     )
+
+
+def _scoped_user_label() -> str | None:
+    """Which account produced this event (None when telemetry ran outside
+    any request, e.g. a startup check)."""
+    try:
+        from services import scoping
+
+        return scoping.scoped_user()
+    except Exception:
+        return None
 
 
 def get_events(limit: int = 500) -> list[dict]:

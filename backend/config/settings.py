@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     # Anthropic. See docs/PROVIDERS.md.
     anthropic_api_key: str = ""
     aria_cloud_consent: bool = False
+    # Cloud gateway (deploy/gateway): when ARIA_GATEWAY_URL is set, ALL
+    # Anthropic traffic routes through the Cloud Boost gateway instead of
+    # api.anthropic.com. The gateway holds the real API key; the backend
+    # authenticates with a gateway token (gw_…). Consent is still required
+    # — the gateway forwards student content to Anthropic. The gateway's
+    # dollar-float metering ledger is the OPERATOR's cost meter; ARIA's
+    # microdollar wallet is the per-student prepaid credit — both run.
+    aria_gateway_url: str = ""
+    aria_gateway_token: str = ""
     # Pricing (USD per million tokens) — used for cost estimates in the usage
     # ledger. Anthropic base prices per platform.claude.com/docs
     # (verified 2026-10): Haiku 5.5 $0.10/$0.50. Override via env.
