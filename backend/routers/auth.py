@@ -189,6 +189,7 @@ async def wallet(request: Request):
     return {
         "balance_usd": round(bal / 1_000_000, 6),
         "history": history,
-        "payments_note": "Purchases are not connected yet — payments land in"
-        " a later milestone (docs/BUSINESS.md). Admin grants appear here.",
+        "payments_note": "Card purchases are not connected yet (docs/BUSINESS.md"
+        " milestone). Admin-entered payments — money you verified outside"
+        " ARIA, e.g. a bank transfer — appear as ledger entries here.",
     }

@@ -5,7 +5,7 @@ import { getWallet } from '../services/auth'
 const fmt = (usd) =>
   `$${Number(usd || 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.00')}`
 
-const KIND_LABEL = { grant: 'Admin grant', usage: 'Cloud usage', adjustment: 'Adjustment', refund: 'Refund' }
+const KIND_LABEL = { grant: 'Admin grant', usage: 'Cloud usage', adjustment: 'Adjustment', refund: 'Refund', payment: 'Verified payment (manual)' }
 
 /**
  * The student's credit wallet. Every number here comes from the
