@@ -54,7 +54,7 @@ syrupy>=4.0.0
 
 # Reliability
 slowapi>=0.1.8
-filelock>=3.0.0
+filelock>=4.2.1
 tenacity>=9.0.0
 
 # Config
