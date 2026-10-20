@@ -19,7 +19,7 @@
     "idb-keyval": "^6.3.0",
     "jspdf": "^4.2.1",
     "katex": "^0.16.10",
-    "lucide-react": "^0.383.0",
+    "lucide-react": "^1.59.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
