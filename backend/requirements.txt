@@ -58,7 +58,7 @@ filelock>=3.0.0
 tenacity>=9.0.0
 
 # Config
-pydantic-settings>=2.0.0
+pydantic-settings>=2.16.0
 
 # Observability (Oracle box)
 prometheus-client>=0.20.0
