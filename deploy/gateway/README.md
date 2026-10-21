@@ -10,9 +10,9 @@ ledger.
                        │ validate → quota left? → meter usage → Claude
                        └ daily/monthly caps · spend log · kill switch
 
-> Status: **built and mock-e2e-tested**, not yet deployed and not yet
-> wired into the ARIA client (the "Cloud Boost" toggle is the next Phase
-> 0 item). No real key is stored in this repo.
+> Status: **built, mock-e2e-tested, and deployable** — `deploy/docker-compose.yml`
+> runs it as the `gateway` service (Claude-first VM mode, seed in
+> `deploy/.env.gateway.example`). Still needs a real upstream key to serve.
 
 ## Quickstart (on any machine, no key required to see the UI)
 

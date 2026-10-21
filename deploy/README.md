@@ -11,9 +11,13 @@ student browser / (later) Play Store app
         ▼
         Caddy  :80/:443  ─── static frontend (built once at install)
         ▼
-   backend (FastAPI)  ─── wallet, credits, admin, ledger (per-account)
-        ▼
-     Ollama  (qwen/gemma on CPU)  ← cloud AI stays OFF unless you consent
+        backend (FastAPI)  ─── wallet, credits, admin, ledger (per-account)
+          │  gw_ token · the raw Anthropic key NEVER travels this hop
+          ▼
+      gateway  ─── one Anthropic key · per-token USD caps · kill switch
+          ▼
+      Anthropic  (Claude answers fast; costs are metered before it runs)
+      (optional `local` profile: Ollama self-hosted on the box instead)
 ```
 
 What is already true on this deployment:
@@ -49,9 +53,12 @@ daily driver; this box is the always-on copy the pilot relies on.
 1. **Networking → Virtual cloud networks** → your VCN → **Security list
    → Add ingress rules**: TCP `22`, `80`, `443` from `0.0.0.0/0`.
    (Caddy must reach port 80 for the HTTPS certificate handshake.)
-2. **Create instance**: shape `VM.Standard.A1.Flex` — **4 OCPU / 24 GB RAM**
-   (the Always-Free split; don't exceed it or billing starts), image
-   **Ubuntu 24.04**, boot volume **100 GB**.
+2. **Create instance**: shape `VM.Standard.A1.Flex` — with Claude the
+   default the brain answers remotely, so **2 OCPU / 12 GB RAM** is ample
+   (half of your Always-Free allowance; the other half stays free) and the
+   optional local-AI profile is what would want **4 OCPU / 24 GB RAM**.
+   Don't exceed the free split or billing starts.
+   Image: **Ubuntu 24.04**, boot volume **100 GB**.
    - If the shape says **"out of capacity"** — Ampere free capacity comes
      and goes; retry later or on another home region.
 3. Add your SSH public key, save the **public IP**.
@@ -69,8 +76,10 @@ sudo bash /tmp/oracle-setup.sh /tmp/aria.tar.gz
 ```
 
 The script installs Docker, opens the firewall (SSH + HTTP), deploys the
-stack, builds the frontend once, pulls the AI models (~8 GB — slow; go do
-something else), and writes `.env.deploy` from the example.
+stack, builds the frontend once, and writes `.env.deploy` plus
+`.env.gateway` (it generates the gateway admin token; you add the real
+Anthropic key later — §Cloud). No AI model downloads in cloud mode: the
+Claude-first box needs none.
 
 ## 3. First-boot checklist (on the VM)
 
@@ -86,6 +95,33 @@ cd /opt/aria/deploy && docker compose exec backend \
 - `curl http://<VM-IP>/api/health` should be `"status": "ok"`.
 - When the pilot group has signed up, close registration:
   edit `.env.deploy` → `ARIA_OPEN_REGISTRATION=0` → `docker compose up -d backend`.
+
+## Cloud (Claude) mode — done in three deliberate steps
+
+The gateway deploys by default but stays **inert until you say so**:
+without consent and a key, nothing is sent anywhere. Costs only flow when
+**both** gates open at once — your consent flag, and the student's wallet.
+
+1. **Key**: edit `/opt/aria/deploy/.env.gateway` → real `ANTHROPIC_API_KEY`
+   → `docker compose up -d gateway`. The setup script generated
+   `GATEWAY_ADMIN_TOKEN`; read it with `grep ADMIN .env.gateway`.
+2. **Budget rails** (already on, tune in `.env.gateway`): per gw-token
+   daily/monthly **USD caps** (default $0.50 / $10.00 — past a cap the
+   request is *refused with 429*, never silently billed), a hard
+   `max_tokens` clamp, a model allowlist, and a kill switch — all managed
+   via the loopback-only admin API (`127.0.0.1:8088`, SSH to the VM).
+3. **Consent + funding**: mint the backend's own `gw_` token (the curl
+   they use is documented in `.env.deploy.example`), paste it as
+   `ARIA_GATEWAY_TOKEN`, set `ARIA_CLOUD_CONSENT=1` in `.env.deploy`,
+   `docker compose up -d backend`.
+
+From then on, every student's cloud answer is checked twice: their wallet
+first (an empty wallet is refused — grants happen in Admin → Credits),
+then the gateway's USD caps. Two independent meters, by design: the
+wallet's microdollar ledger is the thing students see; the gateway's USD
+spend ledger is your operator cost meter — they never reconcile with or
+substitute for each other. What crosses to Anthropic is only the request
+that produces the answer.
 
 ## 4. HTTPS — do this before real students join
 
@@ -105,7 +141,7 @@ free Let's Encrypt certificate automatically — it only needs a domain name:
 
 | Task | How |
 |---|---|
-| Weekly backup (do set this up — it's the safety line) | `15 3 * * 1  cd /opt/aria/deploy && ./backup.sh >> backup.log 2>&1` (`crontab -e`). Keeps the newest 14 archives in `/opt/aria/backups/`. |
+| Weekly backup (do set this up — it's the safety line) | `15 3 * * 1  cd /opt/aria/deploy && ./backup.sh >> backup.log 2>&1` (`crontab -e`). Archives the student data volume **and** the gateway's USD spend ledger (`aria-data-*`, `aria-gateway-*`), keeping 14 of each. |
 | Logs | `docker compose logs -f backend` |
 | Restart the backend (e.g. after `.env.deploy` edits) | `docker compose up -d backend` |
 | Upgrade the app | same tar+scp as §2, then `cd /opt/aria/deploy && docker compose build && docker compose up -d --build`. Data lives in named volumes and **survives upgrades**. |
@@ -131,7 +167,7 @@ docker compose start backend
 |---|---|
 | Hosting (this guide) | ready — needs the Oracle account |
 | Accounts, sessions, admin, credit wallet | **built** (Stages 1–2, on `main`) |
-| Cloud (Claude) via the gateway — wallet-gated | built; gateway deployment documented in `deploy/gateway/` |
+| Cloud (Claude) via the gateway — single key, USD caps, kill switch | **ready** — compose `gateway` service + `.env.gateway` secrets, deployed by default but inert until you consent (§Cloud) |
 | Cloud consent on the VM | deliberately OFF until the pilot proves usage is sensible |
 | Android app wrapper (Capacitor) | not started — needs a machine with the Android SDK; the web app already works in mobile browsers |
 | Prepaid top-ups (Stripe / Play Billing) | **not built** — design in `docs/PAYMENTS_DESIGN.md`; will not be built without phase-gate approval (`docs/BUSINESS.md`) |

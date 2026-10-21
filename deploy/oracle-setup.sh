@@ -55,28 +55,45 @@ else
 fi
 cd "$APP_DIR/deploy"
 
-# ── 4. Deployment config (.env.deploy — auth mode, registration, models) ──
+# ── 4. Deployment config (.env.deploy + .env.gateway) ────────────────
 echo "[4/6] Deployment config..."
 if [[ ! -f .env.deploy ]]; then
   cp .env.deploy.example .env.deploy
   chmod 600 .env.deploy
   echo "Wrote .env.deploy from the example (accounts mode, open registration,"
-  echo "model names). Review it any time: nano $APP_DIR/deploy/.env.deploy"
+  echo "consent OFF, model names). Review any time: nano $APP_DIR/deploy/.env.deploy"
 else
   echo ".env.deploy exists — keeping existing config."
+fi
+if [[ ! -f .env.gateway ]]; then
+  cp .env.gateway.example .env.gateway
+  if command -v openssl &>/dev/null; then
+    sed -i "s/^GATEWAY_ADMIN_TOKEN=.*/GATEWAY_ADMIN_TOKEN=$(openssl rand -hex 24)/" .env.gateway
+    echo "Generated a random GATEWAY_ADMIN_TOKEN in .env.gateway (used ONLY on"
+    echo "the VM loopback). Read it:  grep ADMIN .env.gateway"
+  fi
+  chmod 600 .env.gateway
+  echo "Reminder: .env.gateway needs the real ANTHROPIC_API_KEY — ONLY the"
+  echo "gateway container has it; the backend never holds the raw key."
+else
+  echo ".env.gateway exists — keeping existing config."
 fi
 
 # ── 5. Build + start ─────────────────────────────────────────
 echo "[5/6] Building images (takes several minutes on first run)..."
 docker compose build
-docker compose up -d ollama backend
+docker compose up -d backend gateway
 docker compose up frontend-build  # exits after building the PWA
 docker compose up -d caddy
 
-# ── 6. Pull AI models (slow on CPU box — go make lunch) ──────
-echo "[6/6] Pulling models: qwen3.5:9b (~8 GB) + nomic-embed-text..."
-docker compose exec ollama ollama pull qwen3.5:9b
-docker compose exec ollama ollama pull nomic-embed-text
+# ── 6. Cloud-first walk-through (no model download by default) ──────
+echo "[6/6] Cloud mode: the gateway answers; the VM needs no AI download."
+echo "  1. Put your real key in .env.gateway (ANTHROPIC_API_KEY=sk-ant-…)."
+echo "  2. Restart the gateway:   docker compose up -d gateway"
+echo "  3. Once ARIA_CLOUD_CONSENT=1 is set in .env.deploy AND a gw_ token"
+echo "     is minted (see deploy/README.md §Cloud), students may use it —"
+echo "     every call is wallet-gated + cap-bounded."
+echo "  Optional local-AI mode (cpu, slow): docker compose --profile local up -d"
 
 echo ""
 echo "✅ ARIA is live: http://<your-VM-public-IP>"
@@ -94,5 +111,5 @@ echo ""
 echo "WARNING: plain HTTP. OK for a same-house try-out; before real students"
 echo "join, do the HTTPS step — deploy/README.md §HTTPS (free domain + TLS)."
 echo ""
-echo "Expect slow answers: CPU-only 12B inference on 4 Ampere cores is"
-echo "~10x slower than your M4 Mac."
+echo "With cloud consented, answers are fast and cost wallet-credit per use;"
+echo "the optional local-AI profile is CPU-slow instead (~10x the M4 Mac)."

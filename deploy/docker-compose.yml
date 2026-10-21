@@ -1,17 +1,36 @@
-# ARIA on one Oracle Always Free Ampere VM (4 OCPU / 24 GB RAM).
-# Only Caddy's port 80 is published. Backend + Ollama stay on the private
-# compose network. NOTE: agent terminal/file tools reject non-loopback
-# callers, so on this box they are effectively disabled — safer for a
-# public server.
+# ARIA on one Oracle Always Free Ampere VM.
+# Caddy publishes 80/443; the gateway admin API answers on loopback only.
+# Backend + Ollama + gateway stay on the private compose network. NOTE:
+# agent terminal/file tools reject non-loopback callers, so on this box
+# they are effectively disabled — safer for a public server.
 name: aria
 
 services:
+  # Optional local-AI mode: `docker compose --profile local up -d`.
+  # Claude-first default: the gateway answers instead (no model download).
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    profiles: [local]
     volumes:
       - ollama_models:/root/.ollama
     # no ports published — backend reaches it at http://ollama:11434
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+    restart: unless-stopped
+    # The single Anthropic key + admin token live ONLY here (.env.gateway)
+    env_file:
+      - .env.gateway
+    environment:
+      GATEWAY_DB_PATH: /data/gateway.sqlite3
+    volumes:
+      - gateway_data:/data
+    # unique admin port is reachable from the VM shell only, never the net
+    ports:
+      - "127.0.0.1:8088:8088"
 
   backend:
     build:
@@ -19,14 +38,17 @@ services:
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
     depends_on:
-      - ollama
-    # Auth knobs, model names and optional cloud consent come from
+      ollama:
+        condition: service_started
+        required: false   # optional profile — cloud mode has no ollama
+    # Auth knobs, gateway token, consent and model names come from
     # .env.deploy (see deploy/.env.deploy.example). This file only carries
     # the container-internal wiring.
     env_file:
       - .env.deploy
     environment:
       OLLAMA_URL: http://ollama:11434
+      ARIA_GATEWAY_URL: http://gateway:8088
       ARIA_DATA_DIR: /data
     volumes:
       - aria_data:/data
@@ -58,6 +80,7 @@ services:
       - .env.deploy   # only ARIA_TLS_DOMAIN is read here
 
 volumes:
+  gateway_data:
   ollama_models:
   aria_data:
   frontend_dist:

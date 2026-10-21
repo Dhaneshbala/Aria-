@@ -1,0 +1,23 @@
+# ARIA gateway — the ONLY container holding the upstream Anthropic key.
+# Built by deploy/docker-compose.yml (Claude-first VM mode); its secrets
+# come from .env.gateway, never from the repo or the backend image.
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY deploy/gateway/requirements.txt /app/deploy/gateway/requirements.txt
+RUN pip install -r /app/deploy/gateway/requirements.txt
+
+COPY deploy/gateway /app/deploy/gateway
+
+# The metering ledger lives on the gateway_data volume (survives upgrades).
+ENV GATEWAY_DB_PATH=/data/gateway.sqlite3
+EXPOSE 8088
+
+# --app-dir deploy so the module path `gateway.main` resolves from /app
+CMD ["python", "-m", "uvicorn", "--app-dir", "deploy", "gateway.main:app", \
+     "--host", "0.0.0.0", "--port", "8088"]
