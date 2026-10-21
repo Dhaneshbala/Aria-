@@ -145,3 +145,39 @@ def migrate_legacy_stores() -> int:
     if moved:
         logger.info("Migrated %d legacy stores to users/%s/", moved, admin)
     return moved
+
+
+def purge_account_files(username: str) -> int:
+    """Delete one account's per-account store directory entirely (Section 13
+    account-deletion contract: the user's feature data goes with the
+    account, immediately). Refuses the reserved built-in account — that
+    directory is the local deployment's data, not a student's. Returns the
+    number of files removed; deletes nothing on refusal."""
+    from services.accounts import DEFAULT_LOCAL_USER
+
+    if not username or username == DEFAULT_LOCAL_USER:
+        logger.warning("Refusing to purge the built-in account's files.")
+        return 0
+    root = user_root(username)
+    if not root.exists():
+        return 0
+    removed = 0
+    for p in sorted(root.rglob("*"), reverse=True):
+        if p.is_file() or p.is_symlink():
+            try:
+                p.unlink(missing_ok=True)
+                removed += 1
+            except Exception:
+                logger.warning("Could not remove %s during purge", p)
+        elif p.is_dir():
+            try:
+                p.rmdir()
+            except Exception:
+                logger.debug("Directory %s not empty during purge", p)
+    try:
+        root.rmdir()
+    except Exception:
+        pass
+    if removed:
+        logger.info("Purged %d files for deleted account %s/", removed, username)
+    return removed

@@ -534,8 +534,12 @@ async def orchestrate(
             return ""
         try:
             mem_k = 5 if is_hard else 3
+            from services.scoping import scoped_user
+
             memories = await asyncio.wait_for(
-                memory_svc.retrieve(conversation_id, message, k=mem_k),
+                memory_svc.retrieve(
+                    conversation_id, message, k=mem_k, user=scoped_user()
+                ),
                 timeout=RETRIEVAL_TIMEOUT,
             )
             if memories:

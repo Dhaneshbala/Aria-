@@ -18,6 +18,7 @@ Roles: student < admin < superadmin, enforced in services/gate.py.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,8 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 
@@ -318,10 +321,25 @@ def change_password(user_id: int, old: str, new: str) -> None:
 
 
 def soft_delete_user(user_id: int) -> None:
-    """Account deletion per spec: user is unusable and their sessions
-    revoked. Owned feature data stays on disk until Stage 2 adds a purge."""
+    """Account deletion per spec: user is unusable, sessions revoked, and
+    the account's partitioned feature files are purged immediately
+    (DATA_DIR/users/<username> — never the base legacy stores, never the
+    built-in local account)."""
+    user = get_user_by_id(user_id)
+    if user is None:
+        raise ValueError("No such user.")
+    if user["username"] == DEFAULT_LOCAL_USER:
+        raise ValueError("The built-in local account cannot be deleted.")
     update_user(user_id, {"status": "deleted"})
     revoke_sessions(user_id)
+    try:
+        from services.scoping import purge_account_files
+
+        purge_account_files(user["username"])
+    except Exception:
+        logger.warning(
+            "Purging files for deleted user %s failed.", user_id, exc_info=True
+        )
 
 
 # --------------------------------------------------------------- sessions

@@ -107,6 +107,12 @@ async def admin_patch_user(request: Request, user_id: int):
     target = accounts.get_user_by_id(user_id)
     if target is None or target["status"] == "deleted":
         raise HTTPException(status_code=404, detail="No such user.")
+    if target["username"] == accounts.DEFAULT_LOCAL_USER and (
+        ("status" in body) or ("role" in body) or ("plan" in body)
+    ):
+        raise HTTPException(
+            status_code=400, detail="The built-in local account cannot be modified."
+        )
 
     updates: dict = {}
     if "status" in body:
@@ -179,9 +185,18 @@ async def admin_grant(request: Request, user_id: int):
             str(body.get("kind", "grant")),
             str(body.get("reason", "")),
             actor_id=actor["id"],
+            idempotency_key=str(body.get("idempotency_key") or "") or None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    if result.get("duplicate"):
+        # Same key already applied: report honestly, audit nothing new.
+        return {
+            **result,
+            "delta_usd": round(result["delta_micro"] / 1_000_000, 6),
+            "balance_usd": round(result["balance_micro"] / 1_000_000, 6),
+            "note": "Duplicate idempotency key — no new ledger row was created.",
+        }
     audit_log(
         actor["id"],
         actor["username"],

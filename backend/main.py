@@ -146,13 +146,19 @@ async def api_token_gate(request: Request, call_next):
     Off by default (empty token = today's localhost behaviour, tests
     unaffected). When ARIA_API_TOKEN is set, remote /api callers need
     `Authorization: Bearer <token>`; loopback + /api/health stay open.
+    Accounts mode (ARIA_AUTH_MODE=accounts) owns authentication instead —
+    the static password is ignored there so real session tokens are never
+    rejected by the outer gate (services/gate.py enforces everything).
 
     Registered BEFORE CORS (CORS wraps this) so 401 responses still carry
     CORS headers and the browser shows a clean message instead of an opaque
     network error.
     """
+    from services import accounts as _accounts
+
     if (
         settings.aria_api_token
+        and not _accounts.accounts_enabled()
         and request.url.path.startswith("/api")
         and request.url.path != "/api/health"
     ):

@@ -503,8 +503,24 @@ class MemoryService:
             _save_titles(titles)
         return new_title
 
-    async def retrieve(self, conversation_id: str, query: str, k: int = 4) -> list[str]:
-        """Retrieve relevant past messages from this conversation + global context."""
+    async def retrieve(
+        self,
+        conversation_id: str,
+        query: str,
+        k: int = 4,
+        user: str | None = None,
+    ) -> list[str]:
+        """Retrieve relevant past messages from this conversation + global context.
+
+        ``user`` scopes the retrieval (Section 13 hardening): in accounts
+        mode the caller passes the session username, and (a) a conversation
+        the user does not own yields nothing, (b) the cross-conversation
+        global search only ever sees conversations the user owns. Local
+        mode passes None — today's single-user behaviour is unchanged.
+        """
+        owners = _owned_cids(user) if user is not None else None
+        if owners is not None and conversation_id not in owners:
+            return []
         # Recent turns from JSON
         convs = _load_json(CONVERSATIONS_FILE, {})
         turns = convs.get(conversation_id, [])
@@ -525,15 +541,24 @@ class MemoryService:
             except Exception as e:
                 logger.warning("ChromaDB conversation search failed: %s", e)
 
-        # Cross-conversation semantic search (global)
+        # Cross-conversation semantic search (global) — owner-filtered via
+        # the conversation-owner map, so one student's chat context can
+        # never include another student's saved memories.
         global_context = []
         if self._chroma_available and self._global_collection:
             try:
                 count = self._global_collection.count()
                 if count > 0:
+                    global_where: dict | None = None
+                    if owners is not None:
+                        if not owners:
+                            global_where = {"conversation_id": {"$in": ["__none__"]}}
+                        else:
+                            global_where = {"conversation_id": {"$in": sorted(owners)}}
                     results = self._global_collection.query(
                         query_texts=[query],
                         n_results=min(3, max(1, count)),
+                        where=global_where,
                     )
                     global_context = (
                         results["documents"][0] if results["documents"] else []

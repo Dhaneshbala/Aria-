@@ -69,6 +69,11 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_credit_ledger_user
   ON credit_ledger(user_id, ts);
+CREATE TABLE IF NOT EXISTS ledger_idempotency (
+  idempotency_key TEXT PRIMARY KEY,
+  ledger_id INTEGER NOT NULL,
+  applied_at TEXT NOT NULL
+);
 """
 
 
@@ -107,7 +112,8 @@ def _apply(
     kind: str,
     actor_id: int | None,
     reason: str,
-) -> int:
+) -> tuple[int, int]:
+    """Append the ledger row + upsert the balance. Returns (after, ledger_id)."""
     row = conn.execute(
         "SELECT balance_micro FROM credit_balances WHERE user_id = ?",
         (user_id,),
@@ -116,7 +122,7 @@ def _apply(
     after = current + delta_micro
     if after < 0:
         raise ValueError("Balance would go negative; operation refused.")
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO credit_ledger (ts, user_id, delta_micro, kind,"
         " actor_id, reason, balance_after_micro)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -129,7 +135,7 @@ def _apply(
         " excluded.balance_micro, updated_at = excluded.updated_at",
         (user_id, after, _now_iso()),
     )
-    return after
+    return after, int(cur.lastrowid or 0)
 
 
 def apply(
@@ -138,8 +144,15 @@ def apply(
     kind: str,
     reason: str,
     actor_id: int | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    """The ONLY way a balance moves. Refuses and raises; always ledgers."""
+    """The ONLY way a balance moves. Refuses and raises; always ledgers.
+
+    ``idempotency_key`` (optional): ledgering a retried call twice is a
+    real money bug (double grants, duplicated webhook later). The first
+    application wins; later calls with the same key return the ORIGINAL
+    ledger row with ``duplicate: True`` and change nothing. A key is
+    bound to its first user — reuse for another user is an error."""
     if kind not in _KINDS:
         raise ValueError("Bad ledger kind.")
     if (
@@ -157,13 +170,43 @@ def apply(
         raise ValueError("A reason of at least 3 characters is required.")
     reason = str(reason).strip()[:500]
     with _LOCK, closing(_cx()) as conn, conn:
-        after = _apply(conn, user_id, delta_micro, kind, actor_id, reason)
+        if idempotency_key:
+            prior = conn.execute(
+                "SELECT l.*, l.id AS ledger_id FROM ledger_idempotency k"
+                " JOIN credit_ledger l ON l.id = k.ledger_id"
+                " WHERE k.idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if prior is not None:
+                if int(prior["user_id"]) != int(user_id):
+                    raise ValueError(
+                        "Idempotency key already used for a different user."
+                    )
+                d = dict(prior)
+                return {
+                    "user_id": user_id,
+                    "delta_micro": int(d["delta_micro"]),
+                    "balance_micro": int(d["balance_after_micro"]),
+                    "kind": d["kind"],
+                    "reason": d["reason"],
+                    "ledger_id": int(d["ledger_id"]),
+                    "duplicate": True,
+                }
+        after, ledger_id = _apply(conn, user_id, delta_micro, kind, actor_id, reason)
+        if idempotency_key:
+            conn.execute(
+                "INSERT INTO ledger_idempotency (idempotency_key, ledger_id,"
+                " applied_at) VALUES (?, ?, ?)",
+                (idempotency_key, ledger_id, _now_iso()),
+            )
     return {
         "user_id": user_id,
         "delta_micro": delta_micro,
         "balance_micro": after,
         "kind": kind,
         "reason": reason,
+        "ledger_id": ledger_id,
+        "duplicate": False,
     }
 
 

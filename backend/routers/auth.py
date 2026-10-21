@@ -88,11 +88,21 @@ async def admin_unlock(request: Request):
         raise HTTPException(status_code=404, detail="Not applicable in local mode.")
     current = gate.current_user(request)
     body = await request.json()
-    user = accounts.authenticate(
-        str(body.get("username", "")), str(body.get("password", ""))
-    )
+    # Brute-force protection: same discipline as /login. A stolen live
+    # session cannot batter this password check freely (Section 13 QA).
+    attempted = str(body.get("username", "")).strip().lower()
+    ip = request.client.host if request.client else "?"
+    key = f"unlock:{attempted}|{ip}"
+    if not accounts.check_login_allowed(key):
+        raise HTTPException(
+            status_code=429, detail="Too many failed attempts; wait 10 minutes."
+        )
+    user = accounts.authenticate(attempted, str(body.get("password", "")))
     if user is None or user["id"] != current["id"]:
+        accounts.record_login_result(key, False)
+        audit_log(None, attempted, "admin_unlock", outcome="failed", meta={"ip": ip})
         raise HTTPException(status_code=401, detail="Re-verification failed.")
+    accounts.record_login_result(key, True)
     if user["role"] not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Only admin accounts can unlock.")
     token = getattr(request.state, "session_token", "")
@@ -169,7 +179,8 @@ async def delete_me(request: Request):
     audit_log(user["id"], user["username"], "account_deleted", target=str(user["id"]))
     return {
         "deleted": True,
-        "note": "Feature files (notes/todos etc.) are purged in Stage 2; chat history was already personal.",
+        "note": "Sessions revoked now; this account's per-user files"
+        " (todos, notes, documents and the rest) were purged with it.",
     }
 
 

@@ -69,6 +69,17 @@ def init() -> None:
     feedback._init_schema()
     _budget_schema()
     accounts.ensure_local_user()
+    try:
+        from config.settings import settings as _settings
+
+        if _settings.aria_api_token and accounts.accounts_enabled():
+            logger.warning(
+                "ARIA_API_TOKEN is set but accounts mode owns authentication —"
+                " the static server password is ignored; users sign in with"
+                " session tokens (services/gate.py)."
+            )
+    except Exception:
+        pass
     if accounts.accounts_enabled():
         _migrate_legacy_conversations()
         from services.scoping import migrate_legacy_stores
