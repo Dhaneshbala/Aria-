@@ -40,27 +40,30 @@ ufw --force enable
 echo "[3/6] Installing app code to $APP_DIR..."
 mkdir -p "$APP_DIR"
 if [[ -n "$TARBALL" && -f "$TARBALL" ]]; then
-  tar -xzf "$TARBALL" -C "$APP_DIR"
+  # The tarball contains a top-level aria-2/ dir; flatten it into $APP_DIR.
+  tar -xzf "$TARBALL" --strip-components=1 -C "$APP_DIR"
 else
   echo "No tarball given — expecting code already at $APP_DIR"
-  echo "On your Mac: tar -czf aria.tar.gz -C ~/Projects/ARIA aria-2"
-  echo "Then: scp aria.tar.gz ubuntu@<VM-IP>:/tmp/ && sudo $0 /tmp/aria.tar.gz"
+  echo "On your Mac (copy-paste):"
+  echo "  cd ~/Projects/ARIA"
+  echo "  tar -czf aria.tar.gz --exclude 'aria-2/.git' --exclude 'aria-2/.venv' \\"
+  echo "      --exclude 'aria-2/venv' --exclude 'aria-2/frontend/node_modules' \\"
+  echo "      --exclude 'aria-2/frontend/dist' --exclude 'aria-2/attic' aria-2"
+  echo "Then: scp aria.tar.gz deploy/oracle-setup.sh ubuntu@<VM-IP>:/tmp/"
+  echo "      ssh ubuntu@<VM-IP> && sudo bash /tmp/oracle-setup.sh /tmp/aria.tar.gz"
   [[ -f "$APP_DIR/docker-compose.yml" ]] || { echo "No code found. Aborting."; exit 1; }
 fi
 cd "$APP_DIR/deploy"
 
-# ── 4. Login password (basic-auth, stored as bcrypt hash) ────
-echo "[4/6] Login protection..."
+# ── 4. Deployment config (.env.deploy — auth mode, registration, models) ──
+echo "[4/6] Deployment config..."
 if [[ ! -f .env.deploy ]]; then
-  read -rsp "Choose an ARIA login password: " PW; echo
-  read -rsp "Repeat it: " PW2; echo
-  [[ "$PW" == "$PW2" && -n "$PW" ]] || { echo "Passwords differ/empty. Aborting."; exit 1; }
-  HASH=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$PW")
-  printf 'ADMIN_USER=student\nADMIN_HASH=%s\n' "$HASH" > .env.deploy
+  cp .env.deploy.example .env.deploy
   chmod 600 .env.deploy
-  echo "Login user: student (password set)."
+  echo "Wrote .env.deploy from the example (accounts mode, open registration,"
+  echo "model names). Review it any time: nano $APP_DIR/deploy/.env.deploy"
 else
-  echo ".env.deploy exists — keeping existing password."
+  echo ".env.deploy exists — keeping existing config."
 fi
 
 # ── 5. Build + start ─────────────────────────────────────────
@@ -76,13 +79,20 @@ docker compose exec ollama ollama pull qwen3.5:9b
 docker compose exec ollama ollama pull nomic-embed-text
 
 echo ""
-echo "✅ ARIA is live: http://<your-VM-public-IP>  (login: student)"
+echo "✅ ARIA is live: http://<your-VM-public-IP>"
+echo ""
+echo "Next: create the FIRST admin (inside the VM — never via the app UI):"
+echo "  cd $APP_DIR/deploy && docker compose exec backend python -m tools.superadmin <username>"
+echo "(prompts for a 10+ character password; then students can sign up at the URL above)"
+echo ""
 echo "Check health:  curl http://<your-VM-public-IP>/api/health"
 echo "Logs:          cd $APP_DIR/deploy && docker compose logs -f backend"
 echo ""
 echo "Remaining manual step (Oracle console): VCN → subnet security list →"
 echo "add Ingress rules for TCP 80 (and 22 for SSH) from 0.0.0.0/0."
 echo ""
-echo "WARNING: plain HTTP + password login. Fine on trusted networks, but"
-echo "never reuse that password elsewhere. Expect slow answers: CPU-only 12B"
-echo "inference on 4 Ampere cores is ~10x slower than your M4 Mac."
+echo "WARNING: plain HTTP. OK for a same-house try-out; before real students"
+echo "join, do the HTTPS step — deploy/README.md §HTTPS (free domain + TLS)."
+echo ""
+echo "Expect slow answers: CPU-only 12B inference on 4 Ampere cores is"
+echo "~10x slower than your M4 Mac."

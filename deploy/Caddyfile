@@ -1,9 +1,11 @@
-:80 {
-	# Login screen for the whole app (no third parties — Caddy basic-auth).
-	# Change credentials in .env.deploy (ADMIN_USER / ADMIN_HASH).
-	basicauth /* {
-		{$ADMIN_USER} {$ADMIN_HASH}
-	}
+# Site address comes from .env.deploy:
+#   unset            → plain HTTP on :80   (same-house try-outs only)
+#   ARIA_TLS_DOMAIN=yourname.duckdns.org → Caddy serves HTTPS automatically
+# (Let's Encrypt). deploy/README.md §HTTPS has the full walk-through.
+{$ARIA_TLS_DOMAIN::80} {
+	# The edge does NOT gate with a shared password — accounts-mode logins
+	# (backend sessions) protect the API; the SPA must load unauthenticated
+	# so students reach the login screen.
 
 	# API → backend (same-origin, so the frontend needs no CORS changes)
 	handle /api/* {

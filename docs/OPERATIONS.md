@@ -32,6 +32,14 @@ so.
 3. Review `.env.example` fully: bind host, CORS origins (only your own
    origins — never `*`), and any cloud settings.
 
+ARIA_AUTH_MODE=accounts
+ARIA_OPEN_REGISTRATION=1   # open while the pilot group signs up
+```
+
+Running the pilot on a public VM instead of this Mac: `deploy/README.md`
+walks the whole launch (Oracle Always Free, HTTPS, backups, container
+bootstrap of the admin below — use `docker compose exec backend`).
+
 ## 2. Enabling accounts mode for the pilot
 
 ```bash

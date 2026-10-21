@@ -10,6 +10,8 @@ venv/
 .env.local
 .env.*.local
 *.env
+# VM deployment secrets (deploy/): copied from the example at launch
+.env.deploy
 
 # Runtime state — never commit local index/logs/backups
 backend/storage/backups/
